@@ -1,0 +1,903 @@
+\chapter{Channels and \texttt{select}}\label{ch:channels-select}
+
+\index{Channel@\texttt{Channel}}
+\index{channels}
+
+In the previous chapter, we used channels as convenient mailboxes---toss a value in one end, pull it out the other.
+But channels in Lattice are a full concurrency primitive: they are the primary mechanism for safe communication between threads, and with \lstinline|select|, they become a powerful multiplexing tool that lets you wait on multiple sources of data simultaneously.
+
+Let's start from the beginning.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{Channel::new()}, \texttt{send()}, \texttt{recv()}, \texttt{close()}}\label{sec:channel-basics}
+%% ─────────────────────────────────────────────────────────────
+
+\index{Channel@\texttt{Channel}!creation}
+\index{Channel::new@\texttt{Channel::new()}}
+
+A channel is a thread-safe FIFO queue.
+You create one with \lstinline|Channel::new()|, send values into it, and receive values from it:
+
+\begin{lstlisting}[language=Lattice, caption={Channel basics}]
+let ch = Channel::new()
+
+ch.send(42)
+ch.send("hello")
+ch.send(true)
+
+print(ch.recv())  // 42
+print(ch.recv())  // hello
+print(ch.recv())  // true
+\end{lstlisting}
+
+Channels are untyped---you can send any Lattice value through them.
+Values come out in the order they were sent (first-in, first-out).
+
+\begin{defnbox}{Channel}
+\index{Channel@\texttt{Channel}!definition}
+A \emph{Channel} is an unbounded, thread-safe FIFO queue.
+It supports three core operations: \lstinline|send(value)| enqueues a value, \lstinline|recv()| dequeues a value (blocking if the channel is empty), and \lstinline|close()| signals that no more values will be sent.
+Internally, a channel is a mutex-protected vector with a condition variable for blocking receives (see \filename{include/channel.h}).
+\end{defnbox}
+
+\subsection{\texttt{send()} --- Putting Values In}
+
+\index{Channel@\texttt{Channel}!send}
+\index{send@\texttt{send()}}
+
+The \lstinline|send()| method enqueues a value into the channel's buffer:
+
+\begin{lstlisting}[language=Lattice, caption={Sending values}]
+let orders = Channel::new()
+
+orders.send("latte")
+orders.send("cappuccino")
+orders.send("espresso")
+
+print("Queued ${3} orders")
+\end{lstlisting}
+
+Sending is non-blocking: because Lattice channels are unbounded, \lstinline|send()| always succeeds immediately (as long as the channel is open).
+Under the hood, \texttt{channel\_send} in \filename{src/channel.c} acquires the channel's mutex, pushes the value onto the internal \texttt{LatVec} buffer, signals the \texttt{cond\_notempty} condition variable to wake any blocked receivers, and also wakes any select waiters.
+
+\begin{notebox}{Sending to a Closed Channel}
+\index{Channel@\texttt{Channel}!closed}
+If you \lstinline|send()| to a closed channel, the value is silently dropped and the send returns \lstinline|false| internally.
+The value is freed to prevent memory leaks.
+Design your programs so that producers stop sending before or shortly after the channel is closed.
+\end{notebox}
+
+\subsection{\texttt{recv()} --- Taking Values Out}
+
+\index{Channel@\texttt{Channel}!recv}
+\index{recv@\texttt{recv()}}
+
+The \lstinline|recv()| method dequeues the next value from the channel:
+
+\begin{lstlisting}[language=Lattice, caption={Receiving values}]
+let ch = Channel::new()
+ch.send(100)
+ch.send(200)
+
+let first = ch.recv()   // 100
+let second = ch.recv()  // 200
+print("Got ${first} and ${second}")
+\end{lstlisting}
+
+Here is the critical behavior: \textbf{if the channel is empty and still open, \lstinline|recv()| blocks the calling thread until a value is available}.
+This blocking behavior is what makes channels useful for synchronization---a consumer naturally waits for its producer.
+
+\begin{lstlisting}[language=Lattice, caption={Blocking recv}]
+let ch = Channel::new()
+
+scope {
+  spawn {
+    // Simulate slow work
+    let start = clock()
+    while clock() - start < 100 { }
+    ch.send("result ready")
+  }
+  spawn {
+    // This recv blocks until the value arrives
+    let result = ch.recv()
+    print("Got: ${result}")
+  }
+}
+\end{lstlisting}
+
+In the implementation (\filename{src/channel.c}, \texttt{channel\_recv}), receiving works by locking the mutex and entering a \texttt{while} loop that calls \texttt{pthread\_cond\_wait} as long as the buffer is empty and the channel is not closed.
+When a value is available, it is shifted from the front of the buffer (FIFO semantics) and returned.
+
+\subsection{What Happens When You \texttt{recv()} from a Closed, Empty Channel?}
+
+If the channel is closed and its buffer is empty, \lstinline|recv()| returns \lstinline|nil|.
+This provides a clean way to detect that a producer is done:
+
+\begin{lstlisting}[language=Lattice, caption={Receiving from a closed channel}]
+let ch = Channel::new()
+ch.send(1)
+ch.send(2)
+ch.close()
+
+print(ch.recv())  // 1
+print(ch.recv())  // 2
+print(ch.recv())  // nil (channel closed and empty)
+\end{lstlisting}
+
+\subsection{\texttt{close()} --- Signaling Completion}
+
+\index{Channel@\texttt{Channel}!close}
+\index{close@\texttt{close()}}
+
+The \lstinline|close()| method signals that no more values will be sent:
+
+\begin{lstlisting}[language=Lattice, caption={Closing a channel}]
+let tasks = Channel::new()
+
+tasks.send("task_a")
+tasks.send("task_b")
+tasks.close()
+
+// Receivers can still drain buffered values
+print(tasks.recv())  // task_a
+print(tasks.recv())  // task_b
+print(tasks.recv())  // nil
+\end{lstlisting}
+
+Closing is a one-way operation---once closed, a channel stays closed.
+The implementation (\texttt{channel\_close} in \filename{src/channel.c}) sets the \texttt{closed} flag, then broadcasts on the condition variable to wake all blocked receivers and select waiters.
+This ensures no thread stays blocked forever on a closed channel.
+
+\begin{tipbox}{Always Close Producer Channels}
+\index{Channel@\texttt{Channel}!closing best practice}
+When a producer is done sending, close the channel.
+This lets consumers detect the end of the stream and exit their loops cleanly.
+A channel that is never closed will cause any \lstinline|recv()| call to block indefinitely once the buffer is drained.
+\end{tipbox}
+
+\subsection{Channel Lifecycle}
+
+Channels are reference-counted.
+When you share a channel across spawns, each copy increments the reference count (\texttt{channel\_retain}).
+When a copy goes out of scope, the count is decremented (\texttt{channel\_release}).
+The channel's internal buffer is freed only when the last reference is released.
+
+\begin{lstlisting}[language=Lattice, caption={Channel lifecycle across spawns}]
+fn producer(ch: Channel, items: Array) {
+  for item in items {
+    ch.send(item)
+  }
+  ch.close()
+}
+
+fn consumer(ch: Channel) {
+  flux item = ch.recv()
+  while item != nil {
+    print("Consumed: ${item}")
+    item = ch.recv()
+  }
+}
+
+let pipeline = Channel::new()
+
+scope {
+  spawn { producer(pipeline, ["apple", "banana", "cherry"]) }
+  spawn { consumer(pipeline) }
+}
+// Output:
+// Consumed: apple
+// Consumed: banana
+// Consumed: cherry
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Producer-Consumer Patterns}\label{sec:producer-consumer}
+%% ─────────────────────────────────────────────────────────────
+
+\index{producer-consumer}
+\index{concurrency patterns!producer-consumer}
+
+The producer-consumer pattern is the bread and butter of channel-based concurrency.
+One thread produces data, another consumes it, and the channel decouples them.
+
+\subsection{Single Producer, Single Consumer}
+
+The most common variant:
+
+\begin{lstlisting}[language=Lattice, caption={Single producer, single consumer}]
+let work_queue = Channel::new()
+
+scope {
+  // Producer
+  spawn {
+    for i in 0..10 {
+      work_queue.send(i * i)
+    }
+    work_queue.close()
+  }
+
+  // Consumer
+  spawn {
+    flux val = work_queue.recv()
+    while val != nil {
+      print("Processing: ${val}")
+      val = work_queue.recv()
+    }
+    print("Consumer done")
+  }
+}
+\end{lstlisting}
+
+The consumer loop is idiomatic: call \lstinline|recv()|, check for \lstinline|nil| (which signals the channel is closed and drained), and process each value.
+
+\subsection{Multiple Producers, Single Consumer}
+
+Multiple spawns can send to the same channel:
+
+\begin{lstlisting}[language=Lattice, caption={Multiple producers, single consumer}]
+let log_channel = Channel::new()
+
+scope {
+  spawn {
+    for i in 0..5 {
+      log_channel.send("[Server A] Request ${i}")
+    }
+  }
+  spawn {
+    for i in 0..5 {
+      log_channel.send("[Server B] Request ${i}")
+    }
+  }
+  spawn {
+    // Give producers a moment, then close
+    let start = clock()
+    while clock() - start < 50 { }
+    log_channel.close()
+  }
+}
+
+// Drain the log
+flux msg = log_channel.recv()
+while msg != nil {
+  print(msg)
+  msg = log_channel.recv()
+}
+\end{lstlisting}
+
+Because the channel is mutex-protected, sends from different threads are serialized automatically---no data corruption, no lost messages.
+
+\subsection{Single Producer, Multiple Consumers}
+
+This pattern distributes work across consumers:
+
+\begin{lstlisting}[language=Lattice, caption={Work distribution across consumers}]
+fn worker(id: Int, jobs: Channel, results: Channel) {
+  flux job = jobs.recv()
+  while job != nil {
+    let result = "Worker ${id} processed job ${job}"
+    results.send(result)
+    job = jobs.recv()
+  }
+}
+
+let jobs = Channel::new()
+let results = Channel::new()
+
+// Enqueue work
+for i in 0..12 {
+  jobs.send(i)
+}
+jobs.close()
+
+scope {
+  spawn { worker(1, jobs, results) }
+  spawn { worker(2, jobs, results) }
+  spawn { worker(3, jobs, results) }
+}
+
+// Collect all results
+for _ in 0..12 {
+  print(results.recv())
+}
+\end{lstlisting}
+
+Each worker calls \lstinline|recv()| on the same jobs channel.
+Because \lstinline|recv()| is atomic (only one thread gets each value), the work is naturally distributed---no explicit load balancing needed.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{select} with Multiple Channels}\label{sec:select-channels}
+%% ─────────────────────────────────────────────────────────────
+
+\index{select@\texttt{select}}
+\index{channel multiplexing}
+
+What if you need to wait on \emph{multiple} channels at once?
+Maybe you have two data sources and want to process whichever one has data ready first.
+This is where \lstinline|select| comes in.
+
+\begin{lstlisting}[language=Lattice, caption={Basic select}]
+let weather = Channel::new()
+let news = Channel::new()
+
+scope {
+  spawn { weather.send("Sunny, 72F") }
+  spawn { news.send("Lattice 1.0 released!") }
+}
+
+let result = select {
+  weather -> report { "Weather: ${report}" }
+  news -> headline { "News: ${headline}" }
+}
+print(result)
+// Either "Weather: Sunny, 72F" or "News: Lattice 1.0 released!"
+\end{lstlisting}
+
+A \lstinline|select| expression waits on multiple channels and executes the arm corresponding to the first channel that has data available.
+
+\begin{defnbox}{\texttt{select} Expression}
+\index{select@\texttt{select}!definition}
+A \lstinline|select| expression monitors multiple channels simultaneously and executes the body of the first arm that successfully receives a value.
+If multiple channels have data ready, one is chosen at random (via Fisher-Yates shuffle in the VM) to ensure fairness.
+The expression evaluates to the result of the chosen arm's body.
+\end{defnbox}
+
+\subsection{Anatomy of a \texttt{select} Arm}
+
+Each arm of a \lstinline|select| has three parts:
+
+\begin{lstlisting}[language=Lattice, caption={Select arm anatomy}]
+select {
+  channel_expr -> binding_name { body }
+}
+\end{lstlisting}
+
+\begin{itemize}
+  \item \texttt{channel\_expr}: An expression that evaluates to a \lstinline|Channel|.
+  \item \texttt{binding\_name}: A variable name that will hold the received value inside the body. This is optional---you can omit the binding if you don't need the value.
+  \item \texttt{body}: The code to execute when this channel delivers a value.
+\end{itemize}
+
+\subsection{Fairness}
+
+\index{select@\texttt{select}!fairness}
+
+When multiple channels have data ready simultaneously, Lattice does not always pick the first arm in source order.
+Instead, the VM shuffles the arm indices using the Fisher-Yates algorithm before polling.
+This prevents starvation: a fast producer on one channel cannot permanently starve a slower producer on another.
+
+\begin{lstlisting}[language=Lattice, caption={Fairness in select}]
+let fast = Channel::new()
+let slow = Channel::new()
+
+// Load both channels
+for i in 0..10 {
+  fast.send("fast-${i}")
+  slow.send("slow-${i}")
+}
+
+// Each select picks fairly from both
+for _ in 0..5 {
+  let result = select {
+    fast -> msg { msg }
+    slow -> msg { msg }
+  }
+  print(result)
+}
+// You'll see a mix of "fast-*" and "slow-*" messages
+\end{lstlisting}
+
+\subsection{Select in a Loop}
+
+A common pattern is to use \lstinline|select| inside a loop to continuously process events from multiple sources:
+
+\begin{lstlisting}[language=Lattice, caption={Event loop with select}]
+let keyboard = Channel::new()
+let network = Channel::new()
+let timer = Channel::new()
+
+// Simulate event sources
+scope {
+  spawn {
+    keyboard.send("key_press: Enter")
+    keyboard.send("key_press: Escape")
+    keyboard.close()
+  }
+  spawn {
+    network.send("packet: 200 OK")
+    network.close()
+  }
+  spawn {
+    timer.send("tick")
+    timer.send("tick")
+    timer.close()
+  }
+}
+
+// Process all events
+flux running = true
+while running {
+  let event = select {
+    keyboard -> key { "Keyboard: ${key}" }
+    network -> pkt { "Network: ${pkt}" }
+    timer -> t { "Timer: ${t}" }
+    default { running = false; "done" }
+  }
+  print(event)
+}
+\end{lstlisting}
+
+The \lstinline|default| arm fires when all channels are empty (or closed), allowing us to break out of the loop cleanly.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{default} and \texttt{timeout} Arms}\label{sec:select-default-timeout}
+%% ─────────────────────────────────────────────────────────────
+
+\index{select@\texttt{select}!default arm}
+\index{select@\texttt{select}!timeout arm}
+
+Plain \lstinline|select| blocks until one of its channel arms can receive.
+Two special arms modify this behavior.
+
+\subsection{The \texttt{default} Arm}
+
+The \lstinline|default| arm executes immediately if no channel has data ready:
+
+\begin{lstlisting}[language=Lattice, caption={Select with default}]
+let ch = Channel::new()
+
+let result = select {
+  ch -> val { "Got: ${val}" }
+  default { "Nothing available" }
+}
+print(result)  // Nothing available
+\end{lstlisting}
+
+This turns \lstinline|select| into a non-blocking check.
+The \lstinline|default| arm is useful for polling patterns where you want to do other work when no messages are ready.
+
+\begin{lstlisting}[language=Lattice, caption={Polling pattern with default}]
+let inbox = Channel::new()
+
+scope {
+  spawn {
+    let start = clock()
+    while clock() - start < 100 { }
+    inbox.send("delayed message")
+  }
+  spawn {
+    flux attempts = 0
+    flux found = false
+    while found == false {
+      let result = select {
+        inbox -> msg {
+          found = true
+          msg
+        }
+        default {
+          attempts = attempts + 1
+          "waiting..."
+        }
+      }
+      if found {
+        print("Got message after ${attempts} polls: ${result}")
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+\begin{warnbox}{Busy-Waiting with Default}
+A \lstinline|select| with a \lstinline|default| arm never blocks.
+If you put it in a tight loop, you will burn CPU cycles polling.
+Consider using a \lstinline|timeout| arm instead if you can tolerate some latency.
+\end{warnbox}
+
+\subsection{The \texttt{timeout} Arm}
+
+\index{timeout@\texttt{timeout}!in select}
+
+The \lstinline|timeout| arm takes a duration in milliseconds and fires if no channel delivers a value within that time:
+
+\begin{lstlisting}[language=Lattice, caption={Select with timeout}]
+let slow_service = Channel::new()
+
+let result = select {
+  slow_service -> data { "Got: ${data}" }
+  timeout 500 { "Timed out after 500ms" }
+}
+print(result)  // Timed out after 500ms
+\end{lstlisting}
+
+The timeout is implemented using \texttt{pthread\_cond\_timedwait} in the VM (see \filename{src/stackvm.c}, the \texttt{OP\_SELECT} handler).
+The VM computes an absolute deadline from the current time plus the timeout value, then waits on the shared condition variable with that deadline.
+
+\begin{lstlisting}[language=Lattice, caption={Timeout with fallback logic}]
+fn fetch_with_timeout(source: Channel, timeout_ms: Int) {
+  let result = select {
+    source -> data { data }
+    timeout timeout_ms { nil }
+  }
+  if result == nil {
+    print("Request timed out, using cached data")
+    return "cached_value"
+  }
+  return result
+}
+
+let api = Channel::new()
+
+// Simulate a slow API
+scope {
+  spawn {
+    let start = clock()
+    while clock() - start < 1000 { }
+    api.send("fresh data")
+  }
+  spawn {
+    let value = fetch_with_timeout(api, 200)
+    print("Using: ${value}")
+  }
+}
+// Output: Request timed out, using cached data
+//         Using: cached_value
+\end{lstlisting}
+
+\subsection{Combining \texttt{default} and \texttt{timeout}}
+
+You can have \emph{either} a \lstinline|default| or a \lstinline|timeout| arm, but not both.
+If a \lstinline|default| arm is present, it always takes priority over any timeout since it fires immediately when no data is ready.
+
+\begin{tipbox}{Choosing Between \texttt{default} and \texttt{timeout}}
+\begin{itemize}
+  \item Use \lstinline|default| when you want to do other work \emph{immediately} if no message is ready (non-blocking poll).
+  \item Use \lstinline|timeout| when you can afford to wait a bit but need an upper bound on how long (bounded blocking).
+  \item Use neither when you are happy to wait indefinitely for a message (unbounded blocking).
+\end{itemize}
+\end{tipbox}
+
+\subsection{Select with All Channels Closed}
+
+If all channel arms refer to closed, empty channels:
+
+\begin{itemize}
+  \item If a \lstinline|default| arm is present, it executes.
+  \item If a \lstinline|timeout| arm is present, the select waits until the timeout, then executes the timeout arm.
+  \item If neither is present, the select unblocks and returns \lstinline|Unit|.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Select with closed channels}]
+let ch = Channel::new()
+ch.close()
+
+let result = select {
+  ch -> val { "Got: ${val}" }
+  default { "All channels closed" }
+}
+print(result)  // All channels closed
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Building Pipelines with Channels}\label{sec:channel-pipelines}
+%% ─────────────────────────────────────────────────────────────
+
+\index{pipeline pattern}
+\index{concurrency patterns!pipeline}
+
+One of the most elegant uses of channels is building data processing pipelines, where each stage reads from one channel, transforms the data, and writes to another.
+
+\subsection{A Two-Stage Pipeline}
+
+\begin{lstlisting}[language=Lattice, caption={Two-stage channel pipeline}]
+fn generate(output: Channel) {
+  for i in 1..11 {
+    output.send(i)
+  }
+  output.close()
+}
+
+fn square(input: Channel, output: Channel) {
+  flux val = input.recv()
+  while val != nil {
+    output.send(val * val)
+    val = input.recv()
+  }
+  output.close()
+}
+
+let stage1 = Channel::new()
+let stage2 = Channel::new()
+
+scope {
+  spawn { generate(stage1) }
+  spawn { square(stage1, stage2) }
+}
+
+// Consume the final output
+flux result = stage2.recv()
+while result != nil {
+  print(result)
+  result = stage2.recv()
+}
+// Output: 1, 4, 9, 16, 25, 36, 49, 64, 81, 100
+\end{lstlisting}
+
+Each stage runs concurrently.
+As soon as the generator produces a value, the squarer can consume and transform it---the pipeline processes data in a streaming fashion rather than waiting for all data to be generated first.
+
+\subsection{A Three-Stage Pipeline}
+
+Let's add a filtering stage:
+
+\begin{lstlisting}[language=Lattice, caption={Three-stage pipeline: generate, filter, format}]
+fn generate_numbers(output: Channel, limit: Int) {
+  for i in 1..limit {
+    output.send(i)
+  }
+  output.close()
+}
+
+fn filter_evens(input: Channel, output: Channel) {
+  flux val = input.recv()
+  while val != nil {
+    if val % 2 == 0 {
+      output.send(val)
+    }
+    val = input.recv()
+  }
+  output.close()
+}
+
+fn format_output(input: Channel, output: Channel) {
+  flux val = input.recv()
+  while val != nil {
+    output.send("Even number: ${val}")
+    val = input.recv()
+  }
+  output.close()
+}
+
+let raw = Channel::new()
+let filtered = Channel::new()
+let formatted = Channel::new()
+
+scope {
+  spawn { generate_numbers(raw, 21) }
+  spawn { filter_evens(raw, filtered) }
+  spawn { format_output(filtered, formatted) }
+}
+
+flux msg = formatted.recv()
+while msg != nil {
+  print(msg)
+  msg = formatted.recv()
+}
+// Output:
+// Even number: 2
+// Even number: 4
+// ...
+// Even number: 20
+\end{lstlisting}
+
+\subsection{Fan-Out Pipeline}
+
+You can split a pipeline by having multiple consumers read from the same channel:
+
+\begin{lstlisting}[language=Lattice, caption={Fan-out: two workers consuming one channel}]
+fn heavy_compute(id: Int, input: Channel, output: Channel) {
+  flux val = input.recv()
+  while val != nil {
+    // Simulate computation
+    output.send("Worker ${id}: ${val * val}")
+    val = input.recv()
+  }
+}
+
+let input = Channel::new()
+let output = Channel::new()
+
+for i in 1..21 {
+  input.send(i)
+}
+input.close()
+
+scope {
+  spawn { heavy_compute(1, input, output) }
+  spawn { heavy_compute(2, input, output) }
+}
+
+for _ in 0..20 {
+  print(output.recv())
+}
+\end{lstlisting}
+
+Work is distributed across the two workers automatically because each \lstinline|recv()| is atomic---only one worker gets each value.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Async Iterators: \texttt{async\_iter}, \texttt{async\_map}, \texttt{async\_filter}}\label{sec:async-iterators}
+%% ─────────────────────────────────────────────────────────────
+
+\index{async\_iter@\texttt{async\_iter}}
+\index{async\_map@\texttt{async\_map}}
+\index{async\_filter@\texttt{async\_filter}}
+\index{iterators!async}
+
+Building pipelines with raw channels is powerful but verbose.
+Lattice provides three built-in functions that bridge channels and iterators, giving you a more ergonomic way to build concurrent data flows.
+
+\subsection{\texttt{async\_iter} --- Channel-Backed Iterators}
+
+\lstinline|async_iter| takes a closure that receives a channel, spawns the closure on a background thread, and returns an iterator that yields values from that channel:
+
+\begin{lstlisting}[language=Lattice, caption={Creating an async iterator}]
+let numbers = async_iter(|ch| {
+  for i in 1..6 {
+    ch.send(i * 10)
+  }
+  // Channel is automatically closed when the closure returns
+})
+
+for val in numbers {
+  print(val)
+}
+// Output:
+// 10
+// 20
+// 30
+// 40
+// 50
+\end{lstlisting}
+
+\begin{defnbox}{\texttt{async\_iter}}
+\index{async\_iter@\texttt{async\_iter}!definition}
+\lstinline|async_iter(producer_fn)| creates a channel, spawns a detached thread running \lstinline|producer_fn| with the channel as its argument, and returns an iterator that pulls values from the channel.
+When the producer closure returns, the channel is automatically closed, which causes the iterator to terminate.
+\end{defnbox}
+
+Under the hood (\filename{src/runtime.c}, \texttt{native\_async\_iter}), the function creates a \texttt{LatChannel}, clones the current VM for thread safety, and launches a detached thread that calls the closure with the channel.
+The returned iterator wraps the channel and calls \texttt{channel\_recv} on each \texttt{next()}.
+
+\subsection{\texttt{async\_map} --- Transform an Async Stream}
+
+\lstinline|async_map| applies a transformation function to each element of an iterator:
+
+\begin{lstlisting}[language=Lattice, caption={Async map transformation}]
+let raw_data = async_iter(|ch| {
+  for i in 1..6 {
+    ch.send(i)
+  }
+})
+
+let doubled = async_map(raw_data, |x| x * 2)
+
+for val in doubled {
+  print(val)
+}
+// Output: 2, 4, 6, 8, 10
+\end{lstlisting}
+
+The transformation runs synchronously on the consumer thread as values are pulled---this is \emph{not} an additional concurrent stage.
+If you need the transformation itself to run concurrently, use an explicit channel pipeline as shown in \cref{sec:channel-pipelines}.
+
+\subsection{\texttt{async\_filter} --- Filter an Async Stream}
+
+\lstinline|async_filter| keeps only elements that pass a predicate:
+
+\begin{lstlisting}[language=Lattice, caption={Async filter}]
+let source = async_iter(|ch| {
+  for i in 1..21 {
+    ch.send(i)
+  }
+})
+
+let evens = async_filter(source, |x| x % 2 == 0)
+
+for val in evens {
+  print(val)
+}
+// Output: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20
+\end{lstlisting}
+
+\subsection{Composing Async Operations}
+
+These functions compose naturally into a pipeline:
+
+\begin{lstlisting}[language=Lattice, caption={Composed async pipeline}]
+let pipeline = async_iter(|ch| {
+  for i in 1..101 {
+    ch.send(i)
+  }
+})
+
+let result = async_filter(
+  async_map(pipeline, |x| x * x),
+  |x| x % 3 == 0
+)
+
+flux count = 0
+for val in result {
+  count = count + 1
+}
+print("Found ${count} perfect squares divisible by 3")
+\end{lstlisting}
+
+This creates a three-stage processing flow: generate numbers 1--100, square them, then keep only those divisible by 3.
+The generation runs on a background thread; the mapping and filtering run on the consumer thread as values are pulled through.
+
+\begin{tipbox}{When to Use Async Iterators vs.\ Raw Channels}
+\index{async iterators!vs channels}
+Use \lstinline|async_iter| when you have a single producer and want to consume its output with familiar \lstinline|for| loop syntax.
+Use raw channels when you need multiple producers, multiple consumers, bidirectional communication, or explicit \lstinline|select| multiplexing.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Under the Hood: \texttt{select} Implementation}\label{sec:select-internals}
+%% ─────────────────────────────────────────────────────────────
+
+\index{select@\texttt{select}!implementation}
+\index{OP\_SELECT@\texttt{OP\_SELECT}}
+
+For those curious about the machinery, here is how \lstinline|select| works inside the VM.
+
+\subsection{Compilation}
+
+The compiler (\filename{src/stackcompiler.c}, \texttt{EXPR\_SELECT}) emits a single \lstinline|OP_SELECT| instruction followed by per-arm metadata:
+
+\begin{enumerate}
+  \item \textbf{Arm count} (1 byte): how many arms the select has.
+  \item For each arm, four bytes:
+    \begin{itemize}
+      \item \textbf{Flags}: bit 0 = default, bit 1 = timeout, bit 2 = has binding name.
+      \item \textbf{Channel/timeout index}: index of a sub-chunk constant that evaluates to the channel (or timeout value).
+      \item \textbf{Body index}: index of the sub-chunk for the arm's body.
+      \item \textbf{Binding index}: index of the string constant for the binding name (or \texttt{0xFF} if no binding).
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Execution}
+
+The VM's \lstinline|OP_SELECT| handler (\filename{src/stackvm.c}) follows this algorithm:
+
+\begin{enumerate}
+  \item Export locals to a new environment scope (so sub-chunks can see them).
+  \item Evaluate all channel expressions to obtain \texttt{LatChannel*} pointers.
+  \item Evaluate the timeout expression (if present) to get a millisecond value.
+  \item Build a shuffled index array (Fisher-Yates) for fairness.
+  \item Enter a loop:
+    \begin{enumerate}
+      \item Try a non-blocking \texttt{channel\_try\_recv} on each channel arm (in shuffled order).
+      \item If a value is received: bind it in the environment, execute the arm body, and break.
+      \item If all channels are closed: execute the default arm (if present) and break.
+      \item If a default arm exists: execute it immediately (non-blocking) and break.
+      \item Otherwise: register a \texttt{LatSelectWaiter} on all channels, then \texttt{pthread\_cond\_wait} (or \texttt{pthread\_cond\_timedwait} if there is a timeout).
+      \item On wake: remove waiters and retry from step (a).
+    \end{enumerate}
+  \item Clean up: release channels, pop scope, push result.
+\end{enumerate}
+
+The \texttt{LatSelectWaiter} structure (defined in \filename{include/channel.h}) is a linked-list node containing a shared mutex and condition variable.
+When any monitored channel receives data or is closed, it signals the waiter's condition variable, waking the select loop.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch20-exercises}
+%% ─────────────────────────────────────────────────────────────
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+
+  \item \textbf{Ping-Pong.} Create two channels and two spawns that play ping-pong: spawn A sends ``ping'' on channel 1 and waits for ``pong'' on channel 2; spawn B does the reverse. Run 10 rounds and print each exchange.
+
+  \item \textbf{Timeout Handler.} Write a function that takes a channel and a timeout in milliseconds. Using \lstinline|select|, return the first value from the channel or the string \lstinline|"timeout"| if the deadline passes. Test with both fast and slow producers.
+
+  \item \textbf{Channel Merge.} Write a function \lstinline|merge| that takes two channels and returns a new channel containing all values from both, interleaved in arrival order. Use \lstinline|select| in a loop with a \lstinline|default| arm to detect when both channels are drained.
+
+  \item \textbf{Async Pipeline.} Using \lstinline|async_iter|, \lstinline|async_map|, and \lstinline|async_filter|, create a pipeline that generates the first 200 natural numbers, cubes each one, filters to keep only cubes less than 10,000, and prints the results.
+
+  \item \textbf{Priority Select.} Implement a ``priority queue'' using two channels: a high-priority channel and a low-priority channel. Write a consumer loop that uses \lstinline|select| to prefer the high-priority channel but falls through to the low-priority one when the high-priority channel is empty. (Hint: use nested \lstinline|select| with \lstinline|default|.)
+
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{What's Next}
+%% ─────────────────────────────────────────────────────────────
+
+You now have a solid grasp of channels---creation, send/recv semantics, closing, \lstinline|select| multiplexing, timeouts, and async iterators.
+In the next chapter, we will step back and look at the bigger picture: when to use channels versus \lstinline|Ref| for shared state, how to avoid deadlocks, and a collection of battle-tested concurrency patterns including worker pools, broadcast, and request-reply.

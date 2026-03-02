@@ -1,0 +1,753 @@
+\chapter{Lazy Iterators}\label{ch:lazy-iterators}
+
+\index{iterators}\index{lazy evaluation}\index{Iterator type}
+
+Imagine you have a log file with ten million lines, and you need the first twenty that contain the word \texttt{"ERROR"}.
+One approach: read all ten million lines into an array, filter it, then slice off the first twenty.
+That works, but it loads the entire file into memory and does far more work than necessary.
+
+There is a better way.
+\emph{Iterators} let you process data one element at a time, on demand, without ever building the full collection in memory.
+In Lattice, iterators are \emph{lazy}---they produce values only when asked.
+This chapter shows you how to create iterators, chain transformations, consume results, and build your own custom iterators from scratch.
+
+%% ───────────────────────────────────────────────────────────
+\section{The Iterator Protocol}\label{sec:iterator-protocol}
+\index{iterators!protocol}\index{iter()}\index{iter\_next()}
+
+At its heart, an iterator is anything that can produce a sequence of values, one at a time, until it is exhausted.
+Lattice's built-in \lstinline|iter()| function converts a collection into an \lstinline|Iterator| value, and the \lstinline|.next()| method advances it by one step.
+
+\begin{lstlisting}[language=Lattice, caption={The basic iterator protocol}]
+let colors = ["crimson", "teal", "gold"]
+let it = iter(colors)
+
+print(it.next())  // crimson
+print(it.next())  // teal
+print(it.next())  // gold
+print(it.next())  // nil
+\end{lstlisting}
+
+Each call to \lstinline|.next()| returns the next value.
+When the iterator is exhausted, it returns \lstinline|nil|.
+
+\begin{defnbox}{Iterator}
+An \emph{iterator} is a value of type \lstinline|Iterator| that encapsulates:
+\begin{enumerate}[nosep]
+  \item Some internal \textbf{state} (a position, a counter, a reference to a source).
+  \item A \textbf{next function} that, given the current state, either produces the next value or signals that the sequence is done.
+\end{enumerate}
+Once an iterator is exhausted, every subsequent call to \lstinline|.next()| returns \lstinline|nil|.
+Iterators are single-pass: you cannot rewind them.
+\end{defnbox}
+
+\subsection{What Can You Iterate Over?}\label{subsec:iterable-types}
+\index{iter()!supported types}
+
+The \lstinline|iter()| function accepts arrays, maps, sets, strings, ranges, and even existing iterators (which it returns unchanged):
+
+\begin{lstlisting}[language=Lattice, caption={Creating iterators from different collections}]
+// Array: yields elements in order
+let arr_it = iter([10, 20, 30])
+
+// String: yields individual characters
+let str_it = iter("hello")
+print(str_it.next())  // h
+print(str_it.next())  // e
+
+// Range: yields integers lazily
+let range_it = iter(0..5)
+print(range_it.next())  // 0
+print(range_it.next())  // 1
+
+// Map: yields keys
+let scores = Map::new()
+scores.set("alice", 95)
+scores.set("bob", 87)
+let map_it = iter(scores)
+print(map_it.next())  // alice (or bob -- map order is not guaranteed)
+\end{lstlisting}
+
+\begin{notebox}{Iterators Are Single-Pass}
+Once you call \lstinline|.next()| and consume a value, it is gone.
+If you need to iterate over the same data twice, create a new iterator with \lstinline|iter()| again---or \lstinline|.collect()| the results into an array first.
+\end{notebox}
+
+\subsection{Using Iterators in For Loops}\label{subsec:iter-for-loops}
+\index{iterators!for loops}
+
+You rarely call \lstinline|.next()| by hand.
+Lattice's \lstinline|for| loop consumes any iterable automatically:
+
+\begin{lstlisting}[language=Lattice, caption={Iterators and for loops}]
+let temperatures = [72.1, 68.4, 75.0, 71.3]
+
+// The for loop calls iter() and .next() behind the scenes
+for temp in temperatures {
+    print("Reading: " + to_string(temp))
+}
+\end{lstlisting}
+
+When you write \lstinline|for x in collection|, Lattice creates an iterator from the collection and repeatedly calls \lstinline|.next()| until it returns \lstinline|nil|.
+This is the same protocol you just learned---the \lstinline|for| loop is syntactic sugar for the manual \lstinline|.next()| loop.
+
+%% ───────────────────────────────────────────────────────────
+\section{Sources: Where Iterators Come From}\label{sec:iterator-sources}
+\index{iterators!sources}
+
+The \lstinline|iter()| function wraps existing collections, but Lattice also provides dedicated \emph{source} constructors that create iterators from scratch.
+
+\subsection{iter() --- From Collections}\label{subsec:iter-from-collection}
+
+As we saw above, \lstinline|iter()| is the universal entry point.
+It accepts arrays, maps, sets, strings, ranges, and iterators.
+Under the hood, \lstinline|iter()| dispatches to specialized constructors like \lstinline|iter_from_array|, \lstinline|iter_from_map|, and \lstinline|iter_from_range| in the C runtime (see \filename{src/iterator.c}).
+
+\subsection{range\_iter() --- Lazy Integer Sequences}\label{subsec:range-iter}
+\index{range\_iter()}\index{iterators!range}
+
+While \lstinline|iter(0..1000)| converts a range to an iterator, the dedicated \lstinline|range_iter()| function gives you more control---including a custom step:
+
+\begin{lstlisting}[language=Lattice, caption={Creating range iterators}]
+// Count from 0 to 9
+let digits = range_iter(0, 10)
+print(digits.collect())  // [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+// Even numbers from 0 to 20
+let evens = range_iter(0, 20, 2)
+print(evens.collect())  // [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+
+// Countdown
+let countdown = range_iter(5, 0, -1)
+print(countdown.collect())  // [5, 4, 3, 2, 1]
+\end{lstlisting}
+
+The third argument is the step.
+If omitted, it defaults to \lstinline|1| for ascending ranges or \lstinline|-1| for descending ranges.
+No array is allocated---the iterator computes each value on the fly.
+
+\begin{tipbox}{When to Use range\_iter() vs.\ a Range Literal}
+If you need a custom step or you are building a pipeline of iterator transformations, use \lstinline|range_iter()|.
+For straightforward \lstinline|for| loops, the range literal (\lstinline|0..10|) is more concise and equally lazy.
+\end{tipbox}
+
+\subsection{repeat\_iter() --- The Same Value, Over and Over}\label{subsec:repeat-iter}
+\index{repeat\_iter()}\index{iterators!repeat}
+
+Need a sequence of identical values?
+\lstinline|repeat_iter()| yields the same value a specified number of times---or infinitely if you omit the count:
+
+\begin{lstlisting}[language=Lattice, caption={Repeating a value}]
+// Repeat a value 4 times
+let zeros = repeat_iter(0, 4)
+print(zeros.collect())  // [0, 0, 0, 0]
+
+// Infinite repetition (be careful!)
+let ones = repeat_iter(1)
+// ones.collect() would run forever --- use .take() instead
+print(ones.take(5).collect())  // [1, 1, 1, 1, 1]
+\end{lstlisting}
+
+\begin{warnbox}{Infinite Iterators}
+Calling \lstinline|.collect()| on an infinite iterator will consume all available memory and hang your program.
+Always pair infinite sources with a limiting transformer like \lstinline|.take()| before consuming.
+\end{warnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Transformers: Reshaping the Stream}\label{sec:iterator-transformers}
+\index{iterators!transformers}
+
+The real power of iterators emerges when you chain \emph{transformers}---methods that wrap one iterator in another, building up a processing pipeline without doing any work until you ask for results.
+
+\subsection{.map() --- Transform Each Element}\label{subsec:iter-map}
+\index{iterators!map}
+
+The \lstinline|.map()| method applies a closure to every element the iterator produces:
+
+\begin{lstlisting}[language=Lattice, caption={Mapping over an iterator}]
+let prices = [19.99, 45.50, 12.00, 89.95]
+let with_tax = iter(prices)
+    .map(|price| { price * 1.08 })
+    .collect()
+
+print(with_tax)
+// [21.5892, 49.14, 12.96, 97.146]
+\end{lstlisting}
+
+The closure receives each value and returns its transformation.
+Because \lstinline|.map()| returns a new iterator, no work happens until \lstinline|.collect()| pulls values through.
+
+\subsection{.filter() --- Keep Only What Matters}\label{subsec:iter-filter}
+\index{iterators!filter}
+
+The \lstinline|.filter()| method takes a predicate closure and yields only the elements for which it returns \lstinline|true|:
+
+\begin{lstlisting}[language=Lattice, caption={Filtering an iterator}]
+let readings = [3.1, 7.8, 2.4, 9.0, 5.5, 1.2]
+let high_readings = iter(readings)
+    .filter(|r| { r > 5.0 })
+    .collect()
+
+print(high_readings)  // [7.8, 9.0, 5.5]
+\end{lstlisting}
+
+Internally, the filter iterator loops through the inner source, skipping elements that don't match, until it finds one that does---or the source is exhausted.
+You can see this logic in \filename{src/iterator.c} where \lstinline|iter_filter_next| calls the inner iterator in a loop.
+
+\subsection{.take() --- Limit the Count}\label{subsec:iter-take}
+\index{iterators!take}
+
+The \lstinline|.take(n)| transformer yields at most \lstinline|n| elements, then stops:
+
+\begin{lstlisting}[language=Lattice, caption={Taking the first few elements}]
+let first_three = range_iter(0, 1000000)
+    .take(3)
+    .collect()
+
+print(first_three)  // [0, 1, 2]
+\end{lstlisting}
+
+Despite the range spanning a million integers, only three are ever produced.
+This is laziness in action: the remaining 999{,}997 values are never computed.
+
+\subsection{.skip() --- Jump Ahead}\label{subsec:iter-skip}
+\index{iterators!skip}
+
+The companion to \lstinline|.take()|, the \lstinline|.skip(n)| transformer discards the first \lstinline|n| elements and yields the rest:
+
+\begin{lstlisting}[language=Lattice, caption={Skipping elements}]
+let after_header = iter(["name", "age", "city", "Alice", "30", "Portland"])
+    .skip(3)
+    .collect()
+
+print(after_header)  // [Alice, 30, Portland]
+\end{lstlisting}
+
+You can combine \lstinline|.skip()| and \lstinline|.take()| to extract a window from a sequence:
+
+\begin{lstlisting}[language=Lattice, caption={Pagination with skip and take}]
+let all_items = range_iter(1, 101)   // items 1 through 100
+let page_size = 10
+let page_number = 3
+
+let page = all_items
+    .skip((page_number - 1) * page_size)
+    .take(page_size)
+    .collect()
+
+print(page)  // [21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+\end{lstlisting}
+
+\subsection{.enumerate() --- Track the Index}\label{subsec:iter-enumerate}
+\index{iterators!enumerate}
+
+When you need both the position and the value, \lstinline|.enumerate()| wraps each element in a two-element array \lstinline|[index, value]|:
+
+\begin{lstlisting}[language=Lattice, caption={Enumerating an iterator}]
+let languages = ["Lattice", "Rust", "Python", "Go"]
+let indexed = iter(languages).enumerate()
+
+for pair in indexed.collect() {
+    print(to_string(pair[0]) + ": " + pair[1])
+}
+// 0: Lattice
+// 1: Rust
+// 2: Python
+// 3: Go
+\end{lstlisting}
+
+The index always starts at zero.
+
+\subsection{.zip() --- Walk Two Iterators in Lockstep}\label{subsec:iter-zip}
+\index{iterators!zip}
+
+The \lstinline|.zip()| transformer pairs elements from two iterators into \lstinline|[left, right]| arrays.
+It stops as soon as either iterator is exhausted:
+
+\begin{lstlisting}[language=Lattice, caption={Zipping two iterators}]
+let names = iter(["Alice", "Bob", "Carol"])
+let scores = iter([95, 87, 92])
+
+let paired = names.zip(scores).collect()
+print(paired)
+// [[Alice, 95], [Bob, 87], [Carol, 92]]
+\end{lstlisting}
+
+Zip is especially useful for combining parallel data sources:
+
+\begin{lstlisting}[language=Lattice, caption={Merging labels with values}]
+let labels = iter(["Temperature", "Humidity", "Pressure"])
+let values = iter([72.1, 45.0, 1013.25])
+let units = iter(["F", "%", "hPa"])
+
+// Zip labels with values, then map to formatted strings
+let report = labels.zip(values).zip(units)
+    .map(|entry| {
+        let label_value = entry[0]
+        let unit = entry[1]
+        label_value[0] + ": " + to_string(label_value[1]) + " " + unit
+    })
+    .collect()
+
+for line in report {
+    print(line)
+}
+// Temperature: 72.1 F
+// Humidity: 45.0 %
+// Pressure: 1013.25 hPa
+\end{lstlisting}
+
+\subsection{Chaining Transformers}\label{subsec:chaining-transformers}
+\index{iterators!chaining}
+
+Transformers return iterators, so you can chain them into expressive pipelines:
+
+\begin{lstlisting}[language=Lattice, caption={A multi-step pipeline}]
+let words = ["Lattice", "is", "a", "language", "for", "the", "curious"]
+
+let result = iter(words)
+    .filter(|w| { len(w) > 2 })
+    .map(|w| { w + "!" })
+    .enumerate()
+    .take(3)
+    .collect()
+
+print(result)
+// [[0, Lattice!], [1, language!], [2, for!]]
+\end{lstlisting}
+
+No intermediate arrays are created.
+Each value flows through the entire chain---from source to \lstinline|.filter()| to \lstinline|.map()| to \lstinline|.enumerate()| to \lstinline|.take()|---one at a time, on demand.
+
+\begin{tipbox}{Reading Pipelines}
+Read iterator chains from top to bottom, like a recipe:
+\begin{enumerate}[nosep]
+  \item Start with the words.
+  \item Keep only words longer than two characters.
+  \item Append an exclamation mark.
+  \item Number them.
+  \item Take the first three.
+  \item Collect into an array.
+\end{enumerate}
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Consumers: Triggering the Work}\label{sec:iterator-consumers}
+\index{iterators!consumers}
+
+Transformers are lazy---they build up a chain of work but produce no output on their own.
+\emph{Consumers} are the methods that actually pull values through the pipeline and produce a final result.
+
+\subsection{.collect() --- Materialize into an Array}\label{subsec:iter-collect}
+\index{iterators!collect}
+
+We have been using \lstinline|.collect()| throughout this chapter.
+It drains the iterator and gathers every element into an array:
+
+\begin{lstlisting}[language=Lattice, caption={Collecting an iterator}]
+let squares = range_iter(1, 6)
+    .map(|n| { n * n })
+    .collect()
+
+print(squares)  // [1, 4, 9, 16, 25]
+\end{lstlisting}
+
+Under the hood, \lstinline|iter_collect| in \filename{src/iterator.c} starts with a small buffer (capacity 8) and doubles it as needed, appending each value from \lstinline|iter_next| until the iterator signals done.
+The alias \lstinline|.to_array()| does exactly the same thing.
+
+\subsection{.reduce() --- Fold into a Single Value}\label{subsec:iter-reduce}
+\index{iterators!reduce}\index{iterators!fold}
+
+The \lstinline|.reduce()| method collapses an iterator into a single accumulated value.
+It takes a closure and an initial accumulator:
+
+\begin{lstlisting}[language=Lattice, caption={Reducing an iterator}]
+let total = iter([10, 20, 30, 40])
+    .reduce(|acc, val| { acc + val }, 0)
+
+print(total)  // 100
+\end{lstlisting}
+
+The closure receives two arguments: the running accumulator and the current element.
+The second argument to \lstinline|.reduce()| is the initial value for the accumulator.
+
+Here is a more involved example---computing the maximum value:
+
+\begin{lstlisting}[language=Lattice, caption={Finding the maximum with reduce}]
+let temperatures = [68.2, 71.5, 65.0, 73.8, 70.1]
+
+let hottest = iter(temperatures)
+    .reduce(|max_temp, temp| {
+        if temp > max_temp { temp } else { max_temp }
+    }, temperatures[0])
+
+print(hottest)  // 73.8
+\end{lstlisting}
+
+\subsection{.any() and .all() --- Short-Circuit Boolean Tests}\label{subsec:iter-any-all}
+\index{iterators!any}\index{iterators!all}
+
+These two consumers answer yes-or-no questions about the sequence.
+Both \emph{short-circuit}: they stop consuming as soon as the answer is determined.
+
+\begin{lstlisting}[language=Lattice, caption={Testing with .any() and .all()}]
+let grades = [88, 92, 75, 95, 61]
+
+let has_failing = iter(grades).any(|g| { g < 65 })
+print(has_failing)  // true (stops after finding 61)
+
+let all_passing = iter(grades).all(|g| { g >= 60 })
+print(all_passing)  // true
+\end{lstlisting}
+
+The \lstinline|.any()| consumer returns \lstinline|true| as soon as it finds a matching element, without examining the rest.
+The \lstinline|.all()| consumer returns \lstinline|false| as soon as it finds a non-matching element.
+If the iterator is empty, \lstinline|.any()| returns \lstinline|false| and \lstinline|.all()| returns \lstinline|true|---consistent with the mathematical conventions for existential and universal quantification.
+
+\subsection{.count() --- How Many?}\label{subsec:iter-count}
+\index{iterators!count}
+
+The \lstinline|.count()| consumer drains the iterator and returns the number of elements:
+
+\begin{lstlisting}[language=Lattice, caption={Counting elements}]
+let long_words = iter(["cat", "elephant", "dog", "rhinoceros", "ox"])
+    .filter(|w| { len(w) > 4 })
+    .count()
+
+print(long_words)  // 2
+\end{lstlisting}
+
+\begin{notebox}{Consumers Are Destructive}
+Calling a consumer like \lstinline|.collect()|, \lstinline|.reduce()|, or \lstinline|.count()| drains the iterator.
+If you try to use the same iterator afterwards, it will produce no more values.
+To reuse, build a fresh iterator or collect into an array first.
+\end{notebox}
+
+\subsection{Summary of Consumers}\label{subsec:consumer-summary}
+
+\begin{table}[htbp]
+\centering
+\caption{Iterator consumer methods}\label{tab:iter-consumers}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|.collect()| & \lstinline|Array| & Gather all elements into an array \\
+\lstinline|.to_array()| & \lstinline|Array| & Alias for \lstinline|.collect()| \\
+\lstinline|.reduce(fn, init)| & \lstinline|Any| & Fold with accumulator \\
+\lstinline|.any(predicate)| & \lstinline|Bool| & True if any element matches \\
+\lstinline|.all(predicate)| & \lstinline|Bool| & True if all elements match \\
+\lstinline|.count()| & \lstinline|Int| & Count elements (consumes all) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ───────────────────────────────────────────────────────────
+\section{Building Your Own Iterators}\label{sec:custom-iterators}
+\index{iterators!custom}\index{fn standard library}
+
+The built-in iterator methods cover the common cases, but sometimes you need a custom sequence---Fibonacci numbers, lines from a database cursor, or values generated by a complex algorithm.
+
+Lattice's \filename{lib/fn.lat} standard library module provides a protocol for building custom lazy sequences entirely in Lattice code.
+Import it, and you get access to a rich set of sequence constructors and transformers.
+
+\subsection{The Sequence Protocol}\label{subsec:seq-protocol}
+\index{lazy sequences}\index{fn standard library!sequences}
+
+A lazy sequence in the \lstinline|fn| module is a map with two keys:
+\begin{itemize}[nosep]
+  \item \lstinline|"state"|: the current position or state of the iterator (any value).
+  \item \lstinline|"next"|: a function that takes the current state and returns a step map.
+\end{itemize}
+
+Each \emph{step} is itself a map:
+\begin{itemize}[nosep]
+  \item \lstinline|\{"value": v, "done": false, "state": next_state\}| --- yields value \lstinline|v| and advances.
+  \item \lstinline|\{"done": true\}| --- the sequence is exhausted.
+\end{itemize}
+
+\begin{defnbox}{Lazy Sequence (fn module)}
+A lazy sequence threads state explicitly through each step.
+This design is compatible with Lattice's value semantics: no hidden mutable references, no shared state.
+The next function is pure---given the same state, it always produces the same step.
+\end{defnbox}
+
+\subsection{Building a Fibonacci Iterator}\label{subsec:fibonacci-iter}
+
+Let's build a lazy Fibonacci sequence using the \lstinline|fn| module:
+
+\begin{lstlisting}[language=Lattice, caption={A custom Fibonacci iterator}]
+import "lib/fn" as F
+
+// State is [current, next_val]
+let fibs = F.iterate([0, 1], |pair| {
+    [pair[1], pair[0] + pair[1]]
+})
+
+// iterate() yields the state at each step,
+// so we fmap to extract just the first element
+let fib_numbers = F.fmap(fibs, |pair| { pair[0] })
+
+// Take the first 10 Fibonacci numbers
+let result = F.collect(F.take(fib_numbers, 10))
+print(result)  // [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+\end{lstlisting}
+
+The key function here is \lstinline|F.iterate(seed, f)|, which produces an infinite sequence: \lstinline|seed|, \lstinline|f(seed)|, \lstinline|f(f(seed))|, and so on.
+We start with \lstinline|[0, 1]| and advance by shifting the pair forward.
+
+\subsection{Custom Sequences from Scratch}\label{subsec:custom-from-scratch}
+
+You can also build a sequence manually by providing a state and a next function.
+Here is a sequence that yields powers of two:
+
+\begin{lstlisting}[language=Lattice, caption={Building a sequence from scratch}]
+import "lib/fn" as F
+
+fn powers_of_two() -> Map {
+    // State is the current power
+    let initial_state = 1
+    let next_fn = |current| {
+        let step = Map::new()
+        step.set("value", current)
+        step.set("done", false)
+        step.set("state", current * 2)
+        return step
+    }
+
+    let seq = Map::new()
+    seq.set("state", initial_state)
+    seq.set("next", next_fn)
+    return seq
+}
+
+let result = F.collect(F.take(powers_of_two(), 8))
+print(result)  // [1, 2, 4, 8, 16, 32, 64, 128]
+\end{lstlisting}
+
+The pattern is always the same: define an initial state, write a function that takes the current state and returns a step map, then combine them into a sequence map.
+
+\subsection{A Practical Example: Paginated API Results}\label{subsec:paginated-api}
+
+Custom iterators shine when the data source is external or unbounded.
+Here is a sketch of a lazy sequence that fetches pages from an API:
+
+\begin{lstlisting}[language=Lattice, caption={Lazy pagination (conceptual)}]
+import "lib/fn" as F
+
+fn paginated_users(base_url: String) -> Map {
+    // State is the current page number
+    return F.iterate(1, |page| { page + 1 })
+}
+
+// In a real app, you would use fmap to fetch each page:
+// let pages = F.fmap(paginated_users("/api/users"), |page| {
+//     http_get(base_url + "?page=" + to_string(page))
+// })
+//
+// Then take pages until the response is empty.
+\end{lstlisting}
+
+The lazy approach means you never fetch a page you don't need.
+
+\subsection{Composing fn Module Sequences}\label{subsec:composing-fn-sequences}
+
+The \lstinline|fn| module provides the same family of transformers as the built-in iterator methods, but as standalone functions that work with the sequence protocol:
+
+\begin{lstlisting}[language=Lattice, caption={Composing sequences with the fn module}]
+import "lib/fn" as F
+
+// Start with a range, filter, transform, and collect
+let result = F.collect(
+    F.take(
+        F.fmap(
+            F.select(F.range(1, 100), |x| { x % 3 == 0 }),
+            |x| { x * x }
+        ),
+        5
+    )
+)
+
+print(result)  // [9, 36, 81, 144, 225]
+\end{lstlisting}
+
+This computes the squares of the first five multiples of three.
+Every step is lazy---the range never produces 100 values, only as many as needed to fill the first five matches.
+
+\begin{table}[htbp]
+\centering
+\caption{fn module sequence functions}\label{tab:fn-seq-functions}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Function} & \textbf{Kind} & \textbf{Description} \\
+\midrule
+\lstinline|F.range(start, end, step?)| & Source & Lazy integer range \\
+\lstinline|F.from_array(arr)| & Source & Lazy sequence from array \\
+\lstinline|F.repeat(value)| & Source & Infinite repetition \\
+\lstinline|F.iterate(seed, f)| & Source & Infinite \lstinline|seed, f(seed), ...| \\
+\lstinline|F.fmap(seq, f)| & Transformer & Transform each element \\
+\lstinline|F.select(seq, pred)| & Transformer & Keep matching elements \\
+\lstinline|F.take(seq, n)| & Transformer & First \lstinline|n| elements \\
+\lstinline|F.drop(seq, n)| & Transformer & Skip first \lstinline|n| \\
+\lstinline|F.take_while(seq, pred)| & Transformer & Yield while predicate holds \\
+\lstinline|F.zip(seq1, seq2)| & Transformer & Pair elements from two sequences \\
+\lstinline|F.collect(seq)| & Consumer & Collect into array \\
+\lstinline|F.fold(seq, init, f)| & Consumer & Reduce with accumulator \\
+\lstinline|F.count(seq)| & Consumer & Count elements \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{notebox}{Two Iterator Systems}
+Lattice has two complementary iteration systems:
+\begin{enumerate}[nosep]
+  \item \textbf{Built-in iterators} (\lstinline|iter()|, \lstinline|.map()|, \lstinline|.filter()|, etc.)\ --- implemented in C (\filename{src/iterator.c}), accessed via method chaining. Best for everyday use.
+  \item \textbf{fn module sequences} (\lstinline|F.range()|, \lstinline|F.fmap()|, \lstinline|F.select()|, etc.)\ --- implemented in pure Lattice (\filename{lib/fn.lat}), using a map-based protocol. Best for custom sequences and functional composition.
+\end{enumerate}
+Both are lazy. The built-in system is faster (native C); the \lstinline|fn| module is more flexible (user-extensible).
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Why Laziness Matters}\label{sec:why-laziness}
+\index{lazy evaluation!benefits}\index{iterators!performance}
+
+We have seen iterators in action, but let's make the case for \emph{why} you should prefer them over eager array operations.
+
+\subsection{Memory Efficiency}\label{subsec:lazy-memory}
+
+Consider processing a large dataset:
+
+\begin{lstlisting}[language=Lattice, caption={Eager vs.\ lazy memory usage}]
+// Eager: creates three intermediate arrays
+let data = range_iter(0, 1000000).collect()  // 1M element array
+let filtered = data.filter(|x| { x % 7 == 0 })  // another array
+let mapped = filtered.map(|x| { x * x })  // yet another
+let result = mapped[0..5]  // finally, what we wanted
+
+// Lazy: creates zero intermediate arrays
+let result_lazy = range_iter(0, 1000000)
+    .filter(|x| { x % 7 == 0 })
+    .map(|x| { x * x })
+    .take(5)
+    .collect()
+
+print(result_lazy)  // [0, 49, 196, 441, 784]
+\end{lstlisting}
+
+The eager version allocates three full arrays before extracting five values.
+The lazy version allocates one small array (the final result) and produces only the 35 integers needed to fill it.
+
+\subsection{Computation Efficiency}\label{subsec:lazy-computation}
+
+Laziness also saves computation.
+When \lstinline|.take(5)| has collected its five elements, the entire pipeline stops---no more filtering, no more mapping, and the range never produces its remaining elements.
+
+This is especially valuable when the source is expensive (network calls, file I/O) or the filter is highly selective.
+
+\subsection{Infinite Sequences}\label{subsec:infinite-sequences}
+
+Some sequences have no natural end---the natural numbers, a stream of sensor readings, lines from a log file that is still being written.
+Lazy iterators handle these gracefully because they never try to materialize the whole sequence:
+
+\begin{lstlisting}[language=Lattice, caption={Working with infinite sequences}]
+import "lib/fn" as F
+
+// The natural numbers
+let naturals = F.range(1, 9999999)
+
+// First 5 perfect squares
+let squares = F.collect(
+    F.take(
+        F.fmap(naturals, |n| { n * n }),
+        5
+    )
+)
+print(squares)  // [1, 4, 9, 16, 25]
+
+// First 5 numbers divisible by both 3 and 7
+let div_3_and_7 = F.collect(
+    F.take(
+        F.select(F.range(1, 9999999), |n| { n % 3 == 0 && n % 7 == 0 }),
+        5
+    )
+)
+print(div_3_and_7)  // [21, 42, 63, 84, 105]
+\end{lstlisting}
+
+\subsection{When to Stay Eager}\label{subsec:when-eager}
+
+Laziness is not always the right choice.
+If you need to access elements by index, sort the collection, or iterate over the data multiple times, collecting into an array first is the pragmatic approach.
+Iterators are single-pass and sequential---they trade random access for efficiency.
+
+\begin{tipbox}{A Rule of Thumb}
+Use iterators when you are \emph{flowing} data through a pipeline: read, transform, consume.
+Use arrays when you need to \emph{hold} data: index, sort, search, iterate multiple times.
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Under the Hood}\label{sec:iterator-internals}
+\index{iterators!internals}
+
+If you are curious about how iterators work at the C level, here is a brief tour.
+
+Each built-in iterator is a \lstinline|LatValue| of type \lstinline|VAL_ITERATOR|.
+It stores three things:
+\begin{itemize}[nosep]
+  \item A \textbf{state pointer} (\lstinline|void *state|)---an opaque blob of data specific to the iterator kind (array index, range counter, wrapped inner iterator, etc.).
+  \item A \textbf{next function} (\lstinline|next_fn|)---a C function pointer that advances the state and returns the next value.
+  \item A \textbf{free function} (\lstinline|free_fn|)---cleans up the state when the iterator is no longer needed.
+\end{itemize}
+
+The \lstinline|iter_next| call (defined in \filename{include/iterator.h}) is a single function pointer dispatch:
+
+\begin{quote}
+\texttt{return iter->as.iterator.next\_fn(iter->as.iterator.state, \&done);}
+\end{quote}
+
+Transformer iterators like \lstinline|iter_take| wrap an inner iterator by storing it in their state struct (e.g., \lstinline|IterTakeState| contains the inner iterator and a remaining count).
+When their \lstinline|next_fn| is called, they delegate to the inner iterator's \lstinline|next_fn|, applying their transformation.
+This forms a chain of function pointer calls---lightweight and allocation-free during iteration.
+
+\begin{notebox}{Iterator Ownership}
+Transformer constructors like \lstinline|iter_take()| and \lstinline|iter_map_transform()| \emph{take ownership} of the inner iterator.
+Once you pass an iterator to a transformer, you should not use the original.
+The built-in method-chaining API handles this naturally---each \lstinline|.take()| or \lstinline|.map()| call consumes the receiver and returns a new iterator.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:iter-exercises}
+
+\begin{enumerate}
+  \item \textbf{Sum of Squares.}
+    Use \lstinline|range_iter|, \lstinline|.map()|, and \lstinline|.reduce()| to compute the sum of squares of the integers from 1 to 100.
+    What answer do you get?
+
+  \item \textbf{Custom Collatz Iterator.}
+    The Collatz sequence for a starting number \lstinline|n| is: if \lstinline|n| is even, the next value is \lstinline|n / 2|; if odd, it is \lstinline|3 * n + 1|.
+    The sequence ends when it reaches 1.
+    Using the \lstinline|fn| module's \lstinline|iterate()| and \lstinline|take_while()|, build a lazy Collatz sequence starting from 27 and collect it into an array.
+    How many steps does it take?
+
+  \item \textbf{Zip and Reduce.}
+    Given two arrays of equal length---one of item names and one of prices---use \lstinline|iter()|, \lstinline|.zip()|, and \lstinline|.reduce()| to compute the total price.
+    For example: names \lstinline|["apple", "bread", "milk"]| and prices \lstinline|[1.20, 3.50, 2.80]| should yield \lstinline|7.50|.
+
+  \item \textbf{Infinite Primes.}
+    Write a function that returns a lazy sequence (using the \lstinline|fn| module) of prime numbers.
+    Use it to print the first 20 primes.
+    \emph{Hint}: use \lstinline|F.select| with a primality-testing closure over \lstinline|F.range(2, 9999999)|.
+
+  \item \textbf{Interleave.}
+    Write a function \lstinline|interleave(seq1, seq2)| that takes two lazy sequences and produces a new sequence that alternates elements: first from \lstinline|seq1|, then from \lstinline|seq2|, then \lstinline|seq1|, and so on.
+    Stop when either sequence is exhausted.
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\bigskip
+\begin{center}\rule{0.5\linewidth}{0.4pt}\end{center}
+\medskip
+
+\noindent\textbf{What's Next}\quad
+Iterators give you a powerful way to express data transformations as pipelines.
+In the next chapter, we take this further: \cref{ch:functional-programming} introduces Lattice's functional programming tools---\lstinline|pipe()|, \lstinline|compose()|, currying, and the full \lstinline|fn| standard library---that let you build elegant, composable abstractions on top of the iterator foundation we have laid here.

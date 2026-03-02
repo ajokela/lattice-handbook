@@ -1,0 +1,771 @@
+\chapter{Networking and HTTP}\label{ch:networking}
+
+\index{networking}
+\index{HTTP}
+\index{TCP}
+\index{TLS}
+
+Most modern programs need to talk to the network. Whether you are fetching
+data from a REST API, scraping a web page, or building a microservice,
+networking is the backbone. Lattice provides networking at two levels: a
+high-level HTTP client that handles the protocol details for you, and a
+low-level TCP/TLS layer that gives you direct control over sockets. On top of
+these primitives, the \texttt{http\_server} library offers an Express-style
+framework for building web servers entirely in Lattice.
+
+We will start at the top---making HTTP requests---and then work our way down
+to raw sockets, TLS, and server construction.
+
+% ---------------------------------------------------------------------------
+\section{The http Module}\label{sec:http-module}
+% ---------------------------------------------------------------------------
+
+\index{http\_get}
+\index{http\_post}
+\index{http\_request}
+
+The HTTP functions are available both as top-level built-ins
+(\lstinline|http_get|, \lstinline|http_post|, \lstinline|http_request|) and
+as methods on the \lstinline|http| module object. They handle URL parsing,
+connection management, TLS negotiation for HTTPS, request formatting,
+chunked transfer decoding, and response parsing---all behind a single
+function call.
+
+\subsection{Simple GET Requests}\label{sec:http-get}
+
+\begin{lstlisting}[language=Lattice, caption={Making an HTTP GET request}]
+let response = http_get("https://httpbin.org/get")
+
+print(response["status"])   // 200
+print(response["body"])     // JSON response body
+
+// Response headers are a Map with lowercase keys
+let headers = response["headers"]
+print(headers["content-type"])  // "application/json"
+\end{lstlisting}
+
+\lstinline|http_get| takes a URL string and returns a \lstinline|Map| with
+three keys:
+
+\begin{center}
+\begin{tabular}{llp{7.5cm}}
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\lstinline|"status"| & \lstinline|Int| & HTTP status code (200, 404, 500, etc.) \\
+\lstinline|"body"| & \lstinline|String| & Response body as a string \\
+\lstinline|"headers"| & \lstinline|Map| & Response headers (keys are lowercase) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The URL must start with \lstinline|http://| or \lstinline|https://|. If the
+scheme is \lstinline|https|, the HTTP layer automatically performs a TLS
+handshake with certificate verification before sending the request---you do
+not need to manage TLS yourself.
+
+\begin{lstlisting}[language=Lattice, caption={Fetching and parsing JSON from an API}]
+let response = http_get("https://api.example.com/users")
+
+if response["status"] == 200 {
+    let users = json_parse(response["body"])
+    for user in users {
+        print(user["name"] + " (" + user["email"] + ")")
+    }
+} else {
+    print("Request failed with status " + to_string(response["status"]))
+}
+\end{lstlisting}
+
+\begin{notebox}{HTTP and the Filesystem Chapter}
+Notice how naturally HTTP combines with the data format functions from
+\cref{ch:data-formats}. The response body is always a \lstinline|String|;
+use \lstinline|json_parse|, \lstinline|yaml_parse|, or the other parsers to
+turn it into structured data.
+\end{notebox}
+
+\subsection{POST Requests}\label{sec:http-post}
+
+\begin{lstlisting}[language=Lattice, caption={Sending a POST request with a JSON body}]
+let payload = Map::new()
+payload["username"] = "alice"
+payload["email"] = "alice@example.com"
+
+let options = Map::new()
+options["body"] = json_stringify(payload)
+options["headers"] = Map::new()
+options["headers"]["Content-Type"] = "application/json"
+
+let response = http_post("https://api.example.com/users", options)
+print(response["status"])  // 201
+print(response["body"])
+\end{lstlisting}
+
+\lstinline|http_post| takes a URL and an optional options Map. The options
+Map can include:
+
+\begin{itemize}
+    \item \lstinline|"body"| --- the request body as a String
+    \item \lstinline|"headers"| --- a Map of additional request headers
+    \item \lstinline|"timeout"| --- request timeout in milliseconds (default:
+          30\,000)
+\end{itemize}
+
+\subsection{The General-Purpose http\_request}\label{sec:http-request}
+
+For methods beyond GET and POST---PUT, PATCH, DELETE, HEAD---use the
+general-purpose \lstinline|http_request|:
+
+\begin{lstlisting}[language=Lattice, caption={Using http\_request for other methods}]
+// PUT request to update a resource
+let update_body = json_stringify({"name": "Alice Updated"})
+let options = Map::new()
+options["body"] = update_body
+options["headers"] = Map::new()
+options["headers"]["Content-Type"] = "application/json"
+
+let response = http_request("PUT", "https://api.example.com/users/1", options)
+print(response["status"])  // 200
+
+// DELETE request
+let del_response = http_request("DELETE", "https://api.example.com/users/1", {})
+print(del_response["status"])  // 204
+\end{lstlisting}
+
+\lstinline|http_request| takes the HTTP method as a string, the URL, and
+an optional options Map with the same keys as \lstinline|http_post|.
+
+\begin{tipbox}{Timeouts}
+All HTTP functions use a default timeout of 30 seconds. For slow APIs or
+large downloads, pass a \lstinline|"timeout"| key in the options Map:
+\begin{lstlisting}[language=Lattice]
+let options = Map::new()
+options["timeout"] = 60000  // 60 seconds
+let response = http_get("https://slow-api.example.com/data")
+\end{lstlisting}
+A timeout of 0 means ``use the default'' (30 seconds), not ``no timeout.''
+\end{tipbox}
+
+\subsection{Error Handling in HTTP}\label{sec:http-errors}
+
+HTTP functions raise a runtime error when something goes wrong at the
+\emph{network} level: DNS resolution failure, connection refused, TLS
+certificate validation failure, or timeout. HTTP-level errors (4xx, 5xx
+status codes) are \emph{not} runtime errors---they are indicated by the
+\lstinline|"status"| field in the response. This means you should always
+check the status code:
+
+\begin{lstlisting}[language=Lattice, caption={Robust HTTP error handling}]
+fn fetch_user(user_id: Int) -> Map {
+    let url = "https://api.example.com/users/" + to_string(user_id)
+
+    let response = try {
+        http_get(url)
+    } catch error {
+        print("Network error: " + to_string(error))
+        return nil
+    }
+
+    if response["status"] != 200 {
+        print("API error: " + to_string(response["status"]))
+        return nil
+    }
+
+    return json_parse(response["body"])
+}
+\end{lstlisting}
+
+\begin{warnbox}{HTTPS Certificate Verification}
+Lattice's TLS layer verifies server certificates against the system's
+trusted certificate store. If you connect to a server with an expired,
+self-signed, or otherwise invalid certificate, the request will fail with a
+TLS error. This is the correct, safe default---do not work around it in
+production.
+\end{warnbox}
+
+% ---------------------------------------------------------------------------
+\section{The net Module: TCP Networking}\label{sec:net-module}
+% ---------------------------------------------------------------------------
+
+\index{tcp\_listen}
+\index{tcp\_accept}
+\index{tcp\_connect}
+\index{tcp\_read}
+\index{tcp\_write}
+\index{tcp\_close}
+\index{tcp\_peer\_addr}
+\index{tcp\_set\_timeout}
+
+Beneath the HTTP layer, Lattice exposes raw TCP socket operations. These
+functions work with integer \emph{socket descriptors}---opaque handles that
+identify a connection. The net layer tracks which descriptors are valid
+sockets, so passing a random integer will produce a clear error rather than
+undefined behavior.
+
+\subsection{Connecting to a Server}\label{sec:tcp-connect}
+
+\begin{lstlisting}[language=Lattice, caption={Connecting to a TCP server}]
+let fd = tcp_connect("example.com", 80)
+
+// Send an HTTP request manually
+let request = "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"
+tcp_write(fd, request)
+
+// Read the response
+let response = tcp_read(fd)
+print(response)
+
+tcp_close(fd)
+\end{lstlisting}
+
+\lstinline|tcp_connect| performs DNS resolution and establishes a TCP
+connection. It returns an integer socket descriptor. \lstinline|tcp_write|
+sends data over the connection, handling partial writes internally.
+\lstinline|tcp_read| reads up to 8\,KB of available data and returns it as a
+string. An empty string indicates end-of-file (the remote side closed the
+connection).
+
+\begin{lstlisting}[language=Lattice, caption={Reading all data from a TCP connection}]
+fn read_all(fd: Int) -> String {
+    flux result = ""
+    loop {
+        let chunk = tcp_read(fd)
+        if chunk.len() == 0 {
+            break  // EOF
+        }
+        result = result + chunk
+    }
+    return result
+}
+\end{lstlisting}
+
+If you need to read an exact number of bytes, use \lstinline|tcp_read_bytes|:
+
+\begin{lstlisting}[language=Lattice, caption={Reading an exact number of bytes}]
+let fd = tcp_connect("example.com", 80)
+tcp_write(fd, "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+
+// Read exactly 1024 bytes (or less if the connection closes)
+let data = tcp_read_bytes(fd, 1024)
+print("Received " + to_string(data.len()) + " bytes")
+
+tcp_close(fd)
+\end{lstlisting}
+
+\subsection{Building a TCP Server}\label{sec:tcp-server}
+
+To accept incoming connections, use \lstinline|tcp_listen| and
+\lstinline|tcp_accept|:
+
+\begin{lstlisting}[language=Lattice, caption={A minimal TCP echo server}]
+let server_fd = tcp_listen("0.0.0.0", 9000)
+print("Echo server listening on port 9000")
+
+loop {
+    let client_fd = tcp_accept(server_fd)
+    let peer = tcp_peer_addr(client_fd)
+    print("Connection from " + peer)
+
+    // Read what the client sends
+    let data = tcp_read(client_fd)
+
+    // Echo it back
+    tcp_write(client_fd, data)
+
+    tcp_close(client_fd)
+    print("Closed connection from " + peer)
+}
+\end{lstlisting}
+
+\lstinline|tcp_listen| creates a server socket bound to the given address and
+port, with \texttt{SO\_REUSEADDR} set so you can restart the server without
+waiting for the socket to time out. \lstinline|tcp_accept| blocks until a
+client connects, then returns a new socket descriptor for that connection.
+\lstinline|tcp_peer_addr| returns the remote address as a
+\lstinline|"ip:port"| string.
+
+\begin{notebox}{Socket Timeouts}
+Use \lstinline|tcp_set_timeout(fd, seconds)| to set read and write timeouts
+on a socket. This is important for servers---without a timeout, a
+misbehaving client that never sends data will block your server forever:
+\begin{lstlisting}[language=Lattice]
+let client_fd = tcp_accept(server_fd)
+tcp_set_timeout(client_fd, 10)  // 10-second timeout
+\end{lstlisting}
+\end{notebox}
+
+\subsection{TCP Function Reference}\label{sec:tcp-reference}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Function} & \textbf{Description} \\
+\midrule
+\lstinline|tcp_listen(host, port)| & Bind and listen; returns server socket descriptor \\
+\lstinline|tcp_accept(server_fd)| & Accept a connection; returns client socket descriptor \\
+\lstinline|tcp_connect(host, port)| & Connect to a remote server; returns socket descriptor \\
+\lstinline|tcp_read(fd)| & Read up to 8\,KB; returns String (empty on EOF) \\
+\lstinline|tcp_read_bytes(fd, n)| & Read exactly \texttt{n} bytes; returns String \\
+\lstinline|tcp_write(fd, data)| & Write all data; handles partial writes \\
+\lstinline|tcp_close(fd)| & Close socket and release tracking \\
+\lstinline|tcp_peer_addr(fd)| & Get remote \texttt{"ip:port"} as String \\
+\lstinline|tcp_set_timeout(fd, secs)| & Set read/write timeout in seconds \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------------
+\section{TLS: Secure Connections}\label{sec:tls}
+% ---------------------------------------------------------------------------
+
+\index{tls\_connect}
+\index{tls\_read}
+\index{tls\_write}
+\index{tls\_close}
+\index{tls\_available}
+
+For encrypted communication, Lattice provides TLS functions that mirror the
+TCP API but add encryption and certificate verification. The TLS layer is
+built on OpenSSL (or Schannel on Windows) and supports TLS 1.2 and above.
+
+\subsection{Making a TLS Connection}
+
+\begin{lstlisting}[language=Lattice, caption={Connecting with TLS}]
+// Check if TLS support is available in this build
+if !tls_available() {
+    print("TLS not available -- build with OpenSSL support")
+    return
+}
+
+let fd = tls_connect("example.com", 443)
+
+let request = "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n"
+tls_write(fd, request)
+
+flux response = ""
+loop {
+    let chunk = tls_read(fd)
+    if chunk.len() == 0 { break }
+    response = response + chunk
+}
+
+print(response)
+tls_close(fd)
+\end{lstlisting}
+
+\lstinline|tls_connect| performs a TCP connection, then negotiates a TLS
+handshake on top of it. It sets the Server Name Indication (SNI) extension
+and enables hostname verification, so the connection is secure by default.
+The returned descriptor is the same integer type as TCP descriptors, but you
+\emph{must} use the \lstinline|tls_*| functions to read and write---the data
+must pass through the encryption layer.
+
+\begin{warnbox}{Don't Mix TCP and TLS Functions}
+A descriptor returned by \lstinline|tls_connect| must be used with
+\lstinline|tls_read|, \lstinline|tls_write|, and \lstinline|tls_close|. If
+you call \lstinline|tcp_read| on a TLS descriptor, you will read encrypted
+gibberish. If you call \lstinline|tcp_close| instead of
+\lstinline|tls_close|, the TLS session will not be properly shut down.
+\end{warnbox}
+
+\subsection{TLS Function Reference}\label{sec:tls-reference}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Function} & \textbf{Description} \\
+\midrule
+\lstinline|tls_connect(host, port)| & TCP connect + TLS handshake + cert verification \\
+\lstinline|tls_read(fd)| & Read up to 8\,KB of decrypted data \\
+\lstinline|tls_read_bytes(fd, n)| & Read exactly \texttt{n} decrypted bytes \\
+\lstinline|tls_write(fd, data)| & Encrypt and write all data \\
+\lstinline|tls_close(fd)| & TLS shutdown + close socket \\
+\lstinline|tls_available()| & Returns \lstinline|true| if TLS support was compiled in \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{defnbox}{When to Use TLS Directly}
+In practice, you rarely need the TLS functions directly. \lstinline|http_get|
+and friends handle TLS automatically for \lstinline|https://| URLs. The TLS
+layer is useful when you need to communicate over encrypted sockets with
+non-HTTP protocols: database connections, message queues, custom binary
+protocols, or connecting to services like Redis over TLS.
+\end{defnbox}
+
+% ---------------------------------------------------------------------------
+\section{Building a Simple HTTP Server}\label{sec:http-server}
+% ---------------------------------------------------------------------------
+
+\index{http\_server}
+\index{web server}
+
+Now that we understand both the HTTP client and the TCP layer, let's build
+something on the server side. Lattice ships with two approaches: you can
+build a server from scratch using raw TCP (instructive), or use the
+\texttt{http\_server} library for a more productive, framework-style
+experience.
+
+\subsection{A Server from Scratch}\label{sec:server-from-scratch}
+
+The minimal approach constructs HTTP responses as raw strings:
+
+\begin{lstlisting}[language=Lattice, caption={A minimal HTTP server from raw TCP}]
+fn build_response(status: Int, status_text: String,
+                  content_type: String, body: String) -> String {
+    let header = "HTTP/1.1 " + to_string(status) + " " + status_text + "\r\n"
+        + "Content-Type: " + content_type + "\r\n"
+        + "Content-Length: " + to_string(body.len()) + "\r\n"
+        + "Connection: close\r\n"
+        + "\r\n"
+    return header + body
+}
+
+let server = tcp_listen("0.0.0.0", 8080)
+print("Listening on http://localhost:8080")
+
+loop {
+    let conn = tcp_accept(server)
+    let raw = tcp_read(conn)
+
+    if raw.len() > 0 {
+        // Parse the request line: "GET /path HTTP/1.1"
+        let lines = raw.split("\r\n")
+        let parts = lines[0].split(" ")
+        let method = parts[0]
+        let path = if parts.len() > 1 { parts[1] } else { "/" }
+
+        print(method + " " + path)
+
+        let response = if path == "/" {
+            build_response(200, "OK", "text/html",
+                "<h1>Hello from Lattice!</h1>")
+        } else if path == "/json" {
+            build_response(200, "OK", "application/json",
+                json_stringify({"message": "Hello!"}))
+        } else {
+            build_response(404, "Not Found", "text/plain",
+                "404 Not Found: " + path)
+        }
+
+        tcp_write(conn, response)
+    }
+    tcp_close(conn)
+}
+\end{lstlisting}
+
+This works, but it has obvious limitations: no routing, no middleware, no
+cookie handling, and no request body parsing. The \texttt{http\_server}
+library handles all of that.
+
+\subsection{The http\_server Library}\label{sec:http-server-lib}
+
+\index{http\_server library}
+
+Import the library and create an application:
+
+\begin{lstlisting}[language=Lattice, caption={Creating an HTTP server with the http\_server library}]
+import "lib/http_server" as http
+
+let app = http.new()
+\end{lstlisting}
+
+\subsubsection{Registering Routes}
+
+Routes are registered by HTTP method:
+
+\begin{lstlisting}[language=Lattice, caption={Registering route handlers}]
+app.get("/", |req, res| {
+    return http.response(200, "Hello, World!")
+})
+
+app.get("/about", |req, res| {
+    return http.html(200, "<h1>About</h1><p>Built with Lattice.</p>")
+})
+
+app.post("/api/items", |req, res| {
+    let body = req.get("body")
+    print("Received: " + body)
+    return http.json(201, {"status": "created"})
+})
+
+app.delete("/api/items", |req, res| {
+    return http.json(200, {"status": "deleted"})
+})
+\end{lstlisting}
+
+Route handlers receive a request Map and a response context Map. They must
+return a response Map, which you build using the helper functions:
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Helper} & \textbf{Description} \\
+\midrule
+\lstinline|http.response(status, body)| & Plain text response \\
+\lstinline|http.json(status, data)| & JSON response (auto-stringifies the data) \\
+\lstinline|http.html(status, body)| & HTML response \\
+\lstinline|http.redirect(url)| & 302 redirect (optional status parameter) \\
+\lstinline|http.stream(status, chunks)| & Chunked transfer encoding response \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsubsection{The Request Map}
+
+The request Map passed to handlers contains:
+
+\begin{center}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\lstinline|"method"| & \lstinline|String| & HTTP method (``GET'', ``POST'', etc.) \\
+\lstinline|"path"| & \lstinline|String| & Request path without query string \\
+\lstinline|"query"| & \lstinline|Map| & Parsed query parameters \\
+\lstinline|"headers"| & \lstinline|Map| & Request headers \\
+\lstinline|"body"| & \lstinline|String| & Request body \\
+\lstinline|"cookies"| & \lstinline|Map| & Parsed cookies \\
+\lstinline|"peer"| & \lstinline|String| & Remote address (\texttt{"ip:port"}) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[language=Lattice, caption={Working with query parameters and cookies}]
+app.get("/search", |req, res| {
+    let query = req.get("query")
+    let term = if query.has("q") { query.get("q") } else { "" }
+    return http.json(200, {"results": [], "query": term})
+})
+
+app.get("/profile", |req, res| {
+    let cookies = req.get("cookies")
+    let session = if cookies.has("session") {
+        cookies.get("session")
+    } else {
+        "anonymous"
+    }
+    let response = http.json(200, {"user": session})
+    return http.set_cookie(response, "visited", "true", http.cookie_opts())
+})
+\end{lstlisting}
+
+\subsubsection{Middleware}
+
+Middleware functions run before route handlers. Each middleware receives the
+request, response context, and a \lstinline|next| function to call the rest
+of the pipeline:
+
+\begin{lstlisting}[language=Lattice, caption={Adding middleware to a server}]
+import "lib/http_server" as http
+
+let app = http.new()
+
+// Built-in logging middleware
+app.use(http.logger())
+
+// Built-in CORS middleware
+app.use(http.cors())
+
+// Built-in security headers
+app.use(http.security_headers())
+
+// Built-in JSON body parser
+app.use(http.body_parser())
+
+// Custom middleware: authentication
+app.use(|req, res, next| {
+    let headers = req.get("headers")
+    if headers.has("Authorization") {
+        req.set("authenticated", true)
+    } else {
+        req.set("authenticated", false)
+    }
+    return next(req, res)
+})
+
+app.get("/admin", |req, res| {
+    if !req.get("authenticated") {
+        return http.json(401, {"error": "Unauthorized"})
+    }
+    return http.json(200, {"message": "Welcome, admin"})
+})
+
+app.listen(8080)
+\end{lstlisting}
+
+The middleware pipeline executes in registration order. The \lstinline|logger|
+middleware prints timing information for each request. The \lstinline|cors|
+middleware handles preflight OPTIONS requests and sets the appropriate
+\texttt{Access-Control-*} headers. The \lstinline|security_headers| middleware
+adds \texttt{X-Content-Type-Options}, \texttt{X-Frame-Options}, and similar
+defensive headers.
+
+\begin{tipbox}{Custom CORS Configuration}
+The \lstinline|cors()| middleware accepts an options Map:
+\begin{lstlisting}[language=Lattice]
+let cors_config = http.cors_opts()
+cors_config["origin"] = "https://mysite.com"
+cors_config["credentials"] = true
+app.use(http.cors(cors_config))
+\end{lstlisting}
+\end{tipbox}
+
+\subsubsection{Starting the Server}
+
+\begin{lstlisting}[language=Lattice, caption={Starting the server}]
+app.listen(8080)
+// "Lattice HTTP server listening on http://localhost:8080"
+\end{lstlisting}
+
+The \lstinline|listen| call blocks forever, accepting connections in a loop.
+Each connection is handled synchronously. For concurrent handling, you could
+combine this with structured concurrency (\cref{ch:structured-concurrency}),
+spawning a task for each accepted connection.
+
+\subsection{A Complete REST API}\label{sec:rest-api}
+
+Let's put it all together with a complete in-memory REST API:
+
+\begin{lstlisting}[language=Lattice, caption={A complete REST API server}]
+import "lib/http_server" as http
+
+let app = http.new()
+app.use(http.logger())
+app.use(http.cors())
+app.use(http.body_parser())
+
+// In-memory data store
+flux items = []
+flux next_id = 1
+
+// List all items
+app.get("/api/items", |req, res| {
+    return http.json(200, items)
+})
+
+// Create an item
+app.post("/api/items", |req, res| {
+    let body = req.get("body")
+    let data = json_parse(body)
+    data["id"] = next_id
+    next_id += 1
+    items.push(data)
+    return http.json(201, data)
+})
+
+// Health check
+app.get("/health", |req, res| {
+    return http.json(200, {"status": "ok", "items": items.len()})
+})
+
+print("Starting API server...")
+app.listen(3000)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{URL Encoding and Decoding}\label{sec:url-encoding}
+% ---------------------------------------------------------------------------
+
+\index{url\_encode}
+\index{url\_decode}
+
+URLs can only contain a limited set of ASCII characters. When you need to
+include special characters---spaces, ampersands, Unicode text---you must
+percent-encode them. Lattice provides \lstinline|url_encode| and
+\lstinline|url_decode| for this purpose.
+
+\begin{lstlisting}[language=Lattice, caption={URL encoding and decoding}]
+let query = "name=Alice Bob&city=New York"
+let encoded = url_encode(query)
+print(encoded)  // "name%3DAlice%20Bob%26city%3DNew%20York"
+
+let decoded = url_decode(encoded)
+print(decoded)  // "name=Alice Bob&city=New York"
+\end{lstlisting}
+
+\lstinline|url_encode| percent-encodes every character that is not an
+unreserved character (A--Z, a--z, 0--9, hyphen, underscore, period, tilde).
+\lstinline|url_decode| reverses the process, converting \texttt{\%XX}
+sequences back to the original bytes and converting \texttt{+} to spaces.
+
+\begin{lstlisting}[language=Lattice, caption={Building a URL with query parameters}]
+fn build_url(base: String, params: Map) -> String {
+    let keys = params.keys()
+    if keys.len() == 0 {
+        return base
+    }
+
+    flux parts = []
+    for key in keys {
+        let encoded_key = url_encode(key)
+        let encoded_val = url_encode(params[key])
+        parts.push(encoded_key + "=" + encoded_val)
+    }
+
+    return base + "?" + parts.join("&")
+}
+
+let params = Map::new()
+params["q"] = "lattice programming"
+params["page"] = "1"
+params["lang"] = "en"
+
+let url = build_url("https://search.example.com/api", params)
+print(url)
+// https://search.example.com/api?q=lattice%20programming&page=1&lang=en
+\end{lstlisting}
+
+\begin{notebox}{Module vs. Top-Level Access}
+\lstinline|url_encode| and \lstinline|url_decode| are available both as
+top-level built-in functions and as methods on the \lstinline|crypto| module
+(since they are conceptually about encoding/decoding). The top-level versions
+are convenient for scripts; the module versions are better for explicit
+imports in larger programs.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section*{Exercises}\label{sec:networking-exercises}
+% ---------------------------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{HTTP Health Checker.} Write a program that takes a list of
+    URLs from a configuration file, makes an HTTP GET request to each one,
+    and reports whether the service is up (2xx status), degraded (5xx), or
+    unreachable (network error). Use \lstinline|try|/\lstinline|catch| to
+    handle connection failures gracefully.
+
+    \item \textbf{Web Scraper.} Write a function that fetches a web page
+    with \lstinline|http_get|, extracts all URLs from \texttt{href="..."}
+    attributes using string operations (or the regex module from
+    \cref{ch:time-crypto-os}), and returns them as an array. Bonus: follow
+    the links one level deep and report the status of each.
+
+    \item \textbf{TCP Chat Server.} Extend the echo server from
+    \cref{sec:tcp-server} into a simple chat server. When a client connects,
+    ask for their name, then broadcast each message to all connected clients.
+    You will need to use structured concurrency (\cref{ch:structured-concurrency})
+    to handle multiple clients simultaneously.
+
+    \item \textbf{REST API with Persistence.} Extend the REST API from
+    \cref{sec:rest-api} to persist its data to a JSON file. Load the file
+    on startup and save after each modification. Use the safe-write pattern
+    from \cref{sec:safe-pipeline} in the filesystem chapter.
+
+    \item \textbf{HTTP File Server.} Build a server that serves static
+    files from a directory. Map the URL path to a file path, read the file,
+    determine the content type from the extension, and send it back. Handle
+    directory traversal attacks by checking that the resolved path stays
+    within the root directory (use \lstinline|realpath|).
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section*{What's Next}\label{sec:networking-next}
+% ---------------------------------------------------------------------------
+
+We have now covered the major I/O systems in Lattice: filesystems, data
+formats, and networking. In the final chapter of this Part, we will survey the
+remaining standard library modules---time and date handling, cryptographic
+functions, UUIDs, operating system interaction, mathematics, and regular
+expressions---giving you the complete toolkit for building real-world
+applications.

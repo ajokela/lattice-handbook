@@ -1,0 +1,378 @@
+\chapter{Language Grammar Reference}\label{ch:grammar-reference}
+
+This appendix gives a complete EBNF-style grammar for the Lattice language.
+Productions are derived directly from the recursive-descent parser in
+\texttt{src/parser.c} and the lexer in \texttt{src/lexer.c}.
+
+\section{Notation}
+
+\begin{tabular}{@{}ll@{}}
+\texttt{|}          & Alternation \\
+\texttt{[ \ldots ]} & Optional (zero or one) \\
+\texttt{\{ \ldots \}} & Repetition (zero or more) \\
+\texttt{( \ldots )} & Grouping \\
+\texttt{'...' }     & Terminal / keyword \\
+\textit{italic}     & Non-terminal \\
+\end{tabular}
+
+%% ─── Top-Level ─────────────────────────────────────────────────
+
+\section{Program Structure}
+
+\begin{lstlisting}[style=ebnf]
+Program       = [ ModeDirective ] { Item } ;
+ModeDirective = '#mode' ( 'casual' | 'strict' ) ;
+Item          = FnDecl | StructDecl | EnumDecl | TraitDecl
+              | ImplBlock | TestDecl | Statement ;
+\end{lstlisting}
+
+%% ─── Declarations ──────────────────────────────────────────────
+
+\section{Declarations}
+
+\begin{lstlisting}[style=ebnf]
+FnDecl     = [ 'export' ] 'fn' IDENT [ TypeParams ]
+             '(' [ ParamList ] ')' [ '->' TypeExpr ] '{' Block '}' ;
+TypeParams = '<' IDENT { ',' IDENT } '>' ;
+ParamList  = Param { ',' Param } ;
+Param      = [ '...' ] IDENT ':' TypeExpr [ '=' Expr ] ;
+
+StructDecl = [ 'export' ] 'struct' IDENT [ TypeParams ]
+             '{' { FieldDecl ',' } '}' ;
+FieldDecl  = IDENT ':' TypeExpr ;
+
+EnumDecl   = [ 'export' ] 'enum' IDENT [ TypeParams ]
+             '{' Variant { ',' Variant } '}' ;
+Variant    = IDENT [ '(' TypeExpr { ',' TypeExpr } ')' ] ;
+
+TraitDecl  = 'trait' IDENT '{' { TraitMethod } '}' ;
+TraitMethod = 'fn' IDENT '(' [ ParamList ] ')'
+              [ '->' TypeExpr ] [ '{' Block '}' ] ;
+
+ImplBlock  = 'impl' IDENT [ 'for' IDENT ] '{'
+             { FnDecl } '}' ;
+
+TestDecl   = 'test' STRING_LIT '{' Block '}' ;
+\end{lstlisting}
+
+%% ─── Types ─────────────────────────────────────────────────────
+
+\section{Type Expressions}
+
+\begin{lstlisting}[style=ebnf]
+TypeExpr      = [ PhasePrefix ] TypeBody ;
+PhasePrefix   = '~' | '*' | 'flux' | 'fix'
+              | '(' PhaseConstraint ')' ;
+PhaseConstraint = PhaseSymbol { '|' PhaseSymbol } ;
+PhaseSymbol   = '~' | '*' | 'flux' | 'fix' | 'sublimated' ;
+
+TypeBody      = NamedType | ArrayType | FnType ;
+NamedType     = IDENT [ '<' TypeExpr { ',' TypeExpr } '>' ] ;
+ArrayType     = '[' TypeExpr ']' ;
+FnType        = ( 'fn' | 'Fn' ) '(' [ TypeExpr { ',' TypeExpr } ] ')'
+                [ '->' TypeExpr ] ;
+\end{lstlisting}
+
+%% ─── Statements ────────────────────────────────────────────────
+
+\section{Statements}
+
+\begin{lstlisting}[style=ebnf]
+Block     = { Statement } ;
+Statement = Binding | Assignment | ForStmt | WhileStmt
+          | LoopStmt | ReturnStmt | BreakStmt | ContinueStmt
+          | ImportStmt | DeferStmt | DestructureStmt
+          | ExprStmt ;
+
+Binding   = ( 'let' | 'flux' | 'fix' ) IDENT
+            [ ':' TypeExpr ] '=' Expr [ ';' ] ;
+Assignment = Expr AssignOp Expr [ ';' ] ;
+AssignOp   = '=' | '+=' | '-=' | '*=' | '/=' | '%='
+           | '&=' | '|=' | '^=' | '<<=' | '>>=' ;
+
+ForStmt    = 'for' IDENT 'in' Expr '{' Block '}' ;
+WhileStmt  = 'while' Expr '{' Block '}' ;
+LoopStmt   = 'loop' '{' Block '}' ;
+ReturnStmt = 'return' [ Expr ] [ ';' ] ;
+BreakStmt  = 'break' [ ';' ] ;
+ContinueStmt = 'continue' [ ';' ] ;
+
+DeferStmt  = 'defer' '{' Block '}' ;
+
+DestructureStmt = ( 'let' | 'flux' | 'fix' )
+                  DestructureTarget '=' Expr [ ';' ] ;
+DestructureTarget = '[' IDENT { ',' IDENT }
+                    [ ',' '...' IDENT ] ']'
+                  | '{' IDENT { ',' IDENT } '}' ;
+
+ImportStmt = 'import' STRING_LIT [ 'as' IDENT ]
+           | 'from' STRING_LIT 'import' IDENT
+             { ',' IDENT } ;
+
+ExprStmt   = Expr [ ';' ] ;
+\end{lstlisting}
+
+%% ─── Expressions ───────────────────────────────────────────────
+
+\section{Expressions}
+
+Lattice uses precedence-climbing for binary operators.
+The table below lists precedences from lowest (top) to highest (bottom).
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}llll@{}}
+\toprule
+\textbf{Prec.} & \textbf{Category} & \textbf{Operators} & \textbf{Assoc.} \\
+\midrule
+1  & Nil coalesce     & \texttt{??}                      & Left \\
+2  & Logical OR       & \texttt{||}                      & Left \\
+3  & Logical AND      & \texttt{\&\&}                    & Left \\
+4  & Bitwise OR       & \texttt{|}                       & Left \\
+5  & Bitwise XOR      & \texttt{\^{}}                    & Left \\
+6  & Bitwise AND      & \texttt{\&}                      & Left \\
+7  & Equality         & \texttt{==} \texttt{!=}          & Left \\
+8  & Comparison       & \texttt{<} \texttt{>} \texttt{<=} \texttt{>=} & Left \\
+9  & Shift            & \texttt{<<} \texttt{>>}          & Left \\
+10 & Range            & \texttt{..}                      & None \\
+11 & Additive         & \texttt{+} \texttt{-}            & Left \\
+12 & Multiplicative   & \texttt{*} \texttt{/} \texttt{\%}  & Left \\
+13 & Unary            & \texttt{-} \texttt{!} \texttt{\~{}} & Right \\
+14 & Postfix          & \texttt{.} \texttt{?.} \texttt{[]} \texttt{?[]} \texttt{()} \texttt{?} & Left \\
+\bottomrule
+\end{booktabs}
+\caption{Operator precedence (lowest to highest).}\label{tab:precedence}
+\end{table}
+
+\begin{lstlisting}[style=ebnf]
+Expr         = NilCoalesce ;
+NilCoalesce  = OrExpr { '??' OrExpr } ;
+OrExpr       = AndExpr { '||' AndExpr } ;
+AndExpr      = BitOrExpr { '&&' BitOrExpr } ;
+BitOrExpr    = BitXorExpr { '|' BitXorExpr } ;
+BitXorExpr   = BitAndExpr { '^' BitAndExpr } ;
+BitAndExpr   = EqualityExpr { '&' EqualityExpr } ;
+EqualityExpr = CompareExpr { ( '==' | '!=' ) CompareExpr } ;
+CompareExpr  = ShiftExpr { ( '<' | '>' | '<=' | '>=' ) ShiftExpr } ;
+ShiftExpr    = RangeExpr { ( '<<' | '>>' ) RangeExpr } ;
+RangeExpr    = AddExpr [ '..' AddExpr ] ;
+AddExpr      = MulExpr { ( '+' | '-' ) MulExpr } ;
+MulExpr      = UnaryExpr { ( '*' | '/' | '%' ) UnaryExpr } ;
+UnaryExpr    = ( '-' | '!' | '~' ) UnaryExpr | PostfixExpr ;
+\end{lstlisting}
+
+\subsection{Postfix Expressions}
+
+\begin{lstlisting}[style=ebnf]
+PostfixExpr = PrimaryExpr { PostfixOp } ;
+PostfixOp   = '.' IDENT [ '(' [ ArgList ] ')' ]
+            | '?.' IDENT [ '(' [ ArgList ] ')' ]
+            | '[' Expr ']'
+            | '?[' Expr ']'
+            | '(' [ ArgList ] ')'     (* call *)
+            | '?'                     (* try/propagate *)
+            ;
+ArgList     = Expr { ',' Expr } ;
+\end{lstlisting}
+
+\subsection{Primary Expressions}
+
+\begin{lstlisting}[style=ebnf]
+PrimaryExpr = INT_LIT | FLOAT_LIT | STRING_LIT
+            | InterpString
+            | 'true' | 'false' | 'nil'
+            | IDENT
+            | StructLiteral
+            | EnumVariant
+            | ArrayLiteral
+            | TupleLiteral
+            | GroupedExpr
+            | BlockExpr
+            | ClosureExpr
+            | IfExpr
+            | MatchExpr
+            | TryCatchExpr
+            | SelectExpr
+            | PhaseExpr
+            | PrintExpr
+            | SpawnExpr
+            | ScopeExpr
+            | ForgeExpr ;
+
+InterpString  = INTERP_START Expr
+                { INTERP_MID Expr } INTERP_END ;
+StructLiteral = IDENT '{' [ FieldInit { ',' FieldInit } ] '}' ;
+FieldInit     = IDENT ':' Expr ;
+EnumVariant   = IDENT '::' IDENT
+                [ '(' [ ArgList ] ')' ] ;
+ArrayLiteral  = '[' [ ArrayElem { ',' ArrayElem } ] ']' ;
+ArrayElem     = [ '...' ] Expr ;
+TupleLiteral  = '(' Expr ',' [ Expr { ',' Expr } ] ')' ;
+GroupedExpr   = '(' Expr ')' ;
+BlockExpr     = '{' Block '}' ;
+ClosureExpr   = '|' [ ClosureParam { ',' ClosureParam } ] '|'
+                Expr ;
+ClosureParam  = [ '...' ] IDENT [ '=' Expr ] ;
+\end{lstlisting}
+
+\subsection{Control-Flow Expressions}
+
+\begin{lstlisting}[style=ebnf]
+IfExpr       = 'if' Expr '{' Block '}'
+               [ 'else' ( IfExpr | '{' Block '}' ) ] ;
+
+MatchExpr    = 'match' Expr '{'
+               { [ PhaseQual ] Pattern
+                 [ 'if' Expr ] '=>'
+                 ( '{' Block '}' | Expr ) [','] }
+               '}' ;
+PhaseQual    = 'fluid' | 'crystal' ;
+
+TryCatchExpr = 'try' '{' Block '}'
+               'catch' IDENT '{' Block '}' ;
+
+SelectExpr   = 'select' '{' { SelectArm [','] } '}' ;
+SelectArm    = IDENT 'from' Expr '=>' '{' Block '}'
+             | 'timeout' '(' Expr ')' '=>' '{' Block '}'
+             | 'default' '=>' '{' Block '}' ;
+\end{lstlisting}
+
+\subsection{Phase Expressions}
+
+\begin{lstlisting}[style=ebnf]
+PhaseExpr     = FreezeExpr | ThawExpr | CloneExpr
+              | AnnealExpr | ForgeExpr | CrystallizeExpr
+              | BorrowExpr | SublimateExpr ;
+
+FreezeExpr    = 'freeze' '(' Expr ')'
+                [ 'where' Expr ]
+                [ 'except' '[' Expr { ',' Expr } ']' ] ;
+ThawExpr      = 'thaw' '(' Expr ')' ;
+CloneExpr     = 'clone' '(' Expr ')' ;
+AnnealExpr    = 'anneal' '(' Expr ')' ClosureExpr ;
+ForgeExpr     = 'forge' '{' Block '}' ;
+CrystallizeExpr = 'crystallize' '(' Expr ')' '{' Block '}' ;
+BorrowExpr    = 'borrow' '(' Expr ')' '{' Block '}' ;
+SublimateExpr = 'sublimate' '(' Expr ')' ;
+\end{lstlisting}
+
+\subsection{Other Expressions}
+
+\begin{lstlisting}[style=ebnf]
+PrintExpr = 'print' '(' [ ArgList ] ')' ;
+SpawnExpr = 'spawn' '{' Block '}' ;
+ScopeExpr = 'scope' '{' Block '}' ;
+\end{lstlisting}
+
+%% ─── Patterns ──────────────────────────────────────────────────
+
+\section{Patterns}
+
+Patterns appear in \texttt{match} arms and destructuring bindings.
+
+\begin{lstlisting}[style=ebnf]
+Pattern    = LitPat | WildcardPat | BindingPat
+           | RangePat | ArrayPat | StructPat
+           | EnumPat ;
+LitPat     = [ '-' ] ( INT_LIT | FLOAT_LIT )
+           | STRING_LIT | 'true' | 'false' | 'nil' ;
+WildcardPat = '_' ;
+BindingPat  = IDENT ;
+RangePat    = ( INT_LIT | IDENT ) '..' Expr ;
+ArrayPat    = '[' { [ '...' ] Pattern ',' } ']' ;
+StructPat   = '{' { IDENT [ ':' Pattern ] ',' } '}' ;
+EnumPat     = IDENT '::' IDENT
+              [ '(' Pattern { ',' Pattern } ')' ] ;
+\end{lstlisting}
+
+%% ─── Lexical Grammar ──────────────────────────────────────────
+
+\section{Lexical Grammar}
+
+\subsection{Keywords}
+
+All reserved keywords recognized by the lexer:
+
+\begin{center}
+\begin{minipage}{0.85\textwidth}
+\small
+\texttt{let}~~ \texttt{flux}~~ \texttt{fix}~~ \texttt{fn}~~
+\texttt{struct}~~ \texttt{enum}~~ \texttt{trait}~~ \texttt{impl}~~
+\texttt{if}~~ \texttt{else}~~ \texttt{for}~~ \texttt{in}~~
+\texttt{while}~~ \texttt{loop}~~ \texttt{return}~~
+\texttt{break}~~ \texttt{continue}~~ \texttt{match}~~
+\texttt{true}~~ \texttt{false}~~ \texttt{nil}~~
+\texttt{freeze}~~ \texttt{thaw}~~ \texttt{clone}~~
+\texttt{anneal}~~ \texttt{forge}~~ \texttt{crystallize}~~
+\texttt{borrow}~~ \texttt{sublimate}~~
+\texttt{spawn}~~ \texttt{scope}~~ \texttt{select}~~
+\texttt{try}~~ \texttt{catch}~~ \texttt{defer}~~
+\texttt{import}~~ \texttt{from}~~ \texttt{as}~~ \texttt{export}~~
+\texttt{print}~~ \texttt{test}
+\end{minipage}
+\end{center}
+
+\subsection{Literals}
+
+\begin{lstlisting}[style=ebnf]
+INT_LIT    = DIGIT { DIGIT }
+           | '0x' HEXDIGIT { HEXDIGIT }
+           | '0b' BINDIGIT { BINDIGIT }
+           | '0o' OCTDIGIT { OCTDIGIT } ;
+FLOAT_LIT  = DIGIT { DIGIT } '.' DIGIT { DIGIT }
+             [ ( 'e' | 'E' ) [ '+' | '-' ] DIGIT { DIGIT } ] ;
+STRING_LIT = '"' { CHAR | EscapeSeq | '${' Expr '}' } '"' ;
+EscapeSeq  = '\' ( 'n' | 't' | 'r' | '\' | '"' | '0'
+             | 'x' HEXDIGIT HEXDIGIT ) ;
+IDENT      = ( ALPHA | '_' ) { ALPHA | DIGIT | '_' } ;
+\end{lstlisting}
+
+\subsection{Operators and Delimiters}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}llllll@{}}
+\toprule
+\textbf{Token} & \textbf{Symbol} & \textbf{Token} & \textbf{Symbol} & \textbf{Token} & \textbf{Symbol} \\
+\midrule
+\texttt{+}  & Plus      & \texttt{==}  & Equal     & \texttt{(}  & LParen \\
+\texttt{-}  & Minus     & \texttt{!=}  & NotEqual  & \texttt{)}  & RParen \\
+\texttt{*}  & Star      & \texttt{<}   & Less      & \texttt{\{} & LBrace \\
+\texttt{/}  & Slash     & \texttt{>}   & Greater   & \texttt{\}} & RBrace \\
+\texttt{\%} & Percent   & \texttt{<=}  & LessEq    & \texttt{[}  & LBracket \\
+\texttt{=}  & Assign    & \texttt{>=}  & GreaterEq & \texttt{]}  & RBracket \\
+\texttt{!}  & Bang      & \texttt{\&\&}& LogicAnd  & \texttt{,}  & Comma \\
+\texttt{\~{}} & Tilde   & \texttt{||}  & LogicOr   & \texttt{:}  & Colon \\
+\texttt{.}  & Dot       & \texttt{\&}  & Ampersand & \texttt{::} & ColonColon \\
+\texttt{..} & DotDot    & \texttt{|}   & Pipe      & \texttt{;}  & Semicolon \\
+\texttt{...}& DotDotDot & \texttt{\^{}}& Caret     & \texttt{@}  & At \\
+\texttt{->} & Arrow     & \texttt{<<}  & LShift    & \texttt{??} & NilCoalesce \\
+\texttt{=>} & FatArrow  & \texttt{>>}  & RShift    & \texttt{?.} & OptChainDot \\
+\texttt{?}  & Question  & \texttt{?[}  & OptChainIdx & & \\
+\bottomrule
+\end{booktabs}
+\caption{Operators and delimiters.}\label{tab:operators}
+\end{table}
+
+\subsection{Compound Assignment Operators}
+
+All compound assignment operators desugar to the corresponding binary
+operation followed by assignment:
+
+\begin{center}
+\texttt{+=} \quad \texttt{-=} \quad \texttt{*=} \quad \texttt{/=} \quad \texttt{\%=} \quad
+\texttt{\&=} \quad \texttt{|=} \quad \texttt{\^{}=} \quad \texttt{<<=} \quad \texttt{>>=}
+\end{center}
+
+\subsection{Comments}
+
+\begin{lstlisting}[style=ebnf]
+LineComment  = '//' { ANY } NEWLINE ;
+BlockComment = '/*' { ANY } '*/' ;
+\end{lstlisting}
+
+Comments and whitespace (spaces, tabs, newlines, carriage returns) are
+discarded by the lexer and do not appear in the grammar productions above.
+Semicolons are optional statement terminators; the parser consumes them
+when present but does not require them.

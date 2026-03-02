@@ -1,0 +1,1143 @@
+\begin{theindex}
+
+  \item \texttt{*} (fix shorthand), \hyperpage{51}
+  \item --break flag, \hyperpage{562}
+  \item --debug flag, \hyperpage{561}
+  \item .., \hyperpage{44}
+  \item \texttt{..} (range operator), \hyperpage{77}
+  \item \texttt{...} (rest pattern), \hyperpage{149}
+  \item \texttt{...} (spread), \hyperpage{116}
+  \item \texttt{...} (spread/variadic), \hyperpage{94}
+  \item .dylib, \hyperpage{609}
+  \item .env file, \hyperpage{644}
+  \item .latc file format, \hyperpage{597}
+  \item .latc files, \hyperpage{597}
+  \item .rlat file format, \hyperpage{597}
+  \item .rlat files, \hyperpage{597}
+  \item .so, \hyperpage{609}
+  \item => prefix (REPL), \hyperpage{10}, \hyperpage{22}
+  \item \texttt{?} operator, \hyperpage{171}
+    \subitem mechanics, \hyperpage{171}
+  \item ?., \hyperpage{44}
+  \item ??, \hyperpage{43}
+  \item \texttt{??}, \hyperpage{79}
+  \item \#mode, \hyperpage{55}
+  \item \#mode strict, \hyperpage{14}
+  \item \texttt{\#mode strict}, \hyperpage{241}
+  \item \texttt{\_} (wildcard), \hyperpage{144}
+  \item \textasciitilde/.lattice/packages, \hyperpage{519}
+  \item \texttt{\~{}} (flux shorthand), \hyperpage{51}
+
+  \indexspace
+
+  \item abs, \hyperpage{448}
+  \item \texttt{.all()}, \hyperpage{115}
+  \item alloys, \hyperpage{223--240}
+    \subitem definition, \hyperpage{224}
+    \subitem design patterns, \hyperpage{226}
+    \subitem struct declarations, \hyperpage{223}
+  \item \texttt{anneal}, \hyperpage{195}
+  \item anonymous functions, \hyperpage{96}
+  \item \texttt{.any()}, \hyperpage{115}
+  \item API
+    \subitem JSON, \hyperpage{669}
+  \item append\_file, \hyperpage{387}
+  \item arena allocation, \hyperpage{209}
+    \subitem definition, \hyperpage{210}
+  \item args, \hyperpage{445}
+  \item args(), \hyperpage{11}
+  \item argument parsing, \hyperpage{641}
+  \item Array, \hyperpage{109}
+  \item array
+    \subitem closure methods, \hyperpage{112}
+    \subitem destructuring, \hyperpage{148}
+    \subitem indexing, \hyperpage{110}
+    \subitem methods, \hyperpage{111}
+    \subitem slicing, \hyperpage{110}
+  \item arrays, \hyperpage{109}
+  \item assert, \hyperpage{548}
+  \item \texttt{assert()}, \hyperpage{178}
+  \item assert\_contains, \hyperpage{550}
+  \item assert\_eq, \hyperpage{548, 549}
+  \item \texttt{assert\_eq()}, \hyperpage{178}
+  \item assert\_false, \hyperpage{549}
+  \item assert\_gt, \hyperpage{553}
+  \item assert\_lt, \hyperpage{553}
+  \item assert\_ne, \hyperpage{549}
+  \item assert\_near, \hyperpage{553}
+  \item assert\_nil, \hyperpage{553}
+  \item assert\_throws, \hyperpage{551}
+  \item assert\_true, \hyperpage{549}
+  \item assert\_type, \hyperpage{548}, \hyperpage{550}
+  \item assertions, \hyperpage{548}
+  \item async iterators
+    \subitem vs channels, \hyperpage{368}
+  \item \texttt{async\_filter}, \hyperpage{366}
+  \item \texttt{async\_iter}, \hyperpage{366}
+    \subitem definition, \hyperpage{366}
+  \item \texttt{async\_map}, \hyperpage{366}
+
+  \indexspace
+
+  \item backends, \hyperpage{581}
+  \item base64\_decode, \hyperpage{441}, \hyperpage{443}
+  \item base64\_encode, \hyperpage{441}, \hyperpage{443}
+  \item binary data, \hyperpage{397}
+  \item block expression, \hyperpage{70}
+  \item \texttt{bond()}, \hyperpage{228--230}
+    \subitem dependency, \hyperpage{229}
+  \item bond strategies, \hyperpage{230--232}
+    \subitem mirror, \hyperpage{230}
+  \item Bool, \hyperpage{33}
+  \item booleans, \hyperpage{33}
+  \item bootstrapping, \hyperpage{605}
+  \item \texttt{borrow}, \hyperpage{196}
+  \item breadth-first search, \hyperpage{521}
+  \item break, \hyperpage{74}
+  \item breakpoint(), \hyperpage{27}
+  \item breakpoint() function, \hyperpage{570}
+  \item breakpoints, \hyperpage{565}
+    \subitem conditional, \hyperpage{566}
+    \subitem function, \hyperpage{565}
+    \subitem line, \hyperpage{565}
+    \subitem management, \hyperpage{566}
+  \item broadcast pattern, \hyperpage{377}
+  \item Buffer, \hyperpage{397}
+    \subitem clear, \hyperpage{401}
+    \subitem fill, \hyperpage{401}
+    \subitem indexing, \hyperpage{399}
+    \subitem push, \hyperpage{399}
+    \subitem read\_f32, \hyperpage{400}
+    \subitem read\_f64, \hyperpage{400}
+    \subitem read\_i16, \hyperpage{400}
+    \subitem read\_i32, \hyperpage{400}
+    \subitem read\_i64, \hyperpage{400}
+    \subitem read\_i8, \hyperpage{400}
+    \subitem read\_u16, \hyperpage{400}
+    \subitem read\_u32, \hyperpage{400}
+    \subitem read\_u64, \hyperpage{400}
+    \subitem read\_u8, \hyperpage{400}
+    \subitem resize, \hyperpage{401}
+    \subitem slice, \hyperpage{401}
+    \subitem to\_array, \hyperpage{401}
+    \subitem to\_hex, \hyperpage{401}
+    \subitem to\_string, \hyperpage{401}
+    \subitem write\_u8, \hyperpage{400}
+  \item built-in functions, \hyperpage{5}
+  \item BumpArena, \hyperpage{212--213}
+  \item bytecode, \hyperpage{583}
+    \subitem file format, \hyperpage{597}
+  \item bytecode compilation, \hyperpage{9}
+  \item bytecode serialization, \hyperpage{597}
+  \item \texttt{.bytes()}, \hyperpage{132}
+
+  \indexspace
+
+  \item C11 compiler, \hyperpage{5}
+  \item callbacks, \hyperpage{101}
+  \item \texttt{.camel\_case()}, \hyperpage{131}
+  \item cancellation
+    \subitem with Ref, \hyperpage{347}
+  \item case transformations, \hyperpage{131}
+  \item casual mode, \hyperpage{55}
+    \subitem rules, \hyperpage{55}
+  \item ceil, \hyperpage{448}
+  \item \texttt{Channel}, \hyperpage{351}
+    \subitem close, \hyperpage{353}
+    \subitem closed, \hyperpage{352}
+    \subitem closing best practice, \hyperpage{354}
+    \subitem creation, \hyperpage{351}
+    \subitem definition, \hyperpage{352}
+    \subitem recv, \hyperpage{352}
+    \subitem send, \hyperpage{352}
+  \item channel multiplexing, \hyperpage{357}
+  \item \texttt{Channel::new()}, \hyperpage{351}
+  \item channels, \hyperpage{351}
+    \subitem vs Ref, \hyperpage{373}
+  \item \texttt{.chars()}, \hyperpage{132}
+  \item chmod, \hyperpage{389}, \hyperpage{393}
+  \item choosing a backend, \hyperpage{591}
+  \item \texttt{chr()}, \hyperpage{134}
+  \item circular dependencies, \hyperpage{515}, \hyperpage{521}
+    \subitem detection, \hyperpage{522}
+  \item clamp, \hyperpage{448}
+  \item clat, \hyperpage{5}, \hyperpage{511}
+    \subitem package manager, \hyperpage{511}
+  \item clat add, \hyperpage{513}
+  \item clat compile, \hyperpage{600}
+  \item clat doc, \hyperpage{529}, \hyperpage{535}
+    \subitem HTML, \hyperpage{539}
+    \subitem JSON, \hyperpage{538}
+    \subitem Markdown, \hyperpage{537}
+    \subitem output directory, \hyperpage{537}
+    \subitem output formats, \hyperpage{537}
+    \subitem plain text, \hyperpage{538}
+  \item clat fmt, \hyperpage{529}
+    \subitem check mode, \hyperpage{531}
+    \subitem stdin, \hyperpage{531}
+    \subitem width, \hyperpage{531}
+  \item clat init, \hyperpage{511}
+  \item clat install, \hyperpage{513, 514}
+    \subitem internals, \hyperpage{522}
+  \item clat remove, \hyperpage{513}, \hyperpage{515}
+  \item clat run --debug, \hyperpage{561}
+  \item clat test, \hyperpage{543}, \hyperpage{546}
+    \subitem discovery, \hyperpage{546}
+    \subitem filter, \hyperpage{547}
+    \subitem verbose, \hyperpage{547}
+  \item CLI debugger, \hyperpage{561}
+  \item cli library, \hyperpage{641}
+  \item CLI tool, \hyperpage{641}
+  \item clone, \hyperpage{54}
+  \item \texttt{clone()}, \hyperpage{191--194}
+  \item \texttt{close()}, \hyperpage{353}
+  \item closure
+    \subitem as struct field, \hyperpage{266}
+    \subitem capture, \hyperpage{98}
+  \item closures, \hyperpage{4}, \hyperpage{89}, \hyperpage{96}
+    \subitem first example, \hyperpage{13}
+    \subitem stack VM implementation, \hyperpage{587}
+  \item collections, \hyperpage{109}
+  \item combined flags, \hyperpage{644}
+  \item command-line application, \hyperpage{641}
+  \item command-line arguments, \hyperpage{11}
+  \item comments, \hyperpage{44}
+    \subitem block, \hyperpage{45}
+    \subitem doc, \hyperpage{45}
+    \subitem line, \hyperpage{44}
+    \subitem nested, \hyperpage{45}
+  \item compiler/latc.lat, \hyperpage{602}
+  \item compose(), \hyperpage{477}
+    \subitem usage, \hyperpage{479}
+  \item \texttt{compose()}, \hyperpage{101}
+  \item computed goto, \hyperpage{586}
+  \item concurrency, \hyperpage{4}
+    \subitem first example, \hyperpage{13}
+    \subitem testing, \hyperpage{379}
+  \item concurrency patterns, \hyperpage{371}
+    \subitem broadcast, \hyperpage{377}
+    \subitem fan-out/fan-in, \hyperpage{345}
+    \subitem pipeline, \hyperpage{363}
+    \subitem producer-consumer, \hyperpage{355}
+    \subitem request-reply, \hyperpage{378}
+    \subitem worker pool, \hyperpage{376}
+  \item configuration, \hyperpage{417}
+  \item constructors, \hyperpage{20}
+  \item \texttt{.contains()}, \hyperpage{130}
+  \item continue, \hyperpage{74}
+    \subitem compilation, \hyperpage{75}
+  \item contracts, \hyperpage{103}, \hyperpage{176}
+  \item control flow, \hyperpage{67}
+  \item cookies, \hyperpage{661}
+  \item copy\_file, \hyperpage{389}, \hyperpage{392}
+  \item cos, \hyperpage{448}
+  \item \texttt{.count()}, \hyperpage{130}
+  \item CRUD operations, \hyperpage{668}
+  \item crypto module, \hyperpage{437}
+  \item crystal phase, \hyperpage{4}, \hyperpage{51}, \hyperpage{188}
+  \item \texttt{crystallize}, \hyperpage{196}
+  \item CrystalRegion, \hyperpage{209--212}
+  \item CSV, \hyperpage{405}
+  \item csv\_parse, \hyperpage{412}
+  \item csv\_stringify, \hyperpage{412}
+  \item currying, \hyperpage{484}
+  \item cwd, \hyperpage{445}
+
+  \indexspace
+
+  \item DAP, \hyperpage{571}
+  \item data formats, \hyperpage{405}
+  \item data sharing
+    \subitem between spawns, \hyperpage{341}
+  \item database, \hyperpage{667}
+  \item datetime, \hyperpage{437}
+  \item datetime\_add\_duration, \hyperpage{440}
+  \item datetime\_format, \hyperpage{440}
+  \item datetime\_from\_epoch, \hyperpage{440}
+  \item datetime\_from\_iso, \hyperpage{440}
+  \item datetime\_now, \hyperpage{440}
+  \item datetime\_sub, \hyperpage{440}
+  \item datetime\_to\_epoch, \hyperpage{440}
+  \item datetime\_to\_iso, \hyperpage{440}
+  \item datetime\_to\_local, \hyperpage{440}
+  \item datetime\_to\_utc, \hyperpage{440}
+  \item deadlock, \hyperpage{374}
+    \subitem avoidance, \hyperpage{374}
+  \item Debug Adapter Protocol, \hyperpage{571}
+  \item debugger, \hyperpage{561}
+    \subitem backtrace, \hyperpage{564}
+    \subitem call stack, \hyperpage{564}
+    \subitem continue, \hyperpage{569}
+    \subitem expression evaluation, \hyperpage{564}
+    \subitem list command, \hyperpage{563}
+    \subitem variable inspection, \hyperpage{563}
+    \subitem VS Code, \hyperpage{571}
+    \subitem watch, \hyperpage{569}
+  \item debugging, \hyperpage{561}
+  \item deep cloning
+    \subitem in spawns, \hyperpage{341}
+  \item default parameters, \hyperpage{93}
+  \item defer, \hyperpage{173}
+    \subitem compilation, \hyperpage{176}
+    \subitem execution order, \hyperpage{173}
+    \subitem return value preservation, \hyperpage{175}
+    \subitem scope, \hyperpage{174}
+    \subitem stack VM, \hyperpage{587}
+    \subitem with errors, \hyperpage{175}
+  \item delete\_file, \hyperpage{389}, \hyperpage{392}
+  \item dependencies, \hyperpage{513}
+  \item dependency graph, \hyperpage{515}, \hyperpage{521}
+  \item dependency resolution, \hyperpage{517}
+  \item depth-first search, \hyperpage{522}
+  \item describe, \hyperpage{552}
+  \item design by contract, \hyperpage{103}
+  \item dispatch loop
+    \subitem stack VM, \hyperpage{586}
+  \item doc comments, \hyperpage{45}, \hyperpage{533}
+    \subitem module-level, \hyperpage{534}
+  \item doc generator, \hyperpage{529}
+  \item documentation generation, \hyperpage{535}
+  \item dotenv, \hyperpage{419}
+    \subitem load\_file, \hyperpage{645}
+    \subitem load\_opts, \hyperpage{645}
+    \subitem parsing rules, \hyperpage{646}
+  \item dotenv library, \hyperpage{644}
+  \item dual-heap architecture, \hyperpage{207}
+  \item DualHeap, \hyperpage{216}
+  \item \texttt{DualHeap}
+    \subitem per-thread, \hyperpage{350}
+
+  \indexspace
+
+  \item ECS, \hyperpage{276}
+  \item else, \hyperpage{67}
+  \item else if, \hyperpage{69}
+  \item \texttt{.ends\_with()}, \hyperpage{130}
+  \item ensure, \hyperpage{103, 104}
+  \item ensure contract, \hyperpage{176}
+  \item enum, \hyperpage{281}
+    \subitem construction, \hyperpage{283}
+    \subitem definition, \hyperpage{281}
+    \subitem exhaustiveness, \hyperpage{294}
+    \subitem generic, \hyperpage{322}
+    \subitem matching, \hyperpage{285}
+    \subitem Option pattern, \hyperpage{291}
+    \subitem pattern matching, \hyperpage{152}
+    \subitem payload, \hyperpage{284}
+    \subitem recursive, \hyperpage{296}
+    \subitem Result pattern, \hyperpage{291}
+    \subitem state machine, \hyperpage{289}
+    \subitem tag, \hyperpage{284}
+    \subitem unit variant, \hyperpage{153}
+    \subitem variant, \hyperpage{281}
+  \item enums
+    \subitem in REPL, \hyperpage{22}
+  \item env, \hyperpage{445}
+  \item env\_keys, \hyperpage{445}
+  \item env\_set, \hyperpage{445}
+  \item environment capture, \hyperpage{98}
+  \item environment variables, \hyperpage{644}
+  \item ephemeral allocation, \hyperpage{212}
+  \item eq (custom equality), \hyperpage{269}
+  \item \texttt{err()}, \hyperpage{167}
+  \item error handling, \hyperpage{165}
+  \item error map, \hyperpage{169}
+  \item error propagation, \hyperpage{171}
+  \item \texttt{error()}, \hyperpage{166}
+  \item escape sequences, \hyperpage{34}, \hyperpage{127, 128}
+  \item evaluator, \hyperpage{581}
+  \item examples, \hyperpage{8}
+  \item exception handling
+    \subitem stack VM, \hyperpage{587}
+  \item exec, \hyperpage{445}
+  \item execution backends, \hyperpage{581}
+  \item exhaustiveness checking, \hyperpage{154}
+    \subitem boolean, \hyperpage{156}
+    \subitem enum, \hyperpage{155}
+  \item export, \hyperpage{498}
+    \subitem enums, \hyperpage{499}
+    \subitem explicit, \hyperpage{498}
+    \subitem filtering, \hyperpage{499}
+    \subitem keyword, \hyperpage{498}
+    \subitem legacy mode, \hyperpage{498}
+    \subitem modes, \hyperpage{498}
+    \subitem re-exporting, \hyperpage{500}
+    \subitem structs, \hyperpage{499}
+  \item expression
+    \subitem if/else, \hyperpage{68}
+  \item extension
+    \subitem building, \hyperpage{612}
+    \subitem search paths, \hyperpage{618}
+    \subitem security, \hyperpage{618}
+    \subitem value accessors, \hyperpage{611}
+    \subitem value constructors, \hyperpage{611}
+  \item extension API, \hyperpage{609}
+  \item extensions, \hyperpage{609}
+    \subitem available, \hyperpage{615}
+
+  \indexspace
+
+  \item facade module, \hyperpage{505}
+  \item false, \hyperpage{33}
+  \item fan-out/fan-in, \hyperpage{345}
+  \item ffi extension, \hyperpage{615}
+  \item file I/O, \hyperpage{387}
+  \item file\_exists, \hyperpage{389}
+  \item file\_size, \hyperpage{389}, \hyperpage{392}
+  \item filesystem, \hyperpage{387}
+  \item \texttt{.filter()}, \hyperpage{112}
+  \item \texttt{.find()}, \hyperpage{115}
+  \item \texttt{findi} (example application), \hyperpage{649}
+  \item first-class functions, \hyperpage{90}
+  \item fix, \hyperpage{51}
+  \item \texttt{fix}, \hyperpage{188--189}
+  \item flags
+    \subitem CLI, \hyperpage{642}
+  \item flat installation, \hyperpage{523}
+  \item Float, \hyperpage{32}
+  \item floats, \hyperpage{32}
+  \item floor, \hyperpage{448}
+  \item fluid phase, \hyperpage{4}, \hyperpage{50}, \hyperpage{186}
+  \item FluidHeap, \hyperpage{207--209}
+  \item flux, \hyperpage{9}, \hyperpage{50}, \hyperpage{71}
+  \item \texttt{flux}, \hyperpage{186--188}
+  \item fn keyword, \hyperpage{89}
+  \item fn standard library, \hyperpage{468}, \hyperpage{481}
+    \subitem apply\_n, \hyperpage{481}
+    \subitem comp, \hyperpage{481}
+    \subitem constant, \hyperpage{481}
+    \subitem curry, \hyperpage{484}
+    \subitem flip, \hyperpage{481}
+    \subitem frequencies, \hyperpage{482, 483}
+    \subitem group\_by, \hyperpage{482}
+    \subitem partial, \hyperpage{485}
+    \subitem partition, \hyperpage{482}
+    \subitem Result type, \hyperpage{483}
+    \subitem sequences, \hyperpage{468}
+    \subitem thread, \hyperpage{482}
+    \subitem uniq\_by, \hyperpage{483}
+  \item for, \hyperpage{70}
+  \item for loop, \hyperpage{72}
+  \item forge, \hyperpage{12}, \hyperpage{60}
+  \item \texttt{forge}, \hyperpage{194--195}
+  \item \lstinline, \hyperindexformat{\format}{631}
+  \item formatter, \hyperpage{529}
+  \item freeze, \hyperpage{4}, \hyperpage{13}, \hyperpage{53}
+    \subitem deep, \hyperpage{54}
+  \item \texttt{freeze()}, \hyperpage{191--194}
+    \subitem memory mechanics, \hyperpage{214}
+    \subitem partial freeze, \hyperpage{225}
+    \subitem when to use, \hyperpage{197}
+  \item from, \hyperpage{497}
+  \item function
+    \subitem generic, \hyperpage{317}
+  \item function definition, \hyperpage{89}
+  \item function overloading
+    \subitem phase-dependent, \hyperpage{249--251}
+  \item function type, \hyperpage{325}
+  \item functional programming, \hyperpage{477}
+    \subitem best practices, \hyperpage{487}
+  \item functions, \hyperpage{89}
+    \subitem introduction, \hyperpage{8}
+
+  \indexspace
+
+  \item garbage collection
+    \subitem \texttt{--gc} flag, \hyperpage{217}
+    \subitem concurrent, \hyperpage{383}
+    \subitem flags, \hyperpage{217--219}
+    \subitem incremental mode, \hyperpage{218}
+    \subitem mark phase, \hyperpage{208}
+    \subitem mark-sweep, \hyperpage{207}
+    \subitem stress mode, \hyperpage{218}
+    \subitem sweep phase, \hyperpage{208}
+  \item gc-stress, \hyperpage{559}
+  \item gcd, \hyperpage{451}
+  \item generics, \hyperpage{317}
+    \subitem enums, \hyperpage{322}
+    \subitem functions, \hyperpage{317}
+    \subitem patterns, \hyperpage{326}
+    \subitem roadmap, \hyperpage{330}
+    \subitem structs, \hyperpage{319}
+  \item glob, \hyperpage{389}, \hyperpage{391}
+  \item \texttt{.group\_by()}, \hyperpage{114}
+  \item \texttt{grow()}, \hyperpage{235}
+  \item guard (match), \hyperpage{147}
+
+  \indexspace
+
+  \item Hello, World, \hyperpage{7}
+  \item help flag, \hyperpage{643}
+  \item higher-order functions, \hyperpage{100}
+  \item history(), \hyperpage{574}
+  \item hmac\_sha256, \hyperpage{441, 442}
+  \item hostname, \hyperpage{445}
+  \item HTML templating, \hyperpage{662}
+  \item HTTP, \hyperpage{421}
+  \item HTTP server, \hyperpage{657}
+  \item http\_get, \hyperpage{421}
+  \item http\_post, \hyperpage{421}
+  \item http\_request, \hyperpage{421}
+  \item http\_server, \hyperpage{428}
+    \subitem response helpers, \hyperpage{658}
+  \item http\_server library, \hyperpage{430}, \hyperpage{657}
+
+  \indexspace
+
+  \item identity(), \hyperpage{477}
+    \subitem usage, \hyperpage{480}
+  \item if expression, \hyperpage{67}
+  \item image extension, \hyperpage{617}
+  \item impl, \hyperpage{264}, \hyperpage{301}
+    \subitem block, \hyperpage{303}
+    \subitem multiple blocks, \hyperpage{305}
+  \item implicit return, \hyperpage{8}
+  \item import
+    \subitem aliased, \hyperpage{496}
+    \subitem avoiding collisions, \hyperpage{506}
+    \subitem bare, \hyperpage{497}
+    \subitem basic, \hyperpage{495}
+    \subitem caching, \hyperpage{503}
+    \subitem internals, \hyperpage{507}
+    \subitem relative paths, \hyperpage{502}
+    \subitem scoped, \hyperpage{506}
+    \subitem selective, \hyperpage{497}
+    \subitem styles, \hyperpage{496}
+  \item imports, \hyperpage{495}
+  \item \texttt{.index\_of()}, \hyperpage{133}
+  \item inline cache, \hyperpage{590}
+  \item installation, \hyperpage{5}
+    \subitem Linux, \hyperpage{6}
+    \subitem macOS, \hyperpage{5}
+    \subitem WebAssembly, \hyperpage{6}
+    \subitem Windows, \hyperpage{6}
+  \item instruction encoding
+    \subitem register VM, \hyperpage{588}
+  \item Int, \hyperpage{31}
+  \item integers, \hyperpage{31}
+  \item interface, \hyperpage{307}
+  \item \lstinline, \hyperindexformat{\is_complete}{625}
+  \item is\_dir, \hyperpage{389}
+  \item \texttt{is\_err()}, \hyperpage{167}
+  \item \texttt{is\_error()}, \hyperpage{166}
+  \item is\_file, \hyperpage{389}
+  \item is\_inf, \hyperpage{451}
+  \item is\_nan, \hyperpage{451}
+  \item \texttt{is\_ok()}, \hyperpage{167}
+  \item it, \hyperpage{552}
+  \item iter(), \hyperpage{459}
+    \subitem supported types, \hyperpage{460}
+  \item iter\_next(), \hyperpage{459}
+  \item iteration, \hyperpage{72}
+  \item Iterator type, \hyperpage{459}
+  \item iterators, \hyperpage{4}, \hyperpage{459}
+    \subitem all, \hyperpage{467}
+    \subitem any, \hyperpage{467}
+    \subitem async, \hyperpage{366}
+    \subitem chaining, \hyperpage{465}
+    \subitem collect, \hyperpage{466}
+    \subitem consumers, \hyperpage{466}
+    \subitem count, \hyperpage{467}
+    \subitem custom, \hyperpage{468}
+    \subitem enumerate, \hyperpage{464}
+    \subitem filter, \hyperpage{463}
+    \subitem fold, \hyperpage{466}
+    \subitem for loops, \hyperpage{460}
+    \subitem internals, \hyperpage{473}
+    \subitem map, \hyperpage{462}
+    \subitem performance, \hyperpage{472}
+    \subitem protocol, \hyperpage{459}
+    \subitem range, \hyperpage{461}
+    \subitem reduce, \hyperpage{466}
+    \subitem repeat, \hyperpage{462}
+    \subitem skip, \hyperpage{463}
+    \subitem sources, \hyperpage{461}
+    \subitem take, \hyperpage{463}
+    \subitem transformers, \hyperpage{462}
+    \subitem zip, \hyperpage{464}
+
+  \indexspace
+
+  \item joining semantics, \hyperpage{339}
+  \item JSON, \hyperpage{405}, \hyperpage{669}
+  \item json\_parse, \hyperpage{405}, \hyperpage{669}
+  \item json\_stringify, \hyperpage{405}, \hyperpage{669}
+
+  \indexspace
+
+  \item \texttt{.kebab\_case()}, \hyperpage{131}
+
+  \indexspace
+
+  \item lambda, \hyperpage{96}
+  \item \lstinline, \hyperindexformat{\lat_eval}{624}, 
+		\hyperindexformat{\lat_eval}{633}
+  \item lat\_ext\_init, \hyperpage{609}
+  \item lat\_ext\_register, \hyperpage{609}
+  \item lat\_modules, \hyperpage{502}, \hyperpage{511}, \hyperpage{514}
+    \subitem structure, \hyperpage{520}
+  \item LatExtValue, \hyperpage{611}
+  \item Lattice
+    \subitem design philosophy, \hyperpage{3}
+    \subitem introduction, \hyperpage{3}
+    \subitem unique features, \hyperpage{11}
+  \item lattice.lock, \hyperpage{514}, \hyperpage{517}
+    \subitem format, \hyperpage{517}
+    \subitem package entry, \hyperpage{518}
+  \item lattice.toml, \hyperpage{504}, \hyperpage{511, 512}
+    \subitem creating, \hyperpage{511}
+    \subitem dependencies, \hyperpage{513}
+    \subitem package section, \hyperpage{513}
+  \item lattice\_ext.h, \hyperpage{609}
+  \item LATTICE\_EXT\_PATH, \hyperpage{618}
+  \item LATTICE\_REGISTRY, \hyperpage{515}, \hyperpage{519}
+  \item lazy evaluation, \hyperpage{459}
+    \subitem benefits, \hyperpage{472}
+  \item lazy sequences, \hyperpage{468}
+  \item lcm, \hyperpage{451}
+  \item \texttt{.len()}, \hyperpage{133}
+  \item lerp, \hyperpage{448}
+  \item let, \hyperpage{49}
+  \item \texttt{let}, \hyperpage{189--191}
+  \item lexer
+    \subitem from Lattice code, \hyperpage{625}
+  \item lib/test.lat, \hyperpage{552}
+  \item libedit, \hyperpage{5}
+  \item line width, \hyperpage{531}
+  \item list\_dir, \hyperpage{389}
+  \item lock file, \hyperpage{517}
+  \item log, \hyperpage{448}
+    \subitem context, \hyperpage{649}
+    \subitem new, \hyperpage{648}
+  \item log levels, \hyperpage{647}
+  \item log library, \hyperpage{647}
+  \item logging, \hyperpage{647}
+  \item loop, \hyperpage{70}
+    \subitem infinite, \hyperpage{71}
+  \item loops, \hyperpage{70}
+
+  \indexspace
+
+  \item main.lat, \hyperpage{504}
+  \item Makefile
+    \subitem extension, \hyperpage{612}
+  \item manifest, \hyperpage{512}
+  \item Map, \hyperpage{117}
+    \subitem methods, \hyperpage{118}
+  \item \texttt{.map()}, \hyperpage{112}
+  \item maps, \hyperpage{117}
+  \item match
+    \subitem enum patterns, \hyperpage{285}
+    \subitem exhaustiveness, \hyperpage{294}
+  \item match expression, \hyperpage{141}
+    \subitem arm body, \hyperpage{142}
+    \subitem compilation, \hyperpage{160}
+    \subitem evaluation order, \hyperpage{143}
+    \subitem syntax, \hyperpage{142}
+  \item materials science, \hyperpage{59}
+  \item math module, \hyperpage{437}, \hyperpage{448}
+  \item max, \hyperpage{448}
+  \item md5, \hyperpage{441}
+  \item memory architecture, \hyperpage{207--221}
+  \item metaprogramming, \hyperpage{621--637}
+    \subitem best practices, \hyperpage{633}
+  \item middleware, \hyperpage{660}
+    \subitem signature, \hyperpage{661}
+  \item min, \hyperpage{448}
+  \item mkdir, \hyperpage{389}
+  \item module
+    \subitem definition, \hyperpage{498}
+  \item module caching, \hyperpage{503}
+  \item module resolution, \hyperpage{501}
+    \subitem built-in, \hyperpage{501}
+    \subitem lat\_modules, \hyperpage{502}
+    \subitem order, \hyperpage{501}
+    \subitem packages, \hyperpage{502}
+    \subitem relative, \hyperpage{502}
+  \item modules, \hyperpage{495}
+    \subitem built-in, \hyperpage{500}
+  \item multi-file projects, \hyperpage{504}
+  \item multi-line strings, \hyperpage{36}
+  \item multiline strings, \hyperpage{129}
+  \item mutability, \hyperpage{185}
+    \subitem as first-class concept, \hyperpage{52}
+
+  \indexspace
+
+  \item namespacing, \hyperpage{506}
+  \item native extensions, \hyperpage{609}
+  \item networking, \hyperpage{421}
+  \item Nil, \hyperpage{37}
+  \item nil, \hyperpage{24}, \hyperpage{37}
+  \item nil coalescing, \hyperpage{37}
+  \item nil-coalescing operator, \hyperpage{79}
+  \item number literals, \hyperpage{39}
+    \subitem hexadecimal, \hyperpage{40}
+    \subitem underscores, \hyperpage{39}
+
+  \indexspace
+
+  \item \texttt{ok()}, \hyperpage{167}
+  \item OP\_BUILD\_ENUM, \hyperpage{299}
+  \item OP\_CHECK\_RETURN\_TYPE, \hyperpage{92}
+  \item OP\_CHECK\_TYPE, \hyperpage{92}
+  \item OP\_FREEZE, \hyperpage{51}
+  \item OP\_IMPORT, \hyperpage{507}
+  \item OP\_MARK\_FLUID, \hyperpage{51}
+  \item \texttt{OP\_SCOPE}, \hyperpage{349}
+  \item \texttt{OP\_SELECT}, \hyperpage{368}
+  \item OP\_TRY\_UNWRAP, \hyperpage{171}
+  \item opcodes
+    \subitem stack VM, \hyperpage{584}
+  \item OpenSSL, \hyperpage{5}
+  \item operators, \hyperpage{40}
+    \subitem arithmetic, \hyperpage{40}
+    \subitem bitwise, \hyperpage{42}
+    \subitem comparison, \hyperpage{41}
+    \subitem compound assignment, \hyperpage{42}
+    \subitem logical, \hyperpage{41}
+    \subitem nil coalescing, \hyperpage{43}
+    \subitem optional chaining, \hyperpage{44}
+    \subitem range, \hyperpage{44}
+  \item Option, \hyperpage{291}
+  \item options
+    \subitem CLI, \hyperpage{642}
+  \item \texttt{ord()}, \hyperpage{134}
+  \item orm library, \hyperpage{667}
+  \item os module, \hyperpage{437}
+
+  \indexspace
+
+  \item package cache, \hyperpage{519}
+    \subitem global, \hyperpage{519}
+  \item package manager, \hyperpage{511}
+  \item \texttt{panic()}, \hyperpage{172}
+  \item parameter types, \hyperpage{91}
+  \item partial application, \hyperpage{484}
+  \item pass-by-value, \hyperpage{274}
+  \item path\_base, \hyperpage{393}
+  \item path\_dir, \hyperpage{393}
+  \item path\_ext, \hyperpage{393}
+  \item path\_join, \hyperpage{393}
+  \item pattern matching, \hyperpage{4}, \hyperpage{141}
+    \subitem array destructuring, \hyperpage{148}
+    \subitem binding pattern, \hyperpage{145}
+    \subitem enum, \hyperpage{285}
+    \subitem enum variant, \hyperpage{152}
+    \subitem exhaustiveness, \hyperpage{154}
+    \subitem first example, \hyperpage{12}
+    \subitem guard, \hyperpage{147}
+    \subitem idioms, \hyperpage{161}
+    \subitem literal pattern, \hyperpage{144}
+    \subitem phase qualifier, \hyperpage{157}
+    \subitem range pattern, \hyperpage{146}
+    \subitem rest pattern, \hyperpage{149}
+    \subitem struct destructuring, \hyperpage{151}
+    \subitem wildcard, \hyperpage{144}
+  \item patterns
+    \subitem accumulate then freeze, \hyperpage{61}
+    \subitem configuration objects, \hyperpage{61}
+    \subitem fluid working copy, \hyperpage{62}
+  \item performance
+    \subitem backends, \hyperpage{593}
+  \item persistent VM, \hyperpage{18}
+  \item pg extension, \hyperpage{616}
+  \item phase
+    \subitem definition, \hyperpage{186}
+    \subitem in patterns, \hyperpage{157}
+    \subitem sublimated, \hyperpage{343}
+  \item phase annotations, \hyperpage{245--247}
+  \item phase checker, \hyperpage{57}, \hyperpage{243}
+  \item phase constraints, \hyperpage{247--249}
+    \subitem definition, \hyperpage{249}
+  \item phase errors, \hyperpage{199--202}
+  \item phase inference, \hyperpage{189}
+  \item phase system, \hyperpage{3}, \hyperpage{49}, 
+		\hyperpage{185--205}
+    \subitem chemistry metaphor, \hyperpage{59}
+    \subitem concurrency, \hyperpage{59}
+    \subitem first example, \hyperpage{11}
+    \subitem overview, \hyperpage{4}
+    \subitem philosophy, \hyperpage{58}
+  \item phase-aware API design, \hyperpage{251}
+  \item \lstinline, \hyperindexformat{\phase_of}{621}, 
+		\hyperindexformat{\phase_of}{623}
+  \item \texttt{phase\_of()}, \hyperpage{202}
+  \item phase\_of(), \hyperpage{25}
+  \item PhaseConstraint, \hyperpage{247}
+  \item pid, \hyperpage{445}
+  \item pipe operator, \hyperpage{13}, \hyperpage{82}
+  \item pipe(), \hyperpage{477}
+    \subitem usage, \hyperpage{477}
+  \item \texttt{pipe()}, \hyperpage{82}
+  \item pipeline pattern, \hyperpage{363}
+  \item platform, \hyperpage{445}
+  \item polymorphic inline cache, \hyperpage{590}
+  \item polymorphism, \hyperpage{309}
+  \item \texttt{pop()}, \hyperpage{110}
+  \item positional arguments, \hyperpage{642}
+  \item pow, \hyperpage{448}
+  \item pre-compilation, \hyperpage{600}
+  \item pressure, \hyperpage{232--234}
+  \item \texttt{pressurize()}, \hyperpage{232--234}
+  \item producer-consumer, \hyperpage{355}
+  \item project structure, \hyperpage{504}
+  \item \texttt{push()}, \hyperpage{110}
+
+  \indexspace
+
+  \item query parameters, \hyperpage{660}
+
+  \indexspace
+
+  \item random, \hyperpage{448}
+  \item random\_bytes, \hyperpage{441}, \hyperpage{443}
+  \item random\_int, \hyperpage{448}
+  \item range
+    \subitem in patterns, \hyperpage{146}
+  \item range\_iter(), \hyperpage{461}
+  \item ranges, \hyperpage{77}
+  \item raw strings, \hyperpage{127}
+  \item \texttt{react()}, \hyperpage{228--230}
+  \item reactive bonds, \hyperpage{223--240}
+  \item reactive data flows, \hyperpage{237}
+  \item read\_file, \hyperpage{387}
+  \item read\_file\_bytes, \hyperpage{397}
+  \item realpath, \hyperpage{389}, \hyperpage{393}
+  \item recursion, \hyperpage{91}
+  \item \texttt{recv()}, \hyperpage{352}
+  \item redis extension, \hyperpage{616}
+  \item \texttt{.reduce()}, \hyperpage{112}
+  \item \texttt{Ref}, \hyperpage{371}
+    \subitem API, \hyperpage{371}
+    \subitem freezing, \hyperpage{372}
+    \subitem get, \hyperpage{371}
+    \subitem proxying, \hyperpage{372}
+    \subitem race conditions, \hyperpage{343}
+    \subitem set, \hyperpage{371}
+    \subitem vs channels, \hyperpage{373}
+    \subitem with spawns, \hyperpage{342}
+  \item \texttt{Ref::new()}, \hyperpage{371}
+  \item reflection, \hyperpage{621--637}
+  \item RegChunk, \hyperpage{591}
+  \item regex, \hyperpage{136}, \hyperpage{451}
+    \subitem flags, \hyperpage{138}
+  \item regex module, \hyperpage{437}
+  \item regex\_find\_all, \hyperpage{451}
+  \item \texttt{.regex\_find\_all()}, \hyperpage{137}
+  \item regex\_match, \hyperpage{451}
+  \item \texttt{.regex\_match()}, \hyperpage{136}
+  \item regex\_replace, \hyperpage{451}
+  \item \texttt{.regex\_replace()}, \hyperpage{137}
+  \item region collection, \hyperpage{211}
+  \item \texttt{region\_id}, \hyperpage{220}
+  \item RegionManager, \hyperpage{212}
+  \item register compiler, \hyperpage{590}
+  \item register VM, \hyperpage{588}
+  \item register windows, \hyperpage{589}
+  \item register-based bytecode, \hyperpage{588}
+  \item registry, \hyperpage{515}, \hyperpage{517}, \hyperpage{519}
+    \subitem default, \hyperpage{519}
+    \subitem HTTP, \hyperpage{519}
+    \subitem override, \hyperpage{519}
+  \item regular expressions, \hyperpage{136}
+  \item rename, \hyperpage{389}, \hyperpage{392}
+  \item repeat\_iter(), \hyperpage{462}
+  \item REPL, \hyperpage{17}
+    \subitem backends, \hyperpage{27}
+    \subitem debugging, \hyperpage{27}
+    \subitem defining enums, \hyperpage{21}
+    \subitem defining functions, \hyperpage{21}
+    \subitem defining structs, \hyperpage{21}
+    \subitem error recovery, \hyperpage{27}
+    \subitem exploring built-ins, \hyperpage{26}
+    \subitem history, \hyperpage{26}
+    \subitem incremental building, \hyperpage{25}
+    \subitem introduction, \hyperpage{9}
+    \subitem launching, \hyperpage{17}
+    \subitem multi-line input, \hyperpage{18}
+    \subitem output conventions, \hyperpage{22}
+    \subitem persistent state, \hyperpage{10}, \hyperpage{18}
+    \subitem tab completion, \hyperpage{19}
+    \subitem tips and tricks, \hyperpage{24}
+  \item \texttt{.replace()}, \hyperpage{130}
+  \item repr, \hyperpage{23}
+  \item \lstinline, \hyperindexformat{\repr}{621}
+  \item reproducible builds, \hyperpage{517}
+  \item request Map, \hyperpage{658}
+  \item request-reply pattern, \hyperpage{378}
+  \item require, \hyperpage{103}
+  \item require contract, \hyperpage{176}
+  \item Result, \hyperpage{291}
+  \item Result type, \hyperpage{167}
+  \item Result type (fn module), \hyperpage{483}
+  \item return, \hyperpage{74}
+  \item return types, \hyperpage{91}
+  \item rewind(), \hyperpage{574, 575}
+  \item rmdir, \hyperpage{389}
+  \item round, \hyperpage{448}
+  \item round-tripping, \hyperpage{415}
+  \item routing
+    \subitem HTTP, \hyperpage{657}
+    \subitem route registration, \hyperpage{659}
+
+  \indexspace
+
+  \item scope, \hyperpage{13}
+  \item \texttt{scope}, \hyperpage{335}
+    \subitem as expression, \hyperpage{336}
+    \subitem basic usage, \hyperpage{335}
+    \subitem implementation, \hyperpage{349}
+    \subitem in loops, \hyperpage{340}
+    \subitem nesting, \hyperpage{340}
+  \item \texttt{seed()}, \hyperpage{234}
+    \subitem definition, \hyperpage{235}
+  \item \texttt{select}, \hyperpage{357}
+    \subitem default arm, \hyperpage{360}
+    \subitem definition, \hyperpage{358}
+    \subitem fairness, \hyperpage{358}
+    \subitem implementation, \hyperpage{368}
+    \subitem timeout arm, \hyperpage{360}
+  \item self-hosted compiler, \hyperpage{602}
+  \item self-hosting, \hyperpage{605}
+  \item semantic versioning, \hyperpage{515}
+  \item semver, \hyperpage{515}
+    \subitem caret, \hyperpage{516}
+    \subitem constraints, \hyperpage{516}
+    \subitem definition, \hyperpage{516}
+    \subitem tilde, \hyperpage{516}
+  \item \texttt{send()}, \hyperpage{352}
+  \item Set, \hyperpage{120}
+    \subitem difference, \hyperpage{121}
+    \subitem intersection, \hyperpage{121}
+    \subitem is\_subset, \hyperpage{121}
+    \subitem is\_superset, \hyperpage{121}
+    \subitem union, \hyperpage{121}
+  \item sets, \hyperpage{120}
+  \item sha256, \hyperpage{441}
+  \item sha512, \hyperpage{441}
+  \item shell, \hyperpage{445}
+  \item short-circuit evaluation, \hyperpage{41}, \hyperpage{80}
+  \item sign, \hyperpage{451}
+  \item sin, \hyperpage{448}
+  \item sleep, \hyperpage{437}
+  \item slicing, \hyperpage{78}
+  \item \texttt{.snake\_case()}, \hyperpage{131}
+  \item \texttt{.sort\_by()}, \hyperpage{114}
+  \item spawn, \hyperpage{13}
+  \item \texttt{spawn}, \hyperpage{335}
+    \subitem data sharing, \hyperpage{341}
+    \subitem error handling, \hyperpage{339}
+  \item \texttt{.split()}, \hyperpage{129}
+  \item spread operator, \hyperpage{116}
+  \item SQLite, \hyperpage{667}
+  \item sqlite extension, \hyperpage{615}
+  \item sqrt, \hyperpage{448}
+  \item stack compiler, \hyperpage{583}
+  \item stack VM, \hyperpage{583}
+  \item standard library
+    \subitem fn, \hyperpage{481}
+  \item standard library modules, \hyperpage{500}
+  \item \texttt{.starts\_with()}, \hyperpage{130}
+  \item stat, \hyperpage{389}, \hyperpage{392}
+  \item state machine, \hyperpage{289}
+  \item static phase checking, \hyperpage{241--256}
+  \item step-into, \hyperpage{567}
+  \item step-out, \hyperpage{567}
+  \item step-over, \hyperpage{567}
+  \item stepping, \hyperpage{567}
+  \item STMT\_IMPORT, \hyperpage{507}
+  \item strict mode, \hyperpage{55}, \hyperpage{241--256}
+    \subitem consume on freeze, \hyperpage{56}
+    \subitem enabling, \hyperpage{241}
+    \subitem introduction, \hyperpage{14}
+    \subitem no let, \hyperpage{56}
+    \subitem rules, \hyperpage{56}
+    \subitem spawn checking, \hyperpage{244}
+    \subitem static checking, \hyperpage{56}
+  \item String, \hyperpage{33}
+    \subitem case conversion, \hyperpage{131}
+    \subitem methods, \hyperpage{129}
+  \item string concatenation, \hyperpage{40}
+  \item string formatting, \hyperpage{631}
+  \item string interning, \hyperpage{215--216}
+  \item string interpolation, \hyperpage{4}, \hyperpage{8}, 
+		\hyperpage{34}, \hyperpage{127}
+    \subitem disabling, \hyperpage{35}
+    \subitem first example, \hyperpage{14}
+  \item strings, \hyperpage{33}, \hyperpage{127}
+    \subitem double-quoted, \hyperpage{34}
+    \subitem methods, \hyperpage{36}
+    \subitem single-quoted, \hyperpage{35}
+    \subitem triple-quoted, \hyperpage{36}
+  \item struct, \hyperpage{259}
+    \subitem callable fields, \hyperpage{266}
+    \subitem definition, \hyperpage{259}
+    \subitem destructuring, \hyperpage{151}, \hyperpage{273}
+    \subitem equality, \hyperpage{269}
+    \subitem field access, \hyperpage{261}
+    \subitem generic, \hyperpage{319}
+    \subitem methods, \hyperpage{264}
+    \subitem mutation, \hyperpage{261}
+    \subitem pass-by-value, \hyperpage{274}
+    \subitem reflection, \hyperpage{271}
+  \item struct reflection, \hyperpage{627--631}
+  \item struct\_fields, \hyperpage{271}
+  \item \lstinline, \hyperindexformat{\struct_fields}{627}
+  \item struct\_from\_map, \hyperpage{271}
+  \item \lstinline, \hyperindexformat{\struct_from_map}{627}, 
+		\hyperindexformat{\struct_from_map}{629}
+  \item struct\_name, \hyperpage{271}
+  \item \lstinline, \hyperindexformat{\struct_name}{627}
+  \item struct\_to\_map, \hyperpage{271}
+  \item \lstinline, \hyperindexformat{\struct_to_map}{627, 628}
+  \item structs
+    \subitem in REPL, \hyperpage{21}
+  \item structured concurrency, \hyperpage{335}
+    \subitem definition, \hyperpage{336}
+    \subitem joining, \hyperpage{339}
+    \subitem motivation, \hyperpage{337}
+  \item structured logging, \hyperpage{647}
+  \item \texttt{sublimate}, \hyperpage{196--197}, \hyperpage{343}
+    \subitem definition, \hyperpage{343}
+  \item sublimated phase, \hyperpage{196}, \hyperpage{343}
+  \item \texttt{.substring()}, \hyperpage{133}
+
+  \indexspace
+
+  \item tab completion, \hyperpage{19}
+    \subitem constructors, \hyperpage{20}
+    \subitem keywords, \hyperpage{19}
+    \subitem method mode, \hyperpage{20}
+    \subitem methods, \hyperpage{20}
+  \item tan, \hyperpage{448}
+  \item TCP, \hyperpage{421}
+  \item tcp\_accept, \hyperpage{424}
+  \item tcp\_close, \hyperpage{424}
+  \item tcp\_connect, \hyperpage{424}
+  \item tcp\_listen, \hyperpage{424}
+  \item tcp\_peer\_addr, \hyperpage{424}
+  \item tcp\_read, \hyperpage{424}
+  \item tcp\_set\_timeout, \hyperpage{424}
+  \item tcp\_write, \hyperpage{424}
+  \item tempdir, \hyperpage{395}
+  \item tempfile, \hyperpage{395}
+  \item template
+    \subitem conditionals, \hyperpage{664}
+    \subitem filters, \hyperpage{663}
+    \subitem includes, \hyperpage{666}
+    \subitem inheritance, \hyperpage{666}
+    \subitem loops, \hyperpage{665}
+    \subitem variables, \hyperpage{662}
+  \item template library, \hyperpage{662}
+  \item test blocks, \hyperpage{543}
+    \subitem syntax, \hyperpage{543}
+  \item test standard library, \hyperpage{552}
+  \item testing, \hyperpage{543}
+    \subitem concurrent code, \hyperpage{379}
+    \subitem GC stress, \hyperpage{559}
+  \item testing strategies, \hyperpage{555}
+  \item thaw, \hyperpage{4}, \hyperpage{53}
+    \subitem creates copy, \hyperpage{54}
+  \item \texttt{thaw()}, \hyperpage{191--194}
+  \item time, \hyperpage{437}
+  \item time module, \hyperpage{437}
+  \item time travel debugging, \hyperpage{574}
+  \item time\_add, \hyperpage{440}
+  \item time\_day, \hyperpage{439}
+  \item time\_format, \hyperpage{437}
+  \item time\_hour, \hyperpage{439}
+  \item time\_minute, \hyperpage{439}
+  \item time\_month, \hyperpage{439}
+  \item time\_parse, \hyperpage{437}
+  \item time\_second, \hyperpage{439}
+  \item time\_weekday, \hyperpage{439}
+  \item time\_year, \hyperpage{439}
+  \item \texttt{timeout}
+    \subitem in select, \hyperpage{361}
+  \item timezone\_offset, \hyperpage{440}
+  \item \texttt{.title\_case()}, \hyperpage{131}
+  \item TLS, \hyperpage{421}
+  \item tls\_available, \hyperpage{427}
+  \item tls\_close, \hyperpage{427}
+  \item tls\_connect, \hyperpage{427}
+  \item tls\_read, \hyperpage{427}
+  \item tls\_write, \hyperpage{427}
+  \item \lstinline, \hyperindexformat{\to_string}{621}
+  \item \lstinline, \hyperindexformat{\tokenize}{625}
+  \item TOML, \hyperpage{405}, \hyperpage{512}
+  \item toml\_parse, \hyperpage{408}
+  \item toml\_stringify, \hyperpage{408}
+  \item track(), \hyperpage{574}
+  \item trait, \hyperpage{301}
+    \subitem declaration, \hyperpage{301}
+    \subitem design patterns, \hyperpage{307}
+    \subitem implementation, \hyperpage{303}
+    \subitem internals, \hyperpage{313}
+    \subitem polymorphism, \hyperpage{309}
+  \item tree-walk interpreter, \hyperpage{581}
+  \item \texttt{.trim()}, \hyperpage{129}
+  \item triple-quoted strings, \hyperpage{129}
+  \item triple-slash comments, \hyperpage{533}
+  \item true, \hyperpage{33}
+  \item truthiness, \hyperpage{33}
+  \item try/catch, \hyperpage{168}
+    \subitem as expression, \hyperpage{169}
+    \subitem catchable errors, \hyperpage{170}
+  \item \texttt{try\_fn()}, \hyperpage{179}
+  \item Tuple, \hyperpage{122}
+  \item tuples, \hyperpage{122}
+  \item type annotation, \hyperpage{324}
+  \item type annotations, \hyperpage{8}, \hyperpage{91}
+  \item type expression, \hyperpage{324}
+  \item \lstinline, \hyperindexformat{\typeof}{621, 622}
+  \item typeof(), \hyperpage{24}, \hyperpage{38}
+  \item types, \hyperpage{31}
+
+  \indexspace
+
+  \item Unicode, \hyperpage{134}
+  \item Unit, \hyperpage{38}
+  \item unit, \hyperpage{23, 24}, \hyperpage{38}
+  \item unphased, \hyperpage{190}
+  \item \texttt{unwrap()}, \hyperpage{167}
+  \item \texttt{unwrap\_or()}, \hyperpage{167}
+  \item upvalues, \hyperpage{98}, \hyperpage{587}
+  \item url\_decode, \hyperpage{434}
+  \item url\_encode, \hyperpage{434}
+  \item uuid, \hyperpage{444}
+
+  \indexspace
+
+  \item value history, \hyperpage{574}
+  \item value stack, \hyperpage{585}
+  \item values, \hyperpage{31}
+  \item variables, \hyperpage{49}
+  \item variadic
+    \subitem parameters, \hyperpage{94}
+  \item variadic parameters, \hyperpage{93}
+  \item version constraints, \hyperpage{516}
+  \item version(), \hyperpage{26}
+  \item VS Code, \hyperpage{571}
+
+  \indexspace
+
+  \item watch expressions, \hyperpage{569}
+  \item web application
+    \subitem complete example, \hyperpage{671}
+  \item web server, \hyperpage{428}
+  \item web service, \hyperpage{657}
+  \item WebAssembly, \hyperpage{6}
+  \item websocket extension, \hyperpage{617}
+  \item while, \hyperpage{70}
+  \item worker pool, \hyperpage{376}
+  \item write\_file, \hyperpage{387}
+  \item write\_file\_bytes, \hyperpage{397}
+
+  \indexspace
+
+  \item YAML, \hyperpage{405}
+  \item yaml\_parse, \hyperpage{410}
+  \item yaml\_stringify, \hyperpage{410}
+
+\end{theindex}

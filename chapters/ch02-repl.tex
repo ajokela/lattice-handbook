@@ -1,0 +1,635 @@
+\chapter{The REPL Is Your Laboratory}\label{ch:repl}
+
+\index{REPL}
+
+A chemistry lab doesn't start with a production facility.
+It starts with a bench, some glassware, and the freedom to mix things and see what happens.
+The Lattice REPL is that bench.
+
+The REPL---\textbf{R}ead, \textbf{E}valuate, \textbf{P}rint, \textbf{L}oop---is where you'll spend much of your time when learning Lattice.
+It's where you test a hypothesis about how a function works, where you prototype a data structure before committing it to a file, and where you debug a tricky expression by poking at it from different angles.
+In this chapter, we'll learn how to use the REPL effectively and discover the features that make it more than a toy calculator.
+
+%% ───────────────────────────────────────────────────────────
+\section{Launching the REPL}\label{sec:launching-repl}
+\index{REPL!launching}
+
+Start the REPL by running \texttt{clat} with no arguments:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat
+\end{lstlisting}
+
+You'll see the welcome banner:
+
+\begin{lstlisting}[numbers=none]
+Lattice v0.3.28 -- crystallization-based programming language
+Copyright (c) 2026 Alex Jokela. BSD 3-Clause License.
+Type expressions to evaluate. Ctrl-D to exit.
+\end{lstlisting}
+
+The \lstinline|lattice>| prompt awaits your input.
+Type an expression and press Enter:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> 6 * 7
+=> 42
+\end{lstlisting}
+
+To exit, press \texttt{Ctrl-D} (which sends an EOF signal) or close the terminal.
+
+\subsection{Persistent State Across Lines}\label{subsec:persistent-state}
+\index{REPL!persistent state}
+
+The REPL is not a series of disconnected calculations.
+Every variable, function, struct, and enum you define persists for the rest of the session.
+Think of it as a single, growing program that you write one line at a time:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let city = "Portland"
+lattice> let state = "Oregon"
+lattice> print("${city}, ${state}")
+Portland, Oregon
+lattice> let population = 652_503
+lattice> population
+=> 652503
+\end{lstlisting}
+
+The variable \lstinline|city| defined on line one is still available on line three.
+The variable \lstinline|population| defined on line four is available for the rest of the session.
+
+This is possible because the REPL maintains a single, long-lived virtual machine instance.
+Under the hood (in \filename{src/main.c}), each line you type is compiled to bytecode and executed on the same \lstinline|StackVM|---globals, functions, and type definitions are preserved between compilations.
+
+\begin{defnbox}{REPL Persistence}
+The REPL uses a \emph{persistent VM}\index{persistent VM}: a single \lstinline|StackVM| instance that survives across lines.
+Variables stored as globals, function definitions, struct declarations, and enum types all remain accessible until you exit.
+This is what allows you to build programs interactively, one piece at a time.
+\end{defnbox}
+
+\subsection{Multi-line Input}\label{subsec:multi-line}
+\index{REPL!multi-line input}
+
+What happens when you type an incomplete expression---like opening a brace without closing it?
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> fn add(a: Int, b: Int) -> Int {
+    ...>     a + b
+    ...> }
+lattice> add(3, 4)
+=> 7
+\end{lstlisting}
+
+The REPL detects that the input is incomplete by checking whether brackets, braces, and parentheses are balanced.
+When they are not, the prompt changes to \lstinline|    ...>| and waits for more input.
+The accumulated text is only compiled and executed once the delimiters are balanced.
+
+This works for any kind of nesting: function bodies, \lstinline|if|/\lstinline|else| blocks, \lstinline|match| expressions, struct definitions, and more.
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let message = if true {
+    ...>     "yes"
+    ...> } else {
+    ...>     "no"
+    ...> }
+lattice> message
+=> "yes"
+\end{lstlisting}
+
+\begin{tipbox}{Escaping a Multi-line Mistake}
+If you start typing a multi-line expression and realize you've made a mistake, press \texttt{Ctrl-C} to cancel the current input and return to a fresh \lstinline|lattice>| prompt.
+Alternatively, close all open delimiters to force evaluation (which will likely produce an error, but clears the buffer).
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Tab Completion and Discoverability}\label{sec:tab-completion}
+\index{tab completion}\index{REPL!tab completion}
+
+The Lattice REPL supports tab completion powered by libedit (or readline, depending on your system).
+Press \texttt{Tab} and the REPL will suggest completions based on what you've typed so far.
+
+\subsection{Keyword and Built-in Completion}\label{subsec:keyword-completion}
+\index{tab completion!keywords}
+
+Start typing a keyword or built-in function name and press \texttt{Tab}:
+
+\begin{lstlisting}[numbers=none]
+lattice> fr<Tab>
+freeze
+\end{lstlisting}
+
+If there are multiple matches, pressing \texttt{Tab} twice shows all options:
+
+\begin{lstlisting}[numbers=none]
+lattice> to<Tab><Tab>
+to_string  to_int  to_float  toml_parse  toml_stringify
+\end{lstlisting}
+
+The completion engine knows about all of Lattice's keywords (\lstinline|fn|, \lstinline|let|, \lstinline|flux|, \lstinline|fix|, \lstinline|match|, \lstinline|struct|, \lstinline|enum|, \lstinline|trait|, \lstinline|impl|, and more) and over 120 built-in functions.
+This makes the REPL a discovery tool: if you vaguely remember that there's a function related to files, type \lstinline|file| and press \texttt{Tab}:
+
+\begin{lstlisting}[numbers=none]
+lattice> file<Tab><Tab>
+file_exists  file_size
+\end{lstlisting}
+
+\subsection{Method Completion After a Dot}\label{subsec:method-completion}
+\index{tab completion!methods}
+
+The completion engine is context-aware.
+When the cursor follows a dot (\lstinline|.|), it switches to \emph{method mode}\index{tab completion!method mode} and suggests method names instead of global keywords:
+
+\begin{lstlisting}[numbers=none]
+lattice> "hello".to<Tab><Tab>
+to_upper  to_lower
+\end{lstlisting}
+
+\begin{lstlisting}[numbers=none]
+lattice> [1, 2, 3].fi<Tab><Tab>
+filter  find  first  flat  flat_map  fill
+\end{lstlisting}
+
+The completion source for methods includes array, string, map, set, channel, buffer, and enum methods---all drawn from the same list defined in \filename{src/completion.c}.
+
+\subsection{Constructor Completion After ::}\label{subsec:constructor-completion}
+\index{tab completion!constructors}
+
+Type a type name followed by \lstinline|::| and press \texttt{Tab} to see available constructors\index{constructors}:
+
+\begin{lstlisting}[numbers=none]
+lattice> Map::<Tab><Tab>
+new
+lattice> Set::<Tab><Tab>
+new  from
+lattice> Channel::<Tab><Tab>
+new
+\end{lstlisting}
+
+This triple context---global, method, and constructor---means the REPL's tab completion adapts to where you are in an expression.
+
+\begin{notebox}{How Completion Works Internally}
+The tab completion system is implemented in \filename{src/completion.c}.
+It registers a custom \lstinline|rl_attempted_completion_function| with the readline library.
+When you press \texttt{Tab}, this function inspects the character immediately before the cursor:
+\begin{itemize}
+  \item If it's a dot (\lstinline|.|), completion mode switches to \texttt{COMPLETE\_METHOD}.
+  \item If it's \lstinline|::|, completion mode switches to \texttt{COMPLETE\_SCOPE}.
+  \item Otherwise, it uses \texttt{COMPLETE\_GLOBAL}, which walks through keywords, built-in functions, and constructors.
+\end{itemize}
+Filename completion is explicitly disabled---the REPL suggests Lattice symbols, not files.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Defining Functions, Structs, and Enums Interactively}\label{sec:defining-interactively}
+\index{REPL!defining functions}\index{REPL!defining structs}\index{REPL!defining enums}
+
+The REPL is not limited to one-liners.
+You can define complex types and build up a small program incrementally.
+
+\subsection{Functions}\label{subsec:repl-functions}
+
+Define a function and call it immediately:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> fn celsius_to_fahrenheit(c: Float) -> Float {
+    ...>     c * 9.0 / 5.0 + 32.0
+    ...> }
+lattice> celsius_to_fahrenheit(100.0)
+=> 212.0
+lattice> celsius_to_fahrenheit(0.0)
+=> 32.0
+\end{lstlisting}
+
+The function persists.
+You can call it again later, pass it to higher-order functions, or use it inside other definitions:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let temps_c = [0.0, 20.0, 37.0, 100.0]
+lattice> temps_c.map(|c| celsius_to_fahrenheit(c))
+=> [32.0, 68.0, 98.6, 212.0]
+\end{lstlisting}
+
+\subsection{Structs}\label{subsec:repl-structs}
+\index{structs!in REPL}
+
+Define a struct, create instances, and call their methods:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> struct Point {
+    ...>     x: Float,
+    ...>     y: Float
+    ...> }
+lattice> let origin = Point { x: 0.0, y: 0.0 }
+lattice> let target = Point { x: 3.0, y: 4.0 }
+lattice> target.x
+=> 3.0
+\end{lstlisting}
+
+Add a trait and implement it:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> trait Measurable {
+    ...>     fn distance(self: Any) -> Float
+    ...> }
+lattice> impl Measurable for Point {
+    ...>     fn distance(self: Any) -> Float {
+    ...>         sqrt(self.x * self.x + self.y * self.y)
+    ...>     }
+    ...> }
+lattice> target.distance()
+=> 5.0
+\end{lstlisting}
+
+\subsection{Enums}\label{subsec:repl-enums}
+\index{enums!in REPL}
+
+Enums work the same way:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> enum Direction {
+    ...>     North,
+    ...>     South,
+    ...>     East,
+    ...>     West
+    ...> }
+lattice> let heading = Direction::North
+lattice> heading.variant_name()
+=> "North"
+lattice> heading.is_variant("North")
+=> true
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> enum Shape {
+    ...>     Circle(Float),
+    ...>     Rectangle(Float, Float)
+    ...> }
+lattice> let s = Shape::Rectangle(4.0, 5.0)
+lattice> s.payload()
+=> [4.0, 5.0]
+\end{lstlisting}
+
+The ability to define, test, and iterate on types interactively is one of the REPL's great strengths.
+You can experiment with a struct's field layout or an enum's variants before committing them to a source file.
+
+%% ───────────────────────────────────────────────────────────
+\section{The \texttt{=>} Prefix: How the REPL Talks Back}\label{sec:repl-output}
+\index{=> prefix (REPL)}\index{REPL!output conventions}
+
+You've already seen the \lstinline|=>| prefix in front of REPL results.
+Let's understand exactly when it appears and what it means.
+
+\subsection{The Display Rule}\label{subsec:display-rule}
+
+The REPL follows a clear rule: \textbf{if the last expression in your input produces a value that is not \lstinline|unit| and not \lstinline|nil|, it is displayed with the \lstinline|=>| prefix.}
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> 42
+=> 42
+lattice> "hello"
+=> "hello"
+lattice> [1, 2, 3]
+=> [1, 2, 3]
+lattice> true
+=> true
+\end{lstlisting}
+
+Statements that produce \lstinline|unit|\index{unit} are silently suppressed:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let x = 5
+lattice> flux counter = 0
+lattice> counter += 1
+lattice>
+\end{lstlisting}
+
+No \lstinline|=>| output.
+Variable declarations and assignments return \lstinline|unit|, so there is nothing to display.
+
+The \lstinline|print()| function writes directly to standard output---it does \emph{not} produce a REPL result:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> print("hello")
+hello
+lattice>
+\end{lstlisting}
+
+Notice: \lstinline|hello| appears without the \lstinline|=>| prefix.
+That's \lstinline|print()| writing to stdout.
+The \lstinline|print()| function itself returns \lstinline|unit|, so the REPL suppresses its return value.
+
+\subsection{The \texttt{repr} Format}\label{subsec:repr-format}
+\index{repr}
+
+The REPL uses the \lstinline|repr|\index{repr} format for display, not \lstinline|to_string|.
+The difference matters for strings:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> "hello world"
+=> "hello world"
+\end{lstlisting}
+
+The quotes are part of the display---they tell you this value is a string.
+If you \lstinline|print()| the same value, the quotes are absent:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> print("hello world")
+hello world
+\end{lstlisting}
+
+This distinction between \lstinline|repr| (for programmers, with type information) and \lstinline|print| (for users, raw output) is consistent throughout Lattice.
+Structs that define a custom \lstinline|repr| closure field will use it for REPL display.
+
+\subsection{Distinguishing \texttt{print} from \texttt{=>}}\label{subsec:print-vs-arrow}
+
+Here is a common source of confusion for newcomers.
+What does this produce?
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> print(2 + 2)
+4
+lattice>
+\end{lstlisting}
+
+The \lstinline|4| is from \lstinline|print()|.
+The REPL has no \lstinline|=>| line because \lstinline|print()| returns \lstinline|unit|.
+Compare with:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> 2 + 2
+=> 4
+\end{lstlisting}
+
+Here the \lstinline|4| is the REPL displaying the expression result.
+Understanding this distinction helps you debug REPL sessions: if you see \lstinline|=>|, it's the value of the expression.
+If you don't, it's side-effect output (like \lstinline|print()|).
+
+\begin{defnbox}{Unit and Nil}
+\lstinline|unit|\index{unit} is the return type of statements and functions with no meaningful return value---like variable assignments or \lstinline|print()|.
+\lstinline|nil|\index{nil} is an explicit null value that means ``no value here.''
+Both are suppressed in REPL output, but they are different types:
+\lstinline|typeof(nil)| returns \lstinline|"Nil"| and \lstinline|typeof(unit)| returns \lstinline|"Unit"|.
+We will cover both in \cref{ch:values-types}.
+\end{defnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Tips and Tricks for Exploratory Programming}\label{sec:repl-tips}
+\index{REPL!tips and tricks}
+
+The REPL is more than an input box.
+Here are techniques that will make your interactive sessions more productive.
+
+\subsection{Use \texttt{typeof()} to Inspect Values}\label{subsec:typeof-repl}
+\index{typeof()}
+
+When you're not sure what type a value has, ask:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> typeof(42)
+=> "Int"
+lattice> typeof(3.14)
+=> "Float"
+lattice> typeof("hello")
+=> "String"
+lattice> typeof([1, 2, 3])
+=> "Array"
+lattice> typeof(Map::new())
+=> "Map"
+lattice> typeof(nil)
+=> "Nil"
+lattice> typeof(true)
+=> "Bool"
+\end{lstlisting}
+
+This is especially useful when a function returns an unexpected result and you want to know what you're working with.
+
+\subsection{Use \texttt{phase\_of()} to Inspect Phase}\label{subsec:phaseof-repl}
+\index{phase\_of()}
+
+Check whether a value is fluid or crystal:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> flux items = [1, 2, 3]
+lattice> phase_of(items)
+=> "fluid"
+lattice> freeze(items)
+lattice> phase_of(items)
+=> "crystal"
+\end{lstlisting}
+
+\subsection{Build Data Structures Incrementally}\label{subsec:incremental-building}
+\index{REPL!incremental building}
+
+The REPL is perfect for building up complex data one step at a time:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> flux inventory = Map::new()
+lattice> inventory["apples"] = 12
+lattice> inventory["bananas"] = 6
+lattice> inventory["oranges"] = 8
+lattice> inventory
+=> {"apples": 12, "bananas": 6, "oranges": 8}
+lattice> inventory.keys()
+=> ["apples", "bananas", "oranges"]
+lattice> inventory.values().sum()
+=> 26
+\end{lstlisting}
+
+You can see the state of your data at each step, catch mistakes early, and iterate quickly.
+
+\subsection{Test Functions with Edge Cases}\label{subsec:edge-cases}
+
+Once you've defined a function, throw edge cases at it:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> fn safe_divide(a: Float, b: Float) -> Float {
+    ...>     if b == 0.0 { return 0.0 }
+    ...>     a / b
+    ...> }
+lattice> safe_divide(10.0, 3.0)
+=> 3.3333333333333335
+lattice> safe_divide(10.0, 0.0)
+=> 0.0
+lattice> safe_divide(-7.5, 2.5)
+=> -3.0
+\end{lstlisting}
+
+The REPL gives you a tight feedback loop for testing behavior before writing formal tests.
+
+\subsection{Use History to Save Typing}\label{subsec:history}
+\index{REPL!history}
+
+The REPL supports command history via the readline library.
+Press the \textbf{Up} and \textbf{Down} arrow keys to navigate through previous inputs.
+This is handled by libedit/readline and works the same as in bash or Python's interactive interpreter.
+
+Non-empty lines are automatically added to the history buffer, so you can recall and modify earlier definitions without retyping them.
+
+\subsection{Explore the Standard Library}\label{subsec:explore-stdlib}
+\index{REPL!exploring built-ins}
+
+The REPL is the fastest way to explore Lattice's built-in functions.
+Wondering what \lstinline|version()|\index{version()} returns?
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> version()
+=> "0.3.28"
+\end{lstlisting}
+
+Curious about the current platform?
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> platform()
+=> "macos"
+\end{lstlisting}
+
+Want to see what time it is?
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> time()
+=> 1740000000000
+lattice> time_format(time(), "%Y-%m-%d %H:%M:%S")
+=> "2025-02-19 16:00:00"
+\end{lstlisting}
+
+Need to know your working directory?
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> cwd()
+=> "/Users/alex/projects/lattice"
+\end{lstlisting}
+
+Every built-in function is available in the REPL, and tab completion helps you find them.
+
+\subsection{Error Recovery}\label{subsec:error-recovery}
+\index{REPL!error recovery}
+
+When you make a mistake, the REPL prints an error and keeps going.
+Your session is not lost:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let x = 42
+lattice> x.push(3)
+error: push() requires an array, got Int
+lattice> x
+=> 42
+\end{lstlisting}
+
+The error did not corrupt the REPL state.
+\lstinline|x| is still \lstinline|42|.
+You can fix your mistake and try again.
+
+This resilience comes from the REPL's error handling code in \filename{src/main.c}: when execution fails, the VM resets its stack and handler state, but globals and definitions are preserved.
+
+\subsection{The Debugging REPL}\label{subsec:debug-repl}
+\index{REPL!debugging}\index{breakpoint()}
+
+For an even more powerful interactive experience, you can embed \lstinline|breakpoint()|\index{breakpoint()} calls in your source files.
+When the interpreter hits a breakpoint, it drops into an interactive REPL where you can inspect local variables, evaluate expressions in the current scope, and examine the call stack.
+
+\begin{lstlisting}[language=Lattice, caption={Using breakpoint() for in-context debugging}]
+fn process_order(items: [String], total: Float) {
+    let discount = if total > 100.0 { 0.1 } else { 0.0 }
+    let final_price = total * (1.0 - discount)
+    breakpoint()  // drops into REPL here
+    print("Final price: ${to_string(final_price)}")
+}
+
+process_order(["widget", "gadget"], 150.0)
+\end{lstlisting}
+
+When the breakpoint is hit, you'll have access to \lstinline|items|, \lstinline|total|, \lstinline|discount|, and \lstinline|final_price| right there in the REPL\@.
+We'll cover the full debugger in Chapter~32 (\emph{Debugging}).
+
+\subsection{Alternative REPL Backends}\label{subsec:alt-repls}
+\index{REPL!backends}
+
+By default, the REPL runs on the stack-based bytecode VM\@.
+You can switch to the other backends:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat --tree-walk    # tree-walking interpreter
+./clat --regvm        # register-based VM
+\end{lstlisting}
+
+The tree-walking REPL can be useful if you encounter a bytecode compiler bug and need a fallback.
+The register VM REPL is more experimental.
+In normal use, the default bytecode VM REPL is the right choice.
+
+\begin{warnbox}{The Self-Hosted REPL}
+Lattice also includes a self-hosted REPL written in Lattice itself (\filename{repl.lat}), built on the \lstinline|is_complete|, \lstinline|lat_eval|, and \lstinline|input| built-ins.
+You can run it with \lstinline|./clat repl.lat|.
+It lacks tab completion and readline integration, but it's an interesting demonstration of the language's metaprogramming capabilities.
+The C-based REPL described in this chapter is what you should use day-to-day.
+\end{warnbox}
+
+\subsection{A Complete Exploratory Session}\label{subsec:complete-session}
+
+Let's tie everything together with a realistic REPL session.
+Imagine you are exploring Lattice's array methods for the first time:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let scores = [85, 92, 78, 95, 88, 72, 91]
+lattice> scores.len()
+=> 7
+lattice> scores.sort()
+=> [72, 78, 85, 88, 91, 92, 95]
+lattice> scores.min()
+=> 72
+lattice> scores.max()
+=> 95
+lattice> scores.sum()
+=> 601
+lattice> scores.filter(|s| s >= 90)
+=> [92, 95, 91]
+lattice> scores.filter(|s| s >= 90).len()
+=> 3
+lattice> let avg = to_float(scores.sum()) / to_float(scores.len())
+lattice> avg
+=> 85.85714285714286
+lattice> scores.map(|s| if s >= 90 { "A" } else { "B" })
+=> ["B", "A", "B", "A", "B", "B", "A"]
+lattice> scores.enumerate()
+=> [[0, 85], [1, 92], [2, 78], [3, 95], [4, 88], [5, 72], [6, 91]]
+\end{lstlisting}
+
+In under a minute, you've explored sorting, filtering, mapping, aggregation, and enumeration---all without writing a file.
+That is the power of an interactive session.
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch02-exercises}
+
+\begin{enumerate}
+  \item \textbf{REPL Warm-Up.}
+  Launch the REPL and experiment with arithmetic: try \lstinline|2 ** 10| (does it work? what does Lattice use for exponentiation?), integer vs.\ float division (\lstinline|7 / 2| vs.\ \lstinline|7.0 / 2.0|), and the modulo operator.
+
+  \item \textbf{Define and Iterate.}
+  In the REPL, define a function \lstinline|fn is_palindrome(s: String) -> Bool| that checks whether a string reads the same forwards and backwards.
+  Hint: \lstinline|s.reverse()|.
+  Test it with \lstinline|"racecar"|, \lstinline|"hello"|, and \lstinline|"madam"|.
+
+  \item \textbf{Struct Exploration.}
+  Define a \lstinline|struct Color| with fields \lstinline|r: Int|, \lstinline|g: Int|, \lstinline|b: Int| in the REPL\@.
+  Create several instances.
+  Then define a function \lstinline|fn to_hex(c: Any) -> String| that converts a Color to a hex string like \lstinline|"#FF8800"|.
+  Hint: use \lstinline|format()| or string concatenation.
+
+  \item \textbf{Tab Completion Safari.}
+  In the REPL, type \lstinline|str| and press \texttt{Tab}.
+  What completions appear?
+  Type \lstinline|"hello".| and press \texttt{Tab} twice.
+  How many string methods are available?
+  Try \lstinline|Map::| and \texttt{Tab}.
+
+  \item \textbf{The Mystery Function.}
+  Without looking it up, use the REPL to figure out what \lstinline|ord("A")| returns.
+  Then figure out what \lstinline|chr(72)| returns.
+  Can you write a one-liner that converts a string to an array of character codes?
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:ch02-whats-next}
+
+Now that you know how to use the REPL as your personal laboratory, it's time to learn what you can put into it.
+In the next chapter, we will explore Lattice's value types---integers, floats, booleans, strings, nil, and unit---and the operators that work on them.
+We'll see how Lattice thinks about data at the most fundamental level: the shape of things.

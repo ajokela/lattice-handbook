@@ -1,0 +1,10 @@
+[2026-03-02T13:45:17.344Z] Starting — 6 chapters, ~120 pages
+[2026-03-02T13:45:18.364Z] Agent session initialized
+[2026-03-02T14:24:41.996Z] Agent completed
+[2026-03-02T14:24:42.498Z] Finished in 39m 25s
+[2026-03-02T14:24:42.499Z]   OK ch05-control-flow.tex (36KB)
+[2026-03-02T14:24:42.499Z]   OK ch06-functions-closures.tex (33KB)
+[2026-03-02T14:24:42.499Z]   OK ch07-collections.tex (29KB)
+[2026-03-02T14:24:42.499Z]   OK ch08-strings.tex (25KB)
+[2026-03-02T14:24:42.499Z]   OK ch09-pattern-matching.tex (44KB)
+[2026-03-02T14:24:42.500Z]   OK ch10-error-handling.tex (33KB)

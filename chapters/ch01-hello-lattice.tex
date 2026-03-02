@@ -1,0 +1,611 @@
+\chapter{Hello, Lattice}\label{ch:hello-lattice}
+
+\index{Lattice!introduction}
+
+Every programming language begins with a promise.
+Some promise speed.
+Others promise safety, or simplicity, or raw expressive power.
+Lattice promises something different: it promises you \emph{control over change itself}.
+
+In most languages, the question of whether a value can be modified---or when it should stop being modified---is answered by convention, or by a single keyword like \lstinline|const|.
+Lattice takes that question seriously and builds an entire system around it, drawing on a metaphor from chemistry and materials science.
+Values in Lattice are like materials: they can be \emph{fluid}, flowing and reshaping freely, or they can \emph{crystallize} into a permanent, immutable form.
+This is the \emph{phase system}\index{phase system}, and it is woven into every corner of the language.
+
+But we are getting ahead of ourselves.
+Before we explore crystallization, let's meet Lattice the way any programmer meets a new language---by writing our first program and watching it run.
+
+%% ───────────────────────────────────────────────────────────
+\section{What Lattice Is and Why It Exists}\label{sec:what-is-lattice}
+\index{Lattice!design philosophy}
+
+Lattice is an interpreted, general-purpose programming language implemented in C\@.
+It compiles your source code to bytecode and executes it on a stack-based virtual machine, with the option to run on a register-based VM or a tree-walking interpreter as well.
+The current release is v0.3.28, and it runs on macOS, Linux, and (experimentally) via WebAssembly in the browser.
+
+On the surface, Lattice looks familiar.
+If you've written Python, JavaScript, Rust, or Go, you'll recognize the curly braces, the \lstinline|if|/\lstinline|else| blocks, and the \lstinline|fn| keyword for functions:
+
+\begin{lstlisting}[language=Lattice, caption={A first glance at Lattice syntax}]
+fn greet(name: String) -> String {
+    "Hello, ${name}!"
+}
+
+print(greet("world"))
+// Hello, world!
+\end{lstlisting}
+
+So what makes Lattice worth learning?
+Three things stand out.
+
+\subsection{The Phase System}\label{subsec:phase-promise}
+\index{phase system!overview}
+
+Most languages draw a binary line: a variable is either mutable or immutable.
+Lattice replaces that binary with a richer model.
+A value starts \emph{fluid}\index{fluid phase}---you can modify it, grow it, reshape it.
+When you are done, you \emph{freeze}\index{freeze} it, and it becomes \emph{crystal}\index{crystal phase}---locked, permanent, safe to share across threads.
+If you need to modify it again later, you \emph{thaw}\index{thaw} it, which gives you a mutable copy without disturbing the original.
+
+This is not merely a convention.
+The Lattice runtime enforces it.
+Try to mutate a frozen value and you will get an error---not a silent bug discovered in production at 2 a.m.
+
+\begin{lstlisting}[language=Lattice, caption={Freezing and thawing}]
+flux temperatures = [72.1, 68.5, 74.3]
+temperatures.push(71.0)   // fine: temperatures is fluid
+
+freeze(temperatures)
+// temperatures.push(80.0) -- error! crystal values cannot be modified
+
+flux updated = thaw(temperatures)  // thaw produces a fluid copy
+updated.push(80.0)                 // now we can modify again
+\end{lstlisting}
+
+We will explore the phase system gradually throughout this book, with a full deep-dive in Part~III\@.
+
+\subsection{Familiar Syntax, Modern Features}\label{subsec:modern-features}
+
+Lattice ships with first-class closures\index{closures}, pattern matching\index{pattern matching} with exhaustiveness checking, structs with traits and \lstinline|impl| blocks, string interpolation\index{string interpolation}, lazy iterators\index{iterators}, structured concurrency\index{concurrency} with channels, and a built-in test framework.
+It is a language designed for working programmers who want to get things done without drowning in ceremony.
+
+\subsection{Batteries Included}\label{subsec:batteries}
+
+Lattice includes over 120 built-in functions\index{built-in functions} spanning file I/O, HTTP, JSON/TOML/YAML parsing, regular expressions, cryptography, networking, and more.
+The standard library modules can be imported with a single line.
+There is also a package manager for third-party libraries.
+
+\begin{notebox}{Lattice Is Young}
+Lattice is at version 0.3.28.
+The language is actively evolving.
+Some features described in this book may change in future releases, though the core concepts---the phase system, the type model, the concurrency story---are stable foundations that the rest of the language builds upon.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Installing Lattice}\label{sec:installing-lattice}
+\index{installation}
+
+Lattice is built from source using a C11 compiler and \texttt{make}.
+There is no pre-built binary distribution yet---part of the charm of a young language is that you get to compile it yourself.
+
+\subsection{Prerequisites}\label{subsec:prerequisites}
+
+You need two things:
+
+\begin{enumerate}
+  \item A \textbf{C11-compatible compiler}\index{C11 compiler}: GCC or Clang on Linux, Apple Clang on macOS, or MinGW on Windows.
+  \item \textbf{libedit}\index{libedit}: a lightweight readline library used for the REPL's line editing and tab completion. It ships with macOS. On Linux, install the development package.
+\end{enumerate}
+
+Optionally, if you want TLS networking (\lstinline|tls_connect|, \lstinline|tls_read|, etc.) and cryptographic built-ins (\lstinline|sha256|, \lstinline|md5|, \lstinline|base64_encode|), you'll need \textbf{OpenSSL}\index{OpenSSL} available via \texttt{pkg-config}.
+
+\subsection{macOS}\label{subsec:install-macos}
+\index{installation!macOS}
+
+macOS ships with Apple Clang and libedit.
+Clone the repository and build:
+
+\begin{lstlisting}[language=bash, numbers=none]
+git clone https://github.com/alexjokela/lattice.git
+cd lattice
+make
+\end{lstlisting}
+
+This produces a binary called \texttt{clat}\index{clat} in the current directory.
+You can move it to a directory on your \texttt{PATH}:
+
+\begin{lstlisting}[language=bash, numbers=none]
+sudo cp clat /usr/local/bin/
+\end{lstlisting}
+
+\subsection{Linux}\label{subsec:install-linux}
+\index{installation!Linux}
+
+On Debian or Ubuntu, install the libedit development headers first:
+
+\begin{lstlisting}[language=bash, numbers=none]
+sudo apt install libedit-dev
+git clone https://github.com/alexjokela/lattice.git
+cd lattice
+make
+\end{lstlisting}
+
+On Fedora or RHEL:
+
+\begin{lstlisting}[language=bash, numbers=none]
+sudo dnf install libedit-devel
+\end{lstlisting}
+
+\subsection{Windows}\label{subsec:install-windows}
+\index{installation!Windows}
+
+Lattice includes a Win32 compatibility layer (\filename{src/win32\_compat.c}) that provides POSIX-like functions.
+Using MinGW or WSL:
+
+\begin{lstlisting}[language=bash, numbers=none]
+# Using WSL (recommended)
+sudo apt install libedit-dev build-essential
+cd lattice
+make
+\end{lstlisting}
+
+\begin{tipbox}{WSL Is the Smoothest Path}
+If you are on Windows, the Windows Subsystem for Linux gives you the best experience.
+Lattice was primarily developed on macOS and Linux, and WSL brings you into that environment without dual-booting.
+\end{tipbox}
+
+\subsection{WebAssembly}\label{subsec:install-wasm}
+\index{installation!WebAssembly}\index{WebAssembly}
+
+Lattice can be compiled to WebAssembly using Emscripten, allowing it to run in a browser.
+This is experimental, but it opens up interesting possibilities for playgrounds and education:
+
+\begin{lstlisting}[language=bash, numbers=none]
+# Requires Emscripten SDK installed and activated
+emmake make
+\end{lstlisting}
+
+The \lstinline|platform()| built-in returns \lstinline|"wasm"| when running in this mode.
+
+\subsection{Verifying the Installation}\label{subsec:verify-install}
+
+Once you have built \texttt{clat}, verify it works:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat --version
+\end{lstlisting}
+
+You should see:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Lattice v0.3.28
+\end{lstlisting}
+
+If you want the full help screen with all available subcommands and flags:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat --help
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{Your First Program: Hello, World!}\label{sec:hello-world}
+\index{Hello, World}
+
+Let's write our first Lattice program.
+Create a file called \filename{hello.lat}:
+
+\begin{lstlisting}[language=Lattice, caption={hello.lat --- your first Lattice program}]
+print("Hello, World!")
+\end{lstlisting}
+
+Run it:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat hello.lat
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Hello, World!
+\end{lstlisting}
+
+That's it.
+No \lstinline|main()| function required, no boilerplate, no imports.
+Lattice programs are sequences of statements, and the interpreter executes them top to bottom.
+
+\subsection{A Slightly More Interesting Program}\label{subsec:more-interesting}
+
+Let's make it personal:
+
+\begin{lstlisting}[language=Lattice, caption={greeting.lat --- string interpolation}]
+let name = "Lattice"
+let year = 2026
+print("Welcome to ${name}! The year is ${year}.")
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Welcome to Lattice! The year is 2026.
+\end{lstlisting}
+
+Notice the \lstinline|${...}|\index{string interpolation} syntax inside double-quoted strings.
+Any expression can go inside those braces---variable lookups, arithmetic, even function calls.
+We will cover string interpolation in depth in \cref{ch:values-types}.
+
+\subsection{Functions}\label{subsec:first-functions}
+\index{functions!introduction}
+
+Here is a program with a function:
+
+\begin{lstlisting}[language=Lattice, caption={A function with a type annotation}]
+fn fahrenheit_to_celsius(temp: Float) -> Float {
+    (temp - 32.0) * 5.0 / 9.0
+}
+
+let boiling = fahrenheit_to_celsius(212.0)
+print("Water boils at ${boiling} Celsius")
+// Water boils at 100.0 Celsius
+\end{lstlisting}
+
+A few things to notice:
+
+\begin{itemize}
+  \item Function parameters have \textbf{type annotations}\index{type annotations}: \lstinline|temp: Float| declares that \lstinline|temp| must be a \lstinline|Float|. Pass the wrong type and Lattice will tell you---at runtime, with a clear error message.
+  \item The \textbf{last expression} in a function body is the implicit return value\index{implicit return}. No \lstinline|return| keyword needed (though you can use one if you prefer explicit style).
+  \item The \lstinline|-> Float| after the parameter list declares the return type.
+\end{itemize}
+
+\subsection{Running the Examples Directory}\label{subsec:running-examples}
+\index{examples}
+
+Lattice ships with an \filename{examples/} directory containing programs that demonstrate different features.
+Try running the Fibonacci example:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat examples/fibonacci.lat
+\end{lstlisting}
+
+This program computes Fibonacci numbers using both iterative and recursive approaches, verifies they produce the same results, and approximates the golden ratio.
+Here is a simplified version of what it does:
+
+\begin{lstlisting}[language=Lattice, caption={A taste of the Fibonacci example}]
+fn fib_iterative(n: Int) -> Int {
+    if n <= 1 { return n }
+    flux a = 0
+    flux b = 1
+    flux i = 2
+    while i <= n {
+        let temp = a + b
+        a = b
+        b = temp
+        i += 1
+    }
+    return b
+}
+
+for i in 0..10 {
+    print("fib(${to_string(i)}) = ${to_string(fib_iterative(i))}")
+}
+\end{lstlisting}
+
+Notice the \lstinline|flux|\index{flux} keyword: it declares mutable variables.
+We will explain \lstinline|flux|, \lstinline|let|, and \lstinline|fix| in \cref{ch:variables-phase}.
+
+%% ───────────────────────────────────────────────────────────
+\section{Running Files vs.\ the REPL}\label{sec:files-vs-repl}
+\index{REPL!introduction}
+
+There are two main ways to run Lattice code: from a file, or interactively in the REPL\@.
+
+\subsection{Running from a File}\label{subsec:running-file}
+
+You've already seen this:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat my_program.lat
+\end{lstlisting}
+
+Lattice reads the entire file, compiles it to bytecode, and executes it on the stack VM\@.
+If you want to use the tree-walking interpreter instead (slower, but useful for debugging), pass \lstinline|--tree-walk|:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat --tree-walk my_program.lat
+\end{lstlisting}
+
+You can also \emph{pre-compile} a file to bytecode\index{bytecode compilation} and run the compiled output later:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat compile program.lat -o program.latc
+./clat program.latc
+\end{lstlisting}
+
+The \filename{.latc} file contains serialized bytecode.
+Running a pre-compiled file skips the lexing, parsing, and compilation steps, which can speed up startup for larger programs.
+
+\begin{notebox}{Three Execution Backends}
+Lattice has three ways to execute your code: the \textbf{stack-based bytecode VM} (the default and fastest), the \textbf{register-based VM} (via \lstinline|--regvm|), and the \textbf{tree-walking interpreter} (via \lstinline|--tree-walk|).
+All three support the full language.
+We will cover the backends in depth in Chapter~33 (\emph{The Three Backends})---for now, the default is the right choice.
+\end{notebox}
+
+\subsection{The Interactive REPL}\label{subsec:interactive-repl}
+
+Launch the REPL by running \texttt{clat} with no arguments:
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat
+\end{lstlisting}
+
+You'll see a welcome banner:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Lattice v0.3.28 -- crystallization-based programming language
+Copyright (c) 2026 Alex Jokela. BSD 3-Clause License.
+Type expressions to evaluate. Ctrl-D to exit.
+\end{lstlisting}
+
+Now you can type expressions and see results immediately:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> 2 + 2
+=> 4
+lattice> "hello" + " " + "world"
+=> "hello world"
+lattice> [1, 2, 3].map(|x| x * 10)
+=> [10, 20, 30]
+\end{lstlisting}
+
+The \lstinline|=>|\index{=> prefix (REPL)} prefix is how the REPL shows you the result of an expression.
+Statements that produce no meaningful value---like variable assignments---are silently suppressed:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> let name = "Lattice"
+lattice> print(name)
+Lattice
+lattice>
+\end{lstlisting}
+
+The REPL maintains \textbf{persistent state}\index{REPL!persistent state}: variables, functions, structs, and enums you define in one line are available on the next.
+This makes it a wonderful tool for exploratory programming.
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+lattice> fn square(x: Int) -> Int { x * x }
+lattice> square(7)
+=> 49
+lattice> let values = [1, 2, 3, 4, 5]
+lattice> values.map(|x| square(x))
+=> [1, 4, 9, 16, 25]
+\end{lstlisting}
+
+We will dive much deeper into the REPL in \cref{ch:repl}.
+
+\subsection{Passing Arguments to Scripts}\label{subsec:script-args}
+\index{command-line arguments}\index{args()}
+
+Arguments after the filename are passed to your program and can be retrieved with the \lstinline|args()|\index{args()} built-in:
+
+\begin{lstlisting}[language=Lattice, caption={echo.lat --- reading command-line arguments}]
+let arguments = args()
+print("You passed ${to_string(arguments.len())} arguments:")
+for arg in arguments {
+    print("  ${arg}")
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, numbers=none]
+./clat echo.lat hello world 42
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+You passed 4 arguments:
+  echo.lat
+  hello
+  world
+  42
+\end{lstlisting}
+
+The first element is the script's own filename, following the convention of most languages.
+
+%% ───────────────────────────────────────────────────────────
+\section{A Taste of What Makes Lattice Different}\label{sec:taste-different}
+\index{Lattice!unique features}
+
+Before we close this chapter, let's take a quick tour of some features that set Lattice apart.
+Don't worry about understanding every detail yet---each of these gets a full chapter later.
+The goal here is to whet your appetite.
+
+\subsection{The Phase System in Action}\label{subsec:phase-taste}
+\index{phase system!first example}
+
+Here is the phase system at work in a realistic scenario.
+Imagine building a server configuration that should be mutable during setup, then locked down before the server starts:
+
+\begin{lstlisting}[language=Lattice, caption={Building and freezing a configuration}]
+// Build the config in a fluid state
+flux config = Map::new()
+config["host"] = "0.0.0.0"
+config["port"] = 8080
+config["max_connections"] = 256
+
+// Lock it down
+freeze(config)
+
+// Now config is crystal --- safe to share, impossible to change
+print(config["host"])           // 0.0.0.0
+print(phase_of(config))        // crystal
+
+// config["port"] = 9090      -- this would error!
+\end{lstlisting}
+
+The \lstinline|forge|\index{forge} block makes this pattern even more elegant:
+
+\begin{lstlisting}[language=Lattice, caption={Forge: build fluid, end crystal}]
+fix config = forge {
+    flux temp = Map::new()
+    temp.set("host", "0.0.0.0")
+    temp.set("port", "8080")
+    temp.set("debug", "false")
+    freeze(temp)
+}
+// config is now crystal, built in one clean block
+print(config.get("host"))  // 0.0.0.0
+\end{lstlisting}
+
+\subsection{Pattern Matching}\label{subsec:match-taste}
+\index{pattern matching!first example}
+
+Lattice's \lstinline|match| expression supports literal patterns, ranges, guards, destructuring, and the compiler warns you if your patterns are not exhaustive:
+
+\begin{lstlisting}[language=Lattice, caption={Pattern matching}]
+fn classify_temperature(temp: Int) -> String {
+    match temp {
+        x if x < 0 => "freezing",
+        0..15 => "cold",
+        15..25 => "comfortable",
+        25..35 => "warm",
+        _ => "hot"
+    }
+}
+
+print(classify_temperature(22))   // comfortable
+print(classify_temperature(-5))   // freezing
+print(classify_temperature(38))   // hot
+\end{lstlisting}
+
+\subsection{Structured Concurrency}\label{subsec:concurrency-taste}
+\index{concurrency!first example}
+
+Lattice uses \lstinline|scope|\index{scope} and \lstinline|spawn|\index{spawn} for structured concurrency.
+Every spawned task must complete before its enclosing scope exits, and values sent across threads must be \emph{frozen}---the phase system ensures data-race safety at the language level:
+
+\begin{lstlisting}[language=Lattice, caption={Structured concurrency with channels}]
+let results = Channel::new()
+
+scope {
+    spawn {
+        results.send(freeze("task A complete"))
+    }
+    spawn {
+        results.send(freeze("task B complete"))
+    }
+}
+
+print(results.recv())   // task A complete (or B, depending on scheduling)
+print(results.recv())   // the other one
+\end{lstlisting}
+
+Notice: only \lstinline|freeze()|\index{freeze}'d values can be sent on a channel.
+This is the phase system doing its job---guaranteeing that shared data is immutable.
+
+\subsection{Closures and Functional Style}\label{subsec:closures-taste}
+\index{closures!first example}
+
+Closures are first-class citizens in Lattice:
+
+\begin{lstlisting}[language=Lattice, caption={Closures and higher-order functions}]
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let evens = numbers.filter(|n| n % 2 == 0)
+let doubled = evens.map(|n| n * 2)
+let total = doubled.reduce(|acc, n| acc + n, 0)
+
+print(total)  // 60
+\end{lstlisting}
+
+And you can chain these together more fluidly with the pipe operator\index{pipe operator}:
+
+\begin{lstlisting}[language=Lattice, caption={Chaining transforms with iterators}]
+let total = iter([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    .filter(|n| n % 2 == 0)
+    .map(|n| n * 2)
+    .reduce(0, |acc, n| acc + n)
+
+print(total)  // 60
+\end{lstlisting}
+
+\subsection{String Interpolation Everywhere}\label{subsec:interpolation-taste}
+\index{string interpolation!first example}
+
+Double-quoted strings support \lstinline|${expr}| interpolation.
+Single-quoted strings are raw---no interpolation, no escape sequences.
+Triple-quoted strings preserve whitespace and support interpolation:
+
+\begin{lstlisting}[language=Lattice, caption={String varieties}]
+let language = "Lattice"
+let version = version()
+
+// Double-quoted: interpolation
+print("Running ${language} ${version}")
+
+// Single-quoted: raw, no interpolation
+print('The syntax is ${expr}')  // literal ${expr}
+
+// Triple-quoted: multi-line
+let banner = """
+    =============================
+      Welcome to ${language}
+      Version: ${version}
+    =============================
+    """
+print(banner)
+\end{lstlisting}
+
+\subsection{One More Thing: Strict Mode}\label{subsec:strict-taste}
+\index{strict mode!introduction}
+
+At the top of any file, you can write \lstinline|#mode strict|\index{\#mode strict} to opt into stricter phase enforcement.
+In strict mode, the phase checker runs before execution and catches potential issues early:
+
+\begin{lstlisting}[language=Lattice, caption={Strict mode}]
+#mode strict
+
+flux data = [1, 2, 3]
+fix frozen = freeze(data)
+// In strict mode, `data` is consumed by freeze().
+// Accessing `data` after this line is a compile-time error.
+\end{lstlisting}
+
+Strict mode is entirely opt-in.
+The default ``casual'' mode is more forgiving, making it friendlier for scripting and exploration.
+We will compare the two modes in \cref{ch:variables-phase}.
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch01-exercises}
+
+\begin{enumerate}
+  \item \textbf{Hello, You.}
+  Write a program that asks for the user's name using \lstinline|input("What is your name? ")| and prints a personalized greeting using string interpolation.
+
+  \item \textbf{Temperature Table.}
+  Write a program that prints a conversion table from Fahrenheit to Celsius for every 10 degrees from 0 to 212.
+  Use a \lstinline|for| loop and the range operator.
+  Hint: \lstinline|for f in range(0, 220, 10) { ... }|
+
+  \item \textbf{Explore the REPL\@.}
+  Launch the REPL (\lstinline|./clat|) and experiment.
+  Define a function, call it with different arguments, and try to break it by passing the wrong types.
+  What error messages do you get?
+
+  \item \textbf{Freeze Tag.}
+  In the REPL, create an array with \lstinline|flux items = [10, 20, 30]|.
+  Push a new value onto it.
+  Then freeze it with \lstinline|freeze(items)| and try to push again.
+  Read the error message---it will become familiar.
+
+  \item \textbf{Read an Example.}
+  Read the source of \filename{examples/phase\_demo.lat} and run it.
+  Before running, predict what each \lstinline|print| statement will output.
+  Were you right?
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:ch01-whats-next}
+
+You have installed Lattice, written your first program, and seen glimpses of the phase system, pattern matching, and concurrency.
+In the next chapter, we will spend quality time with the REPL---Lattice's interactive laboratory.
+The REPL is where you will do most of your exploring, testing ideas, and building intuition for how the language works.
+Let's set up your lab.

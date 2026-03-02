@@ -1,0 +1,6 @@
+[2026-03-02T13:27:25.874Z] Starting — 3 chapters, ~50 pages
+[2026-03-02T13:27:33.336Z] Agent session initialized
+[2026-03-02T13:36:55.124Z] Finished in 9m 29s
+[2026-03-02T13:36:55.124Z]   OK ch19-structured-concurrency.tex (30KB)
+[2026-03-02T13:36:55.126Z]   OK ch20-channels-select.tex (32KB)
+[2026-03-02T13:36:55.126Z]   OK ch21-concurrency-patterns.tex (22KB)

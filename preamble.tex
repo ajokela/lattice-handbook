@@ -1,0 +1,248 @@
+% preamble.tex — Shared preamble for The Lattice Handbook
+\documentclass[11pt,twoside,openright]{book}
+
+% ── Page geometry (7.5×9.25 inch trim) ────────────────────────────────────────
+\usepackage[
+  paperwidth=7.5in,
+  paperheight=9.25in,
+  inner=1in,
+  outer=0.75in,
+  top=0.85in,
+  bottom=0.85in,
+  footskip=0.4in
+]{geometry}
+
+% ── Encoding & fonts ────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[scaled=1.02]{ebgaramond}    % Body text — Garamond (O'Reilly style)
+\usepackage[semibold]{sourcesanspro}    % Sans-serif — headings, tcolorbox titles
+\usepackage[scaled=0.92]{inconsolata}   % Monospace — code listings
+\usepackage{microtype}
+
+% ── Color scheme ────────────────────────────────────────────────────────────
+\usepackage[dvipsnames,svgnames,x11names]{xcolor}
+
+\definecolor{latticepurple}{HTML}{7C3AED}
+\definecolor{latticeblue}{HTML}{2563EB}
+\definecolor{latticegray}{HTML}{6B7280}
+\definecolor{latticegreen}{HTML}{059669}
+\definecolor{latticered}{HTML}{DC2626}
+\definecolor{latticeorange}{HTML}{D97706}
+\definecolor{codebg}{HTML}{F8F8F8}
+\definecolor{codeframe}{HTML}{E5E7EB}
+\definecolor{codecomment}{HTML}{6A737D}
+\definecolor{codestring}{HTML}{032F62}
+\definecolor{codekeyword}{HTML}{7C3AED}
+\definecolor{codenumber}{HTML}{005CC5}
+
+% ── Code listings ───────────────────────────────────────────────────────────
+\usepackage{listings}
+
+\lstdefinelanguage{Lattice}{
+  keywords={
+    fn, let, flux, fix, if, else, for, in, while, loop, return, break,
+    continue, match, struct, enum, trait, impl, import, from, as, export,
+    spawn, scope, select, try, catch, defer, clone, freeze, thaw, forge,
+    crystallize, sublimate, borrow, anneal, print, test
+  },
+  keywordstyle=\color{codekeyword}\bfseries,
+  ndkeywords={
+    true, false, nil, self, Int, Float, String, Bool, Array, Map, Set,
+    Tuple, Range, Channel, Buffer, Iterator, Ref, Unit, Error,
+    Map, Channel, Ref, Option, Result
+  },
+  ndkeywordstyle=\color{latticeblue}\bfseries,
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morecomment=[l]{///},
+  commentstyle=\color{codecomment}\itshape,
+  string=[b]",
+  morestring=[b]',
+  morestring=[s]{"""}{"""},
+  stringstyle=\color{codestring},
+  showstringspaces=false,
+  numbers=none,
+  tabsize=2,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=flexible,
+  keepspaces=true,
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{codeframe},
+  framesep=4pt,
+  xleftmargin=8pt,
+  xrightmargin=4pt,
+  aboveskip=10pt,
+  belowskip=8pt,
+  literate=
+    {->}{{{\color{codekeyword}->}}}2
+    {=>}{{{\color{codekeyword}=>}}}2
+    {|>}{{{\color{codekeyword}|>}}}2
+    {..}{{{\color{codekeyword}..}}}2
+    {::}{{{\color{codekeyword}::}}}2
+    {?.}{{{\color{codekeyword}?.}}}2
+    {??}{{{\color{codekeyword}??}}}2
+}
+
+\lstset{language=Lattice}
+
+% ── tcolorbox environments ──────────────────────────────────────────────────
+\usepackage[most]{tcolorbox}
+
+\newtcolorbox{notebox}[1]{
+  colback=blue!5!white,
+  colframe=latticeblue,
+  fonttitle=\bfseries,
+  title={#1},
+  arc=2pt,
+  boxrule=0.8pt,
+  left=8pt,
+  right=8pt,
+  top=4pt,
+  bottom=4pt,
+  before skip=10pt,
+  after skip=10pt
+}
+
+\newtcolorbox{defnbox}[1]{
+  colback=purple!5!white,
+  colframe=latticepurple,
+  fonttitle=\bfseries,
+  title={#1},
+  arc=2pt,
+  boxrule=0.8pt,
+  left=8pt,
+  right=8pt,
+  top=4pt,
+  bottom=4pt,
+  before skip=10pt,
+  after skip=10pt
+}
+
+\newtcolorbox{tipbox}[1]{
+  colback=green!5!white,
+  colframe=latticegreen,
+  fonttitle=\bfseries,
+  title={#1},
+  arc=2pt,
+  boxrule=0.8pt,
+  left=8pt,
+  right=8pt,
+  top=4pt,
+  bottom=4pt,
+  before skip=10pt,
+  after skip=10pt
+}
+
+\newtcolorbox{warnbox}[1]{
+  colback=red!5!white,
+  colframe=latticered,
+  fonttitle=\bfseries,
+  title={#1},
+  arc=2pt,
+  boxrule=0.8pt,
+  left=8pt,
+  right=8pt,
+  top=4pt,
+  bottom=4pt,
+  before skip=10pt,
+  after skip=10pt
+}
+
+% ── Tables ──────────────────────────────────────────────────────────────────
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+
+% ── Graphics & figures ──────────────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, calc, fit, fadings}
+
+% ── Headers & footers ──────────────────────────────────────────────────────
+\usepackage{fancyhdr}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\small\textit{\leftmark}}
+\fancyhead[RO]{\small\textit{\rightmark}}
+\fancyfoot[LE,RO]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[LE,RO]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+% ── Part & chapter title styling ────────────────────────────────────────────
+\usepackage{titlesec}
+
+\titleformat{\part}[display]
+  {\centering\Huge\sffamily\bfseries\color{latticepurple}}
+  {\partname\ \thepart}
+  {20pt}
+  {\Huge}
+
+\titleformat{\chapter}[display]
+  {\normalfont\huge\sffamily\bfseries\color{latticepurple}}
+  {\chaptertitlename\ \thechapter}
+  {20pt}
+  {\Huge}
+
+\titleformat{\section}
+  {\normalfont\Large\sffamily\bfseries\color{latticepurple!80!black}}
+  {\thesection}
+  {1em}
+  {}
+
+\titleformat{\subsection}
+  {\normalfont\large\sffamily\bfseries}
+  {\thesubsection}
+  {1em}
+  {}
+
+% ── Hyperlinks & cross-references ──────────────────────────────────────────
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=latticepurple,
+  urlcolor=latticeblue,
+  citecolor=latticegreen,
+  pdftitle={The Lattice Handbook},
+  pdfauthor={Alex Jokela},
+  pdfsubject={Lattice Programming Language},
+  bookmarksnumbered=true,
+  bookmarksopen=true,
+  bookmarksopenlevel=1
+}
+
+\usepackage[capitalise,noabbrev]{cleveref}
+
+% ── Index ───────────────────────────────────────────────────────────────────
+\usepackage{makeidx}
+\makeindex
+
+% ── Misc ────────────────────────────────────────────────────────────────────
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{etoolbox}
+
+% ── Prevent code listings from breaking across pages ──────────────────────
+\BeforeBeginEnvironment{lstlisting}{\begin{minipage}{\linewidth}}
+\AfterEndEnvironment{lstlisting}{\end{minipage}\vspace{\baselineskip}}
+
+% Prevent widows and orphans
+\widowpenalty=10000
+\clubpenalty=10000
+
+% Custom commands
+\newcommand{\lattice}{\textsc{Lattice}}
+\newcommand{\keyword}[1]{\lstinline|#1|}
+\newcommand{\filename}[1]{\texttt{#1}}
+\newcommand{\phase}[1]{\textbf{\textcolor{latticepurple}{#1}}}

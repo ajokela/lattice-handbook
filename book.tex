@@ -1,0 +1,104 @@
+% book.tex — Main document for The Lattice Handbook
+\input{preamble}
+
+\begin{document}
+
+\frontmatter
+\input{frontmatter}
+
+\mainmatter
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{First Contact}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch01-hello-lattice}
+\include{chapters/ch02-repl}
+\include{chapters/ch03-values-types}
+\include{chapters/ch04-variables-phase}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{The Working Programmer}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch05-control-flow}
+\include{chapters/ch06-functions-closures}
+\include{chapters/ch07-collections}
+\include{chapters/ch08-strings}
+\include{chapters/ch09-pattern-matching}
+\include{chapters/ch10-error-handling}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{The Phase System}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch11-phases-explained}
+\include{chapters/ch12-memory-arenas}
+\include{chapters/ch13-alloys-bonds}
+\include{chapters/ch14-strict-mode}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Structures and Abstractions}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch15-structs}
+\include{chapters/ch16-enums}
+\include{chapters/ch17-traits}
+\include{chapters/ch18-generics}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Concurrency}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch19-structured-concurrency}
+\include{chapters/ch20-channels-select}
+\include{chapters/ch21-concurrency-patterns}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{The Standard Library}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch22-filesystem}
+\include{chapters/ch23-data-formats}
+\include{chapters/ch24-networking}
+\include{chapters/ch25-time-crypto-os}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Iterators and Functional Style}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch26-lazy-iterators}
+\include{chapters/ch27-functional-programming}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Modules, Packages, and Project Structure}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch28-modules-imports}
+\include{chapters/ch29-package-manager}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Tooling and Developer Experience}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch30-formatter-docgen}
+\include{chapters/ch31-testing}
+\include{chapters/ch32-debugging}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Under the Hood}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch33-three-backends}
+\include{chapters/ch34-bytecode-serialization}
+\include{chapters/ch35-native-extensions}
+\include{chapters/ch36-metaprogramming}
+
+% ════════════════════════════════════════════════════════════════════════════
+\part{Real-World Lattice}
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/ch37-building-cli-tool}
+\include{chapters/ch38-building-web-service}
+
+% ════════════════════════════════════════════════════════════════════════════
+\appendix
+% ════════════════════════════════════════════════════════════════════════════
+\include{chapters/appA-grammar-reference}
+\include{chapters/appB-opcode-reference}
+\include{chapters/appC-phase-cheatsheet}
+\include{chapters/appD-builtin-reference}
+
+\backmatter
+\printindex
+
+\end{document}

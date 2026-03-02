@@ -1,0 +1,910 @@
+\chapter{Files, Paths, and the Filesystem}\label{ch:filesystem}
+
+\index{filesystem}
+\index{file I/O}
+
+Every program eventually needs to talk to the outside world, and for most
+programs, that world is the filesystem. Whether you are reading a configuration
+file at startup, writing a log, or processing a batch of images, Lattice gives
+you a set of focused, no-surprises functions that map cleanly onto the
+underlying operating system. There are no deep class hierarchies to learn and
+no ``stream'' abstractions to wire together---just functions that take paths
+and return values.
+
+In this chapter we will start with the three workhorses of text file I/O:
+\lstinline|read_file|, \lstinline|write_file|, and \lstinline|append_file|.
+From there we will explore the broader \texttt{fs} family of functions for
+querying and manipulating the filesystem, the \texttt{path} helpers for
+constructing and dissecting file paths, temporary files and directories, and
+finally the \lstinline|Buffer| type for working with raw binary data.
+
+% ---------------------------------------------------------------------------
+\section{read\_file, write\_file, append\_file}\label{sec:read-write-append}
+% ---------------------------------------------------------------------------
+
+\index{read\_file}
+\index{write\_file}
+\index{append\_file}
+
+Let's start with the most common operation in scripting: reading a file into a
+string.
+
+\begin{lstlisting}[language=Lattice, caption={Reading and printing a file}]
+let contents = read_file("config.toml")
+print(contents)
+\end{lstlisting}
+
+\lstinline|read_file| takes a path as a \lstinline|String| and returns the
+entire file contents as a \lstinline|String|. If the file does not exist or
+cannot be opened, it returns \lstinline|nil|. Under the hood, the
+implementation in \filename{src/builtins.c} opens the file with
+\texttt{fopen}, seeks to the end to determine the length, allocates exactly
+enough memory, and reads the contents in one pass.
+
+\begin{notebox}{Encoding Assumption}
+\lstinline|read_file| assumes the file contains valid UTF-8 text. If you need
+to read arbitrary binary data---an image, a compiled bytecode file, a
+protocol buffer---use \lstinline|read_file_bytes| instead, which returns a
+\lstinline|Buffer|. We cover Buffers in \cref{sec:buffers}.
+\end{notebox}
+
+Writing is the mirror operation:
+
+\begin{lstlisting}[language=Lattice, caption={Writing a string to a file}]
+let report = "Scan completed: 0 issues found.\n"
+write_file("report.txt", report)
+\end{lstlisting}
+
+\lstinline|write_file| creates the file if it does not exist, or
+\emph{truncates} it if it does. It returns \lstinline|true| on success and
+\lstinline|false| on failure. This is a full overwrite---if you need to add
+lines to an existing file, use \lstinline|append_file|:
+
+\begin{lstlisting}[language=Lattice, caption={Appending to a log file}]
+fn log_event(message: String) {
+    let timestamp = time_format(time_now(), "%Y-%m-%d %H:%M:%S")
+    let line = "[" + timestamp + "] " + message + "\n"
+    append_file("app.log", line)
+}
+
+log_event("Server started on port 8080")
+log_event("Accepted connection from 192.168.1.42")
+\end{lstlisting}
+
+\lstinline|append_file| opens the file in append mode (\texttt{"a"} in C
+terms), so writes are guaranteed to go to the end of the file even if another
+process is writing concurrently. Like \lstinline|write_file|, it creates the
+file if it does not exist.
+
+\begin{warnbox}{write\_file Truncates!}
+A common mistake is to use \lstinline|write_file| when you meant
+\lstinline|append_file|. If your program writes a log file using
+\lstinline|write_file| in a loop, each iteration will obliterate everything
+the previous iteration wrote. When in doubt, ask yourself: ``Do I want to
+replace or extend?''
+\end{warnbox}
+
+\subsection{A Complete Read-Modify-Write Cycle}\label{sec:read-modify-write}
+
+A typical pattern combines all three operations. Suppose we have a simple
+counter file that stores a single integer:
+
+\begin{lstlisting}[language=Lattice, caption={Incrementing a persistent counter}]
+fn increment_counter(path: String) -> Int {
+    flux count = 0
+
+    if file_exists(path) {
+        let text = read_file(path)
+        count = parse_int(text.trim())
+    }
+
+    count += 1
+    write_file(path, to_string(count))
+    return count
+}
+
+let visits = increment_counter("/tmp/visit_count.txt")
+print("Visit #" + to_string(visits))
+\end{lstlisting}
+
+Notice how we check \lstinline|file_exists| before reading. This is a
+deliberate choice---\lstinline|read_file| returns \lstinline|nil| on a missing
+file, but checking explicitly makes the intent clearer and lets us set a
+sensible default.
+
+\begin{tipbox}{Prefer try/catch for Robust Code}
+For production code, wrap file operations in \lstinline|try|/\lstinline|catch|
+blocks (see \cref{ch:error-handling}). The examples in this chapter omit
+error handling for clarity, but real programs should always account for
+missing files, permission errors, and full disks.
+\end{tipbox}
+
+% ---------------------------------------------------------------------------
+\section{The fs Module}\label{sec:fs-module}
+% ---------------------------------------------------------------------------
+
+\index{file\_exists}
+\index{list\_dir}
+\index{mkdir}
+\index{glob}
+\index{stat}
+\index{is\_dir}
+\index{is\_file}
+\index{delete\_file}
+\index{copy\_file}
+\index{rename}
+\index{rmdir}
+\index{chmod}
+\index{realpath}
+\index{file\_size}
+
+Beyond reading and writing file contents, Lattice exposes a family of
+functions for querying and manipulating the filesystem itself. These are
+registered as top-level built-in functions---no import is required.
+
+\subsection{Checking Existence: file\_exists, is\_file, is\_dir}
+\label{sec:checking-existence}
+
+\begin{lstlisting}[language=Lattice, caption={Checking existence and type}]
+let path = "/etc/hosts"
+
+print(file_exists(path))   // true
+print(is_file(path))       // true
+print(is_dir(path))        // false
+print(is_dir("/etc"))      // true
+\end{lstlisting}
+
+\lstinline|file_exists| returns \lstinline|true| if \emph{anything} exists at
+the given path---file, directory, symlink, or device node. If you need to
+distinguish between files and directories, use \lstinline|is_file| and
+\lstinline|is_dir|. All three delegate to the POSIX \texttt{stat} system call
+internally (see \filename{src/fs\_ops.c}).
+
+\subsection{Listing Directories: list\_dir}\label{sec:list-dir}
+
+\begin{lstlisting}[language=Lattice, caption={Listing directory entries}]
+let entries = list_dir(".")
+for entry in entries {
+    print(entry)
+}
+\end{lstlisting}
+
+\lstinline|list_dir| returns an array of strings---one per entry in the
+directory, excluding the special \texttt{.} and \texttt{..} entries. The
+entries are file \emph{names}, not full paths. If you need full paths, combine
+with \lstinline|path_join|:
+
+\begin{lstlisting}[language=Lattice, caption={Building full paths from directory entries}]
+let dir = "/var/log"
+let entries = list_dir(dir)
+for name in entries {
+    let full_path = path_join(dir, name)
+    let info = stat(full_path)
+    print(full_path + " (" + info["type"] + ", " + to_string(info["size"]) + " bytes)")
+}
+\end{lstlisting}
+
+\subsection{Creating and Removing Directories: mkdir, rmdir}
+\label{sec:mkdir-rmdir}
+
+\begin{lstlisting}[language=Lattice, caption={Creating and removing directories}]
+mkdir("output")
+write_file("output/results.csv", "name,score\nAlice,97\n")
+
+// Later, clean up:
+delete_file("output/results.csv")
+rmdir("output")
+\end{lstlisting}
+
+\lstinline|mkdir| creates a single directory with permissions \texttt{0755}.
+It does \emph{not} create intermediate directories---if you need
+\texttt{mkdir -p} behavior, you will need to create each level yourself:
+
+\begin{lstlisting}[language=Lattice, caption={Creating nested directories}]
+fn mkdir_p(path: String) {
+    let parts = path.split("/")
+    flux current = ""
+    for part in parts {
+        if part == "" {
+            current = "/"
+            continue
+        }
+        current = path_join(current, part)
+        if !file_exists(current) {
+            mkdir(current)
+        }
+    }
+}
+
+mkdir_p("output/reports/2024/q4")
+\end{lstlisting}
+
+\lstinline|rmdir| removes an \emph{empty} directory. Attempting to remove a
+non-empty directory will produce an error. If you need to recursively remove a
+directory tree, you must walk it yourself, deleting files first and
+directories bottom-up.
+
+\subsection{Globbing: glob}\label{sec:glob}
+
+\index{glob}
+
+When you need to find files matching a pattern, \lstinline|glob| is your
+friend:
+
+\begin{lstlisting}[language=Lattice, caption={Finding files with glob patterns}]
+// Find all Lattice source files in the current directory
+let sources = glob("*.lat")
+for path in sources {
+    print("Found: " + path)
+}
+
+// Find all JPEG images in a photos directory
+let photos = glob("photos/*.jpg")
+print("Found " + to_string(photos.len()) + " photos")
+\end{lstlisting}
+
+The pattern syntax follows the POSIX \texttt{glob(3)} convention:
+\texttt{*} matches any sequence of characters within a path component,
+\texttt{?} matches a single character, and \texttt{[abc]} matches character
+classes. On systems that support it, brace expansion
+(\texttt{\{jpg,png,gif\}}) is also available.
+
+\begin{lstlisting}[language=Lattice, caption={Brace expansion in glob patterns}]
+// Find all image files (on systems with GLOB_BRACE support)
+let images = glob("assets/*.{jpg,png,gif,webp}")
+\end{lstlisting}
+
+If no files match, \lstinline|glob| returns an empty array---it does not treat
+the absence of matches as an error. You can see this behavior in
+\filename{src/fs\_ops.c}, where \texttt{GLOB\_NOMATCH} returns \texttt{NULL}
+with a count of zero rather than setting the error string.
+
+\subsection{File Metadata: stat and file\_size}\label{sec:stat}
+
+\index{stat}
+\index{file\_size}
+
+The \lstinline|stat| function returns a map with detailed metadata about a
+path:
+
+\begin{lstlisting}[language=Lattice, caption={Inspecting file metadata with stat}]
+let info = stat("README.md")
+print("Type: " + info["type"])           // "file"
+print("Size: " + to_string(info["size"]) + " bytes")
+print("Modified: " + to_string(info["mtime"]))  // epoch milliseconds
+print("Mode: " + to_string(info["mode"]))        // permission bits
+\end{lstlisting}
+
+The returned map contains five keys:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\lstinline|"type"| & \lstinline|String| & \texttt{"file"}, \texttt{"dir"}, \texttt{"symlink"}, or \texttt{"other"} \\
+\lstinline|"size"| & \lstinline|Int| & Size in bytes \\
+\lstinline|"mtime"| & \lstinline|Int| & Last modification time (epoch milliseconds) \\
+\lstinline|"mode"| & \lstinline|Int| & Unix permission bits (e.g., \texttt{0o755}) \\
+\lstinline|"permissions"| & \lstinline|Int| & Same as \lstinline|"mode"| (alias) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+If you only need the file size, \lstinline|file_size| is a convenient
+shortcut that returns an \lstinline|Int| directly:
+
+\begin{lstlisting}[language=Lattice, caption={Quick file size check}]
+let bytes = file_size("database.db")
+let megabytes = bytes / (1024 * 1024)
+print("Database is " + to_string(megabytes) + " MB")
+\end{lstlisting}
+
+\subsection{Copying, Renaming, and Deleting}\label{sec:copy-rename-delete}
+
+\index{copy\_file}
+\index{rename}
+\index{delete\_file}
+
+\begin{lstlisting}[language=Lattice, caption={File operations: copy, rename, delete}]
+// Make a backup before modifying
+copy_file("config.toml", "config.toml.bak")
+
+// Rename (move) a file
+rename("draft.md", "final.md")
+
+// Clean up temporary files
+delete_file("scratch.tmp")
+\end{lstlisting}
+
+\lstinline|copy_file| reads the source in 8\,KB chunks and writes them to the
+destination, making it safe for large files. \lstinline|rename| performs an
+atomic rename on the same filesystem (it delegates to the C
+\texttt{rename()} function). \lstinline|delete_file| unlinks a single file;
+it cannot remove directories.
+
+\subsection{Permissions and Canonical Paths}\label{sec:chmod-realpath}
+
+\index{chmod}
+\index{realpath}
+
+\begin{lstlisting}[language=Lattice, caption={Changing permissions and resolving paths}]
+// Make a script executable
+write_file("deploy.sh", "#!/bin/sh\necho 'Deploying...'\n")
+chmod("deploy.sh", 0o755)
+
+// Resolve symlinks and relative components
+let canonical = realpath("./src/../README.md")
+print(canonical)  // "/home/user/project/README.md"
+\end{lstlisting}
+
+\lstinline|chmod| takes a path and an integer mode. You can use octal
+literals like \lstinline|0o755| for readability. \lstinline|realpath| resolves
+a path to its absolute, canonical form---expanding symlinks, removing
+\texttt{.} and \texttt{..} components, and verifying that the path exists.
+
+\begin{defnbox}{Filesystem Functions at a Glance}
+All filesystem functions are registered as top-level built-ins in
+\filename{src/runtime.c}. They require no imports. On Emscripten (browser)
+builds, all filesystem operations return errors, since there is no real
+filesystem available---check the Emscripten stubs in
+\filename{src/fs\_ops.c} if you are curious about the boundary.
+\end{defnbox}
+
+% ---------------------------------------------------------------------------
+\section{The path Module}\label{sec:path-module}
+% ---------------------------------------------------------------------------
+
+\index{path\_join}
+\index{path\_dir}
+\index{path\_base}
+\index{path\_ext}
+
+File paths are strings, but they have structure. The path functions help you
+manipulate that structure without resorting to brittle string concatenation.
+
+\subsection{Joining Paths: path\_join}\label{sec:path-join}
+
+\begin{lstlisting}[language=Lattice, caption={Joining path components}]
+let dir = "/home/user/projects"
+let file = "lattice/main.lat"
+let full = path_join(dir, file)
+print(full)  // "/home/user/projects/lattice/main.lat"
+\end{lstlisting}
+
+\lstinline|path_join| is variadic---you can pass any number of string
+arguments:
+
+\begin{lstlisting}[language=Lattice, caption={Joining multiple path segments}]
+let config_path = path_join("/etc", "lattice", "config.toml")
+print(config_path)  // "/etc/lattice/config.toml"
+\end{lstlisting}
+
+The implementation in \filename{src/path\_ops.c} is careful about separators.
+It avoids producing double slashes (\texttt{//}) when one component ends with
+a slash and the next begins with one, and it inserts a separator when neither
+component has one. This means you do not have to worry about trailing slashes
+on your directory paths:
+
+\begin{lstlisting}[language=Lattice, caption={path\_join handles trailing slashes}]
+// All of these produce the same result:
+print(path_join("/tmp/", "file.txt"))   // "/tmp/file.txt"
+print(path_join("/tmp", "file.txt"))    // "/tmp/file.txt"
+print(path_join("/tmp/", "/file.txt"))  // "/tmp/file.txt"
+\end{lstlisting}
+
+\subsection{Dissecting Paths: path\_dir, path\_base, path\_ext}
+\label{sec:path-dissect}
+
+Three functions let you take a path apart:
+
+\begin{lstlisting}[language=Lattice, caption={Dissecting a file path}]
+let path = "/home/user/photos/vacation.jpg"
+
+print(path_dir(path))   // "/home/user/photos"
+print(path_base(path))  // "vacation.jpg"
+print(path_ext(path))   // ".jpg"
+\end{lstlisting}
+
+\lstinline|path_dir| returns the directory portion of a path---everything
+before the last slash. If the path has no slash, it returns \lstinline|"."|
+(the current directory).
+
+\lstinline|path_base| returns the filename---everything after the last
+slash. If the path ends with a slash, it returns an empty string.
+
+\lstinline|path_ext| returns the file extension, \emph{including the dot}. If
+there is no extension, or if the filename starts with a dot (like
+\texttt{.gitignore}), it returns an empty string.
+
+\begin{lstlisting}[language=Lattice, caption={Edge cases in path functions}]
+// No directory component
+print(path_dir("readme.md"))   // "."
+print(path_base("readme.md"))  // "readme.md"
+
+// Hidden files
+print(path_ext(".gitignore"))  // "" (dot-prefixed names are not extensions)
+
+// No extension
+print(path_ext("Makefile"))    // ""
+
+// Root path
+print(path_dir("/"))           // "/"
+\end{lstlisting}
+
+\subsection{Building a File Organizer}\label{sec:file-organizer}
+
+Let's combine path functions with filesystem operations to build something
+practical---a script that organizes files into directories by extension:
+
+\begin{lstlisting}[language=Lattice, caption={Organizing files by extension}]
+fn organize_by_extension(source_dir: String) {
+    let files = list_dir(source_dir)
+
+    for name in files {
+        let full_path = path_join(source_dir, name)
+
+        // Skip directories
+        if is_dir(full_path) { continue }
+
+        // Determine the target directory
+        let ext = path_ext(name)
+        if ext == "" { ext = "no_extension" }
+        // Remove the leading dot
+        let category = ext.slice(1, ext.len())
+
+        let target_dir = path_join(source_dir, category)
+        if !file_exists(target_dir) {
+            mkdir(target_dir)
+        }
+
+        let dest = path_join(target_dir, name)
+        rename(full_path, dest)
+        print("Moved " + name + " -> " + category + "/")
+    }
+}
+
+organize_by_extension("/tmp/downloads")
+\end{lstlisting}
+
+\begin{tipbox}{Use path Functions, Not String Slicing}
+It is tempting to split paths on \texttt{"/"} manually, but
+\lstinline|path_dir|, \lstinline|path_base|, and \lstinline|path_ext| handle
+edge cases that manual string manipulation easily gets wrong: root paths,
+trailing slashes, dot-prefixed filenames, and empty components. Always prefer
+the path functions.
+\end{tipbox}
+
+% ---------------------------------------------------------------------------
+\section{Temporary Files and Directories}\label{sec:tempfiles}
+% ---------------------------------------------------------------------------
+
+\index{tempfile}
+\index{tempdir}
+
+Sometimes you need a place to stash data that should not outlive your program.
+Lattice provides two functions for this: \lstinline|tempfile| and
+\lstinline|tempdir|.
+
+\begin{lstlisting}[language=Lattice, caption={Creating temporary files and directories}]
+// Create a temporary file
+let tmp_path = tempfile()
+print(tmp_path)  // e.g., "/tmp/lattice_a3kJ9x"
+
+write_file(tmp_path, "intermediate results go here")
+let data = read_file(tmp_path)
+print(data)  // "intermediate results go here"
+
+// Clean up when done
+delete_file(tmp_path)
+\end{lstlisting}
+
+\lstinline|tempfile| creates a new file in the system's temporary directory
+(typically \texttt{/tmp} on Unix or the path returned by
+\texttt{GetTempPathA} on Windows) with a unique name based on the template
+\texttt{lattice\_XXXXXX}. Internally, it uses \texttt{mkstemp}, which
+atomically creates the file and guarantees no name collisions. The file
+descriptor is immediately closed, and the path is returned as a string.
+
+\lstinline|tempdir| works the same way but creates a directory instead:
+
+\begin{lstlisting}[language=Lattice, caption={Using a temporary directory as a workspace}]
+let workspace = tempdir()
+print(workspace)  // e.g., "/tmp/lattice_Qm7kP2"
+
+// Use the directory for intermediate files
+write_file(path_join(workspace, "step1.txt"), "Phase 1 output")
+write_file(path_join(workspace, "step2.txt"), "Phase 2 output")
+
+// List what we created
+let files = list_dir(workspace)
+for name in files {
+    print("  " + name)
+}
+
+// Clean up
+for name in files {
+    delete_file(path_join(workspace, name))
+}
+rmdir(workspace)
+\end{lstlisting}
+
+\begin{warnbox}{Temporary Files Are Not Automatically Cleaned Up}
+Lattice does not use finalizers or RAII-style destructors to clean up
+temporary files. If your program exits without deleting them, they will
+remain on disk until the operating system's periodic cleanup runs (if ever).
+Always delete your temporaries explicitly, ideally using a \lstinline|defer|
+block to ensure cleanup happens even if an error occurs:
+\begin{lstlisting}[language=Lattice]
+let tmp = tempfile()
+defer { delete_file(tmp) }
+// ... work with the file ...
+\end{lstlisting}
+\end{warnbox}
+
+\subsection{A Safe Processing Pipeline}\label{sec:safe-pipeline}
+
+A robust pattern for file processing is to write output to a temporary file,
+then atomically rename it to the final destination. This prevents other
+programs from reading a half-written file:
+
+\begin{lstlisting}[language=Lattice, caption={Atomic file writes with tempfile and rename}]
+fn safe_write(destination: String, content: String) {
+    let dir = path_dir(destination)
+    let tmp = tempfile()
+    defer {
+        // Clean up the temp file if rename failed
+        if file_exists(tmp) {
+            delete_file(tmp)
+        }
+    }
+
+    write_file(tmp, content)
+    rename(tmp, destination)
+}
+
+safe_write("output/report.json", "{\"status\": \"complete\"}")
+\end{lstlisting}
+
+The \lstinline|defer| block ensures the temporary file is cleaned up no
+matter what happens. If the \lstinline|rename| succeeds, the temporary file
+no longer exists at its original path, so the \lstinline|file_exists| check
+prevents a spurious error.
+
+% ---------------------------------------------------------------------------
+\section{Working with Buffers}\label{sec:buffers}
+% ---------------------------------------------------------------------------
+
+\index{Buffer}
+\index{binary data}
+\index{read\_file\_bytes}
+\index{write\_file\_bytes}
+
+Strings are great for text, but the world is full of binary data: images,
+network packets, serialized structures, compressed archives. Lattice
+represents raw byte sequences with the \lstinline|Buffer| type.
+
+\begin{defnbox}{Buffer}
+A \emph{Buffer} is a contiguous, mutable sequence of bytes (\texttt{uint8\_t}
+values, ranging from 0 to 255). Buffers have a length (the number of bytes
+currently stored) and a capacity (the allocated space). You can index into a
+Buffer to read or write individual bytes, and use typed read/write methods to
+interpret sequences of bytes as integers or floating-point values.
+\end{defnbox}
+
+\subsection{Creating Buffers}\label{sec:buffer-create}
+
+There are several ways to create a Buffer:
+
+\begin{lstlisting}[language=Lattice, caption={Creating Buffers}]
+// Allocate a zero-filled buffer of a given size
+let zeros = Buffer::new(16)
+print(zeros.len())  // 16
+
+// Create from an array of byte values
+let header = Buffer::from([0x89, 0x50, 0x4E, 0x47])
+print(header.len())  // 4
+
+// Create from a string (UTF-8 bytes)
+let greeting = Buffer::from_string("Hello")
+print(greeting.len())  // 5
+print(greeting[0])     // 72 (ASCII 'H')
+\end{lstlisting}
+
+\lstinline|Buffer::new(size)| allocates a buffer of the given size, filled
+with zeros. \lstinline|Buffer::from(array)| creates a buffer from an array
+of integers, truncating each value to the range 0--255.
+\lstinline|Buffer::from_string(str)| copies the UTF-8 bytes of a string into
+a new buffer.
+
+\subsection{Reading and Writing Binary Files}\label{sec:binary-files}
+
+To read a file as raw bytes, use \lstinline|read_file_bytes|:
+
+\begin{lstlisting}[language=Lattice, caption={Reading a binary file}]
+let data = read_file_bytes("image.png")
+print("File size: " + to_string(data.len()) + " bytes")
+
+// Check the PNG magic number
+if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
+    print("Valid PNG header!")
+}
+\end{lstlisting}
+
+To write a buffer to disk, use \lstinline|write_file_bytes|:
+
+\begin{lstlisting}[language=Lattice, caption={Writing binary data to a file}]
+// Create a minimal BMP file header (simplified)
+flux bmp = Buffer::new(0)
+bmp.push(0x42)  // 'B'
+bmp.push(0x4D)  // 'M'
+
+// Write to disk
+write_file_bytes("output.bmp", bmp)
+\end{lstlisting}
+
+\subsection{Indexing and Mutation}\label{sec:buffer-indexing}
+
+\index{Buffer!indexing}
+
+Buffers support integer indexing for both reading and writing:
+
+\begin{lstlisting}[language=Lattice, caption={Buffer indexing}]
+flux buf = Buffer::new(4)
+buf[0] = 0xFF
+buf[1] = 0xCA
+buf[2] = 0xFE
+buf[3] = 0x00
+
+print(buf[0])  // 255
+print(buf[2])  // 254
+
+// Values are masked to a single byte
+buf[0] = 256
+print(buf[0])  // 0 (only the low 8 bits are kept)
+\end{lstlisting}
+
+When you assign a value to a buffer index, Lattice masks it with
+\texttt{0xFF}, keeping only the lowest 8 bits. Reading an index returns an
+\lstinline|Int| in the range 0--255. Out-of-bounds access produces a runtime
+error.
+
+\subsection{The push Method and Dynamic Growth}\label{sec:buffer-push}
+
+\index{Buffer!push}
+
+Buffers grow dynamically when you use \lstinline|push|:
+
+\begin{lstlisting}[language=Lattice, caption={Building a buffer byte by byte}]
+flux packet = Buffer::new(0)
+packet.push(0x01)      // version
+packet.push(0x00)      // flags
+packet.push_u16(1024)  // payload length as 16-bit value
+packet.push_u32(42)    // sequence number as 32-bit value
+
+print(packet.len())       // 8
+print(packet.capacity())  // at least 8
+\end{lstlisting}
+
+\lstinline|push| appends a single byte. \lstinline|push_u16| and
+\lstinline|push_u32| append multi-byte values in little-endian byte order.
+
+\subsection{Typed Read and Write Methods}\label{sec:typed-buffer-access}
+
+\index{Buffer!read\_u8}
+\index{Buffer!write\_u8}
+\index{Buffer!read\_u16}
+\index{Buffer!read\_u32}
+\index{Buffer!read\_u64}
+\index{Buffer!read\_i8}
+\index{Buffer!read\_i16}
+\index{Buffer!read\_i32}
+\index{Buffer!read\_i64}
+\index{Buffer!read\_f32}
+\index{Buffer!read\_f64}
+
+When working with structured binary data, you need to read and write
+multi-byte values at specific offsets. Buffers provide a full suite of typed
+accessors:
+
+\begin{lstlisting}[language=Lattice, caption={Typed buffer reads and writes}]
+flux buf = Buffer::new(20)
+
+// Write values at specific offsets
+buf.write_u8(0, 0xFF)        // 1 byte at offset 0
+buf.write_u16(1, 0xCAFE)     // 2 bytes at offset 1
+buf.write_u32(3, 0xDEADBEEF) // 4 bytes at offset 3
+
+// Read them back
+print(buf.read_u8(0))   // 255
+print(buf.read_u16(1))  // 51966  (0xCAFE)
+print(buf.read_u32(3))  // 3735928559  (0xDEADBEEF)
+\end{lstlisting}
+
+The full set of typed methods is:
+
+\begin{center}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{Read} & \textbf{Write} & \textbf{Description} \\
+\midrule
+\lstinline|read_u8(offset)| & \lstinline|write_u8(offset, val)| & Unsigned 8-bit integer (1 byte) \\
+\lstinline|read_u16(offset)| & \lstinline|write_u16(offset, val)| & Unsigned 16-bit integer (2 bytes) \\
+\lstinline|read_u32(offset)| & \lstinline|write_u32(offset, val)| & Unsigned 32-bit integer (4 bytes) \\
+\lstinline|read_u64(offset)| & \lstinline|write_u64(offset, val)| & Unsigned 64-bit integer (8 bytes) \\
+\lstinline|read_i8(offset)| & --- & Signed 8-bit integer \\
+\lstinline|read_i16(offset)| & --- & Signed 16-bit integer \\
+\lstinline|read_i32(offset)| & --- & Signed 32-bit integer \\
+\lstinline|read_i64(offset)| & \lstinline|write_i64(offset, val)| & Signed 64-bit integer \\
+\lstinline|read_f32(offset)| & --- & IEEE 754 single-precision float (4 bytes) \\
+\lstinline|read_f64(offset)| & --- & IEEE 754 double-precision float (8 bytes) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All multi-byte reads and writes use \emph{little-endian} byte order, matching
+the native byte order on x86 and ARM systems.
+
+\begin{warnbox}{Bounds Checking}
+All typed read and write methods perform bounds checking. Reading a
+\lstinline|u32| at offset 5 from a 7-byte buffer will produce a runtime error,
+because the read would extend past the end of the buffer (offset 5 + 4 bytes
+= offset 9, which exceeds length 7). Always verify your offsets when parsing
+binary formats.
+\end{warnbox}
+
+\subsection{Slicing, Filling, and Converting}\label{sec:buffer-utility}
+
+\index{Buffer!slice}
+\index{Buffer!fill}
+\index{Buffer!clear}
+\index{Buffer!resize}
+\index{Buffer!to\_string}
+\index{Buffer!to\_array}
+\index{Buffer!to\_hex}
+
+Buffers provide several utility methods for common operations:
+
+\begin{lstlisting}[language=Lattice, caption={Buffer utility methods}]
+let data = Buffer::from_string("Hello, Lattice!")
+
+// Slice: extract a sub-buffer (start, end)
+let sub = data.slice(0, 5)
+print(sub.to_string())  // "Hello"
+
+// to_hex: get a hex string representation
+let header = Buffer::from([0xDE, 0xAD, 0xBE, 0xEF])
+print(header.to_hex())  // "deadbeef"
+
+// to_array: convert to an array of integers
+let bytes = header.to_array()
+print(bytes)  // [222, 173, 190, 239]
+
+// fill: set all bytes to a value
+flux scratch = Buffer::new(8)
+scratch.fill(0xFF)
+print(scratch[3])  // 255
+
+// clear: reset length to zero
+scratch.clear()
+print(scratch.len())  // 0
+
+// resize: change the buffer length
+flux resizable = Buffer::new(4)
+resizable.resize(8)
+print(resizable.len())  // 8
+\end{lstlisting}
+
+\lstinline|slice(start, end)| returns a \emph{new} buffer containing the
+bytes from index \texttt{start} up to (but not including) \texttt{end}.
+\lstinline|to_string| interprets the buffer bytes as UTF-8 and returns a
+\lstinline|String|. \lstinline|to_hex| produces a lowercase hexadecimal
+representation. \lstinline|to_array| returns an \lstinline|Array| of
+\lstinline|Int| values, one per byte.
+
+\subsection{Parsing a Binary File Format}\label{sec:binary-format-example}
+
+Let's put everything together by parsing a WAV audio file header. The WAV
+format starts with a well-defined 44-byte header:
+
+\begin{lstlisting}[language=Lattice, caption={Parsing a WAV file header}]
+fn parse_wav_header(path: String) {
+    let data = read_file_bytes(path)
+    if data.len() < 44 {
+        print("File too small to be a valid WAV")
+        return
+    }
+
+    // Bytes 0-3: "RIFF" marker
+    let riff = data.slice(0, 4).to_string()
+    if riff != "RIFF" {
+        print("Not a RIFF file")
+        return
+    }
+
+    // Bytes 4-7: file size minus 8
+    let file_size = data.read_u32(4) + 8
+
+    // Bytes 8-11: "WAVE" format
+    let format = data.slice(8, 12).to_string()
+    if format != "WAVE" {
+        print("Not a WAVE file")
+        return
+    }
+
+    // Bytes 22-23: number of channels
+    let channels = data.read_u16(22)
+
+    // Bytes 24-27: sample rate
+    let sample_rate = data.read_u32(24)
+
+    // Bytes 34-35: bits per sample
+    let bits_per_sample = data.read_u16(34)
+
+    print("WAV File: " + path)
+    print("  Channels:       " + to_string(channels))
+    print("  Sample rate:    " + to_string(sample_rate) + " Hz")
+    print("  Bits per sample: " + to_string(bits_per_sample))
+    print("  File size:      " + to_string(file_size) + " bytes")
+}
+
+parse_wav_header("recording.wav")
+\end{lstlisting}
+
+This example demonstrates the core workflow for binary file parsing: read the
+file as bytes, check magic numbers, and use typed reads at known offsets to
+extract structured fields.
+
+\begin{notebox}{Buffers Are Value Types}
+Like structs in Lattice, Buffers are \emph{value types}---assigning a buffer
+to a new variable or passing it to a function creates a copy. If you
+modify the copy, the original is unaffected. This eliminates a whole category
+of aliasing bugs but means you should be mindful of copying large buffers
+unnecessarily. For more on value semantics, see \cref{ch:values-types}.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section*{Exercises}\label{sec:filesystem-exercises}
+% ---------------------------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{Disk Usage Counter.} Write a function
+    \lstinline|disk_usage(dir: String) -> Int| that recursively calculates
+    the total size in bytes of all files in a directory tree. Use
+    \lstinline|list_dir|, \lstinline|is_dir|, \lstinline|is_file|, and
+    \lstinline|file_size|.
+
+    \item \textbf{Find and Replace.} Write a program that takes a directory
+    path, a search string, and a replacement string as arguments. It should
+    find all \texttt{.txt} files in the directory using \lstinline|glob|,
+    read each one, replace all occurrences of the search string, and write
+    the result back. Use the safe-write pattern from
+    \cref{sec:safe-pipeline} to avoid corrupting files.
+
+    \item \textbf{Hex Dump.} Write a function
+    \lstinline|hex_dump(path: String, count: Int)| that reads the first
+    \lstinline|count| bytes of a file using \lstinline|read_file_bytes| and
+    prints them in a classic hex dump format: 16 bytes per line, showing
+    both hexadecimal values and printable ASCII characters.
+
+    \item \textbf{File Deduplication.} Write a program that scans a
+    directory, reads every file into a Buffer, computes a checksum (you can
+    use the \lstinline|to_hex| method on the bytes for a simple hash, or
+    wait until \cref{ch:time-crypto-os} for \lstinline|sha256|), and
+    reports any duplicate files.
+
+    \item \textbf{Binary Concatenator.} Write a function that takes an array
+    of file paths and a destination path, reads each file as bytes, and
+    concatenates all the buffers into a single file. Pay attention to
+    building the output buffer efficiently.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section*{What's Next}\label{sec:filesystem-next}
+% ---------------------------------------------------------------------------
+
+Now that we can read and write files, the natural next question is: what
+\emph{format} should those files be in? In the next chapter, we will explore
+Lattice's built-in support for four of the most common data formats---JSON,
+TOML, YAML, and CSV---and see how to parse, generate, and round-trip
+structured data between them.

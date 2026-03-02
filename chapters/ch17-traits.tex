@@ -1,0 +1,728 @@
+\chapter{Traits and Impl Blocks}\label{ch:traits}
+\index{trait}
+\index{impl}
+
+In \cref{ch:structs} we attached behaviour to structs through traits and
+impl blocks, but we treated them as a recipe to follow without explaining
+the ingredients. This chapter puts traits centre stage. We will see how to
+declare interfaces, implement them for multiple types, compose impl blocks,
+and use traits as the backbone of polymorphic design.
+
+Think of a trait as a \emph{contract}---a promise that a type will provide
+certain methods. An impl block is the \emph{fulfilment} of that promise. By
+separating the ``what'' (the trait) from the ``how'' (the impl), Lattice
+lets you write code that operates on \emph{any type that speaks a given
+protocol}, without knowing the concrete type in advance.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Declaring Traits}\label{sec:trait-declaring}
+\index{trait!declaration}
+
+A trait declaration lists method signatures with no bodies:
+
+\begin{lstlisting}[language=Lattice, caption={A trait with a single method}]
+trait Describable {
+    fn describe(self: any) -> String
+}
+\end{lstlisting}
+
+The keyword \lstinline|trait| is followed by a name (conventionally an
+adjective or capability noun), then braces containing one or more method
+signatures. Each signature specifies:
+
+\begin{itemize}
+  \item The method name.
+  \item A parameter list. The first parameter is almost always
+    \lstinline|self: any|, representing the value the method is called on.
+  \item An optional return type.
+\end{itemize}
+
+\begin{defnbox}{Trait}
+A \emph{trait} is a named set of method signatures that defines a
+behavioural interface. It contains no implementation---only declarations
+of the methods a type must provide.
+\end{defnbox}
+
+\subsection{Multi-Method Traits}
+
+A trait can declare any number of methods:
+
+\begin{lstlisting}[language=Lattice, caption={A trait with multiple methods}]
+trait Collection {
+    fn push_item(self: any, item: any) -> any
+    fn pop_item(self: any) -> any
+    fn peek_item(self: any) -> any
+    fn is_empty(self: any) -> any
+}
+\end{lstlisting}
+
+This \lstinline|Collection| trait declares four methods. Any type that
+implements \lstinline|Collection| is expected to provide all four.
+
+\subsection{Traits with Extra Parameters}
+
+Methods are not limited to \lstinline|self|. They can accept additional
+parameters:
+
+\begin{lstlisting}[language=Lattice, caption={Traits with extra parameters}]
+trait Scalable {
+    fn scale(self: any, factor: any) -> any
+}
+
+trait Combinable {
+    fn combine(self: any, other: any) -> any
+}
+\end{lstlisting}
+
+The \lstinline|Scalable| trait expects a method that takes a scaling factor;
+\lstinline|Combinable| expects a method that merges two values of the same
+kind.
+
+\begin{notebox}{Trait Bodies Are Signatures Only}
+You cannot write method bodies inside a trait declaration. The trait is
+purely a contract. All implementation goes in \lstinline|impl| blocks.
+This is a deliberate design choice: it keeps the interface description
+separate from the implementation, making both easier to read.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Implementing Traits for Structs}\label{sec:trait-implementing}
+\index{impl!block}
+\index{trait!implementation}
+
+An \lstinline|impl| block provides method bodies for a specific type:
+
+\begin{lstlisting}[language=Lattice, caption={Implementing a trait}]
+struct Animal { kind: any, name: any, legs: any }
+
+trait Displayable {
+    fn display(self: any) -> String
+}
+
+impl Displayable for Animal {
+    fn display(self: any) -> String {
+        return self.name + " the " + self.kind
+            + " (" + to_string(self.legs) + " legs)"
+    }
+}
+
+let dog = Animal { kind: "dog", name: "Rex", legs: 4 }
+print(dog.display())  // Rex the dog (4 legs)
+\end{lstlisting}
+
+The syntax is \lstinline|impl TraitName for TypeName { ... }|, and inside
+the braces you write full function definitions. Each method must match a
+signature declared in the trait.
+
+\subsection{How \texttt{self} Works}
+
+The first parameter, \lstinline|self|, receives a \emph{copy} of the value
+the method was called on. This follows Lattice's value semantics:
+
+\begin{lstlisting}[language=Lattice, caption={Self is a copy}]
+struct Counter { value: any }
+
+trait Incrementable {
+    fn increment(self: any) -> Counter
+}
+
+impl Incrementable for Counter {
+    fn increment(self: any) -> Counter {
+        return Counter { value: self.value + 1 }
+    }
+}
+
+let c = Counter { value: 10 }
+let c2 = c.increment()
+print(c.value)   // 10 (unchanged)
+print(c2.value)  // 11
+\end{lstlisting}
+
+Because \lstinline|self| is a copy, ``mutating'' methods must return a new
+instance. The original remains untouched. This is the same pattern we saw
+with struct methods in \cref{sec:struct-methods}.
+
+\subsection{Accessing Fields through \texttt{self}}
+
+Inside a method body, \lstinline|self| is a regular struct value. You read
+its fields with dot notation:
+
+\begin{lstlisting}[language=Lattice, caption={Reading fields from self}]
+struct Rect { w: any, h: any }
+
+trait Geometry {
+    fn area(self: any) -> any
+    fn perimeter(self: any) -> any
+}
+
+impl Geometry for Rect {
+    fn area(self: any) -> any {
+        return self.w * self.h
+    }
+
+    fn perimeter(self: any) -> any {
+        return 2 * (self.w + self.h)
+    }
+}
+
+let r = Rect { w: 5, h: 3 }
+print(r.area())       // 15
+print(r.perimeter())  // 16
+\end{lstlisting}
+
+\subsection{Method Chaining}
+
+When a method returns a struct of the same type, you can chain calls:
+
+\begin{lstlisting}[language=Lattice, caption={Method chaining}]
+struct Stack { items: any, size: any }
+
+trait Collection {
+    fn push_item(self: any, item: any) -> any
+    fn peek_item(self: any) -> any
+}
+
+impl Collection for Stack {
+    fn push_item(self: any, item: any) -> any {
+        flux new_items = []
+        for i in 0..self.size {
+            new_items.push(self.items[i])
+        }
+        new_items.push(item)
+        return Stack { items: new_items, size: self.size + 1 }
+    }
+
+    fn peek_item(self: any) -> any {
+        if self.size == 0 {
+            return nil
+        }
+        return self.items[self.size - 1]
+    }
+}
+
+let s = Stack { items: [], size: 0 }
+let top = s.push_item(1).push_item(2).push_item(3).peek_item()
+print(top)  // 3
+\end{lstlisting}
+
+Each \lstinline|push_item| returns a new \lstinline|Stack|, so we can
+immediately call the next method on the result. The chain reads like a
+pipeline: push 1, push 2, push 3, peek.
+
+\begin{tipbox}{Chaining Reads Naturally}
+Method chaining works because Lattice methods that return the same type
+create a ``fluent interface.'' This is a powerful pattern for building up
+data structures or transformation pipelines without intermediate variables.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Multiple Impl Blocks per Struct}\label{sec:trait-multiple-impl}
+\index{impl!multiple blocks}
+
+A struct can implement as many traits as it needs. Each trait gets its
+own \lstinline|impl| block:
+
+\begin{lstlisting}[language=Lattice, caption={Three traits on one struct}]
+struct Point { x: any, y: any }
+
+trait Describable {
+    fn describe(self: any) -> String
+}
+
+trait HasArea {
+    fn area(self: any) -> any
+}
+
+trait Scalable {
+    fn scale(self: any, factor: any) -> any
+}
+
+impl Describable for Point {
+    fn describe(self: any) -> String {
+        return "Point(" + to_string(self.x) + ", " + to_string(self.y) + ")"
+    }
+}
+
+impl HasArea for Point {
+    fn area(self: any) -> any {
+        return self.x * self.y
+    }
+}
+
+impl Scalable for Point {
+    fn scale(self: any, factor: any) -> any {
+        return Point { x: self.x * factor, y: self.y * factor }
+    }
+}
+
+let p = Point { x: 3, y: 4 }
+print(p.describe())  // Point(3, 4)
+print(p.area())      // 12
+
+let q = p.scale(3)
+print(q.x)  // 9
+print(q.y)  // 12
+\end{lstlisting}
+
+The \lstinline|Point| struct now speaks three protocols:
+\lstinline|Describable|, \lstinline|HasArea|, and \lstinline|Scalable|. Each
+impl block is self-contained and can be placed anywhere in the same file
+(or module).
+
+\subsection{How Method Registration Works}
+
+Under the hood, the compiler registers each method as a global function
+with a composite key. When you write:
+
+\begin{lstlisting}[language=Lattice]
+impl HasArea for Rect {
+    fn area(self: any) -> any { ... }
+}
+\end{lstlisting}
+
+the compiler emits the method body as a function and stores it under the
+key \texttt{Rect::area}. When you later call \lstinline|r.area()|, the VM:
+
+\begin{enumerate}
+  \item Checks for a callable field named \lstinline|area| on the struct
+    (there is none).
+  \item Looks up the global \texttt{Rect::area}.
+  \item Calls it with a clone of \lstinline|r| as \lstinline|self|.
+\end{enumerate}
+
+You can see this in \filename{src/stackcompiler.c}: the \texttt{ITEM\_IMPL}
+case builds the key string \lstinline|"TypeName::methodName"| and emits
+\texttt{OP\_DEFINE\_GLOBAL} with that key. The VM's \texttt{OP\_INVOKE}
+handler resolves the method at call time.
+
+\begin{notebox}{Callable Fields Take Priority}
+If a struct has both a closure field and a trait method with the same name,
+the closure field wins. The runtime checks fields first, then falls through
+to the impl registry. This is by design: it lets you override a trait
+method on a per-instance basis if needed (see \cref{sec:struct-callable-fields}).
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Designing with Interfaces}\label{sec:trait-design}
+\index{trait!design patterns}
+\index{interface}
+
+Traits are Lattice's interface mechanism. Effective use of traits leads to
+code that is modular, testable, and extensible. Here are some patterns.
+
+\subsection{The Same Trait on Different Types}
+
+The real power of traits emerges when multiple types implement the same
+interface. Functions that operate on the trait---rather than a specific
+struct---work with \emph{any} implementing type:
+
+\begin{lstlisting}[language=Lattice, caption={One trait, two types}]
+struct Circle { radius: Float }
+struct Rect { width: Float, height: Float }
+
+trait Describable {
+    fn describe(self: any) -> String
+}
+
+trait HasArea {
+    fn area(self: any) -> Float
+}
+
+impl Describable for Circle {
+    fn describe(self: any) -> String {
+        return "Circle(r=" + to_string(self.radius) + ")"
+    }
+}
+
+impl HasArea for Circle {
+    fn area(self: any) -> Float {
+        return 3.14159 * self.radius * self.radius
+    }
+}
+
+impl Describable for Rect {
+    fn describe(self: any) -> String {
+        return "Rect(" + to_string(self.width) + "x" + to_string(self.height) + ")"
+    }
+}
+
+impl HasArea for Rect {
+    fn area(self: any) -> Float {
+        return self.width * self.height
+    }
+}
+
+let c = Circle { radius: 5.0 }
+let r = Rect { width: 4.0, height: 6.0 }
+
+print(c.describe())  // Circle(r=5)
+print(c.area())      // 78.53975
+
+print(r.describe())  // Rect(4x6)
+print(r.area())      // 24
+\end{lstlisting}
+
+Both \lstinline|Circle| and \lstinline|Rect| implement \lstinline|Describable|
+and \lstinline|HasArea|. The methods have different bodies---each type knows
+how to describe and measure itself---but the \emph{interface} is identical.
+
+\subsection{Traits for Separation of Concerns}
+
+Suppose you are building a notification system. You might define separate
+traits for each concern:
+
+\begin{lstlisting}[language=Lattice, caption={Separating concerns with traits}]
+struct EmailAlert {
+    to: String,
+    subject: String,
+    body: String
+}
+
+trait Sendable {
+    fn send(self: any) -> String
+}
+
+trait Loggable {
+    fn log_entry(self: any) -> String
+}
+
+impl Sendable for EmailAlert {
+    fn send(self: any) -> String {
+        return "Sending email to " + self.to + ": " + self.subject
+    }
+}
+
+impl Loggable for EmailAlert {
+    fn log_entry(self: any) -> String {
+        return "[EMAIL] to=" + self.to + " subject=" + self.subject
+    }
+}
+
+let alert = EmailAlert {
+    to: "ops@example.com",
+    subject: "Server down",
+    body: "The production server is unreachable."
+}
+
+print(alert.send())      // Sending email to ops@example.com: Server down
+print(alert.log_entry()) // [EMAIL] to=ops@example.com subject=Server down
+\end{lstlisting}
+
+Each trait captures one aspect of behaviour. A \lstinline|SlackAlert| struct
+could implement the same traits with different bodies, and any code that
+calls \lstinline|.send()| or \lstinline|.log_entry()| would work with
+either type.
+
+\subsection{Naming Conventions}
+
+Good trait names describe a capability, not a thing:
+
+\begin{itemize}
+  \item \lstinline|Describable|, \lstinline|Displayable| --- ``can be described / displayed''
+  \item \lstinline|HasArea|, \lstinline|HasLength| --- ``possesses a measurable property''
+  \item \lstinline|Scalable|, \lstinline|Combinable| --- ``can be scaled / combined''
+  \item \lstinline|Collection|, \lstinline|Geometry| --- group of related operations
+\end{itemize}
+
+When you read \lstinline|impl Scalable for Vec2|, the intent is
+immediately clear: ``\lstinline|Vec2| can be scaled.''
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Trait-Driven Polymorphism}\label{sec:trait-polymorphism}
+\index{polymorphism}
+\index{trait!polymorphism}
+
+Because Lattice is dynamically typed, any value can be passed to any
+function. Traits add a \emph{semantic} layer on top: they document which
+methods a value must support, and the runtime dispatches to the correct
+implementation based on the value's type.
+
+\subsection{Heterogeneous Collections}
+
+You can put different types in the same array and call the same method on
+each:
+
+\begin{lstlisting}[language=Lattice, caption={Polymorphic dispatch over an array}]
+struct Circle { radius: Float }
+struct Rect { width: Float, height: Float }
+
+trait HasArea {
+    fn area(self: any) -> Float
+}
+
+impl HasArea for Circle {
+    fn area(self: any) -> Float {
+        return 3.14159 * self.radius * self.radius
+    }
+}
+
+impl HasArea for Rect {
+    fn area(self: any) -> Float {
+        return self.width * self.height
+    }
+}
+
+let shapes = [
+    Circle { radius: 3.0 },
+    Rect { width: 4.0, height: 5.0 },
+    Circle { radius: 1.0 }
+]
+
+flux total_area = 0.0
+for shape in shapes {
+    total_area = total_area + shape.area()
+}
+print(total_area)  // 28.27431 + 20.0 + 3.14159 = 51.4159
+\end{lstlisting}
+
+The \lstinline|for| loop does not know whether each element is a
+\lstinline|Circle| or a \lstinline|Rect|. It calls \lstinline|.area()|
+on each, and the runtime dispatches to the correct implementation based
+on the struct's type name.
+
+\begin{defnbox}{Dynamic Dispatch}
+Lattice uses \emph{dynamic dispatch} for trait methods. When you call
+\lstinline|shape.area()|, the VM looks up the method key
+\texttt{TypeName::area} at runtime, using the actual type of the value.
+This is different from static dispatch (resolved at compile time) used by
+languages like Rust.
+\end{defnbox}
+
+\subsection{Methods in Expressions and Conditionals}
+
+Trait method calls are expressions---you can use them in \lstinline|if|
+conditions, arithmetic, and anywhere else a value is expected:
+
+\begin{lstlisting}[language=Lattice, caption={Methods in expressions}]
+struct Rect { w: any, h: any }
+
+trait Geometry {
+    fn area(self: any) -> any
+}
+
+impl Geometry for Rect {
+    fn area(self: any) -> any {
+        return self.w * self.h
+    }
+}
+
+let r1 = Rect { w: 4, h: 6 }
+let r2 = Rect { w: 3, h: 8 }
+
+let total_area = r1.area() + r2.area()
+print(total_area)  // 48
+
+let larger = if r1.area() > r2.area() { "r1" } else { "r2" }
+print(larger)  // r2
+\end{lstlisting}
+
+\subsection{Methods in Loops}
+
+A common pattern is to accumulate results by calling trait methods inside
+a loop:
+
+\begin{lstlisting}[language=Lattice, caption={Accumulating over trait methods}]
+struct Rect { w: any, h: any }
+
+trait Geometry {
+    fn area(self: any) -> any
+}
+
+impl Geometry for Rect {
+    fn area(self: any) -> any {
+        return self.w * self.h
+    }
+}
+
+let rects = [
+    Rect { w: 1, h: 1 },
+    Rect { w: 2, h: 2 },
+    Rect { w: 3, h: 3 }
+]
+
+flux total = 0
+for r in rects {
+    total = total + r.area()
+}
+print(total)  // 1 + 4 + 9 = 14
+\end{lstlisting}
+
+\subsection{Traits on Enums}
+
+Traits are not limited to structs---you can implement them for enums too:
+
+\begin{lstlisting}[language=Lattice, caption={A trait implemented for an enum}]
+enum Status {
+    Active,
+    Inactive,
+    Error(any)
+}
+
+trait Displayable {
+    fn display(self: any) -> String
+}
+
+impl Displayable for Status {
+    fn display(self: any) -> String {
+        return "Status:active"
+    }
+}
+
+let s = Status::Active
+print(s.display())  // Status:active
+\end{lstlisting}
+
+\begin{notebox}{Enum Method Dispatch}
+When you call a trait method on an enum value, the runtime looks up the
+method key using the \emph{enum type name}---not the variant name. So
+\lstinline|Status::Active|, \lstinline|Status::Inactive|, and
+\lstinline|Status::Error("oops")| all dispatch to the same impl block.
+If you need per-variant behaviour, use \lstinline|match| inside the
+method body.
+\end{notebox}
+
+\subsection{A Complete Polymorphism Example}
+
+Let's put it all together with a two-dimensional vector type that
+supports scaling and combining:
+
+\begin{lstlisting}[language=Lattice, caption={A complete trait-driven design}]
+struct Vec2 { x: any, y: any }
+
+trait Describable {
+    fn describe(self: any) -> String
+}
+
+trait Scalable {
+    fn scale(self: any, factor: any) -> any
+}
+
+trait Combinable {
+    fn combine(self: any, other: any) -> any
+}
+
+impl Describable for Vec2 {
+    fn describe(self: any) -> String {
+        return "Vec2(" + to_string(self.x) + ", " + to_string(self.y) + ")"
+    }
+}
+
+impl Scalable for Vec2 {
+    fn scale(self: any, factor: any) -> any {
+        return Vec2 { x: self.x * factor, y: self.y * factor }
+    }
+}
+
+impl Combinable for Vec2 {
+    fn combine(self: any, other: any) -> any {
+        return Vec2 { x: self.x + other.x, y: self.y + other.y }
+    }
+}
+
+let velocity = Vec2 { x: 3, y: 4 }
+let boost = velocity.scale(2)
+print(boost.describe())  // Vec2(6, 8)
+
+let gravity = Vec2 { x: 0, y: -1 }
+let result = boost.combine(gravity)
+print(result.describe())  // Vec2(6, 7)
+\end{lstlisting}
+
+This design is extensible. If you later add a \lstinline|Vec3| struct, you
+can implement the same three traits for it, and any code that operates on
+\lstinline|Describable|, \lstinline|Scalable|, or \lstinline|Combinable|
+values will work with both types---no changes needed.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Under the Hood}\label{sec:trait-internals}
+\index{trait!internals}
+
+Understanding the implementation helps when debugging method dispatch
+or designing complex trait hierarchies.
+
+\subsection{Compilation}
+
+Traits themselves are metadata-only. The compiler sees a trait declaration
+and records it, but emits no bytecode for it. Only \lstinline|impl| blocks
+produce code:
+
+\begin{enumerate}
+  \item Each method body is compiled as a regular function.
+  \item The compiled function is registered as a global under the key
+    \texttt{"TypeName::methodName"}.
+  \item The VM resolves this key at call time via the \texttt{OP\_INVOKE}
+    opcode family.
+\end{enumerate}
+
+You can see this in \filename{src/stackcompiler.c}---the
+\texttt{ITEM\_TRAIT} case is essentially a no-op, while \texttt{ITEM\_IMPL}
+compiles each method and emits \texttt{OP\_DEFINE\_GLOBAL}.
+
+\subsection{Dispatch Performance}
+
+The stack VM uses three specialised invoke opcodes for performance:
+
+\begin{itemize}
+  \item \textbf{\texttt{OP\_INVOKE\_LOCAL}}: When the receiver is a local
+    variable, the VM can skip the stack and access the value directly from
+    the frame's slot array. This is the fastest path.
+  \item \textbf{\texttt{OP\_INVOKE\_GLOBAL}}: When the receiver is a global
+    variable. Slightly slower due to the global lookup.
+  \item \textbf{\texttt{OP\_INVOKE}}: The general case for arbitrary
+    expressions. The struct is on the stack, and the VM searches for the
+    method.
+\end{itemize}
+
+Each path also maintains a \emph{polymorphic inline cache} (PIC) to avoid
+repeated lookups when the same call site sees the same type across
+iterations. You can explore this in \filename{src/stackvm.c}.
+
+\subsection{Self Cloning}
+
+When a method is invoked, the runtime clones \lstinline|self| via
+\texttt{value\_deep\_clone()} before passing it to the method frame.
+This ensures that mutations inside the method cannot accidentally affect
+the caller's copy---maintaining Lattice's value semantics guarantee.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:trait-exercises}
+
+\begin{enumerate}
+  \item \textbf{Shape hierarchy.}
+    Define structs \lstinline|Circle|, \lstinline|Square|, and
+    \lstinline|Triangle|. Create a \lstinline|HasArea| trait and implement
+    it for all three. Put instances of each into an array and compute the
+    total area in a loop.
+
+  \item \textbf{Stack from scratch.}
+    Using the \lstinline|Collection| trait from this chapter (with methods
+    \lstinline|push_item|, \lstinline|pop_item|, \lstinline|peek_item|,
+    and \lstinline|is_empty|), implement a \lstinline|Queue| struct that
+    supports FIFO ordering. Verify that items come out in insertion order.
+
+  \item \textbf{Composing traits.}
+    Define two traits: \lstinline|Serializable| (with a
+    \lstinline|to_string_repr| method) and \lstinline|Parseable| (with a
+    class-level \lstinline|from_string| function). Implement both for a
+    \lstinline|Temperature| struct that holds a value and a unit
+    (\lstinline|"C"| or \lstinline|"F"|). Demonstrate round-tripping:
+    convert to a string and parse back.
+
+  \item \textbf{Trait method chaining.}
+    Create a \lstinline|Builder| struct with fields \lstinline|parts| and
+    \lstinline|count|. Implement a \lstinline|Buildable| trait with methods
+    \lstinline|add_part| (returns a new Builder with the part appended) and
+    \lstinline|build| (returns a summary string). Chain at least four
+    \lstinline|add_part| calls followed by \lstinline|build|.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section*{What's Next}
+
+Traits let you write code that works across multiple types. But so far,
+every type annotation in our examples has been \lstinline|any|---a catch-all
+that says nothing about what the value actually is. In the next chapter we
+meet \emph{generics}, which let you parameterise functions, structs, and
+enums over types. Instead of \lstinline|fn identity(x: any) -> any|, you
+will write \lstinline|fn identity<T>(x: T) -> T|---and the language will
+understand the relationship between input and output.

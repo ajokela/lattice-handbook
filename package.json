@@ -1,0 +1,19 @@
+{
+  "name": "lattice-handbook",
+  "version": "1.0.0",
+  "description": "The Lattice Handbook — parallel book generation via Claude Agent SDK",
+  "type": "module",
+  "scripts": {
+    "generate": "npx tsx generate.mts",
+    "generate:part": "npx tsx generate.mts --part",
+    "compile": "pdflatex -interaction=nonstopmode book.tex && pdflatex book.tex && makeindex book.idx && pdflatex book.tex"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

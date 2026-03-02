@@ -1,0 +1,607 @@
+\chapter{Concurrency Patterns and Pitfalls}\label{ch:concurrency-patterns}
+
+\index{concurrency patterns}
+
+You now know the building blocks: \lstinline|scope| and \lstinline|spawn| for structured concurrency, \lstinline|Channel| for message passing, \lstinline|select| for multiplexing, and \lstinline|Ref| for shared mutable state.
+But knowing the primitives and knowing how to \emph{combine} them well are different skills.
+This chapter is a field guide---a collection of patterns that work, pitfalls that bite, and rules of thumb earned through experience.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{Ref} for Shared Mutable State}\label{sec:ref-shared-state}
+%% ─────────────────────────────────────────────────────────────
+
+\index{Ref@\texttt{Ref}}
+\index{Ref@\texttt{Ref}!API}
+
+Before we compare \lstinline|Ref| with channels, let's nail down exactly what \lstinline|Ref| offers.
+A \lstinline|Ref| is a reference-counted, heap-allocated wrapper around any Lattice value.
+Unlike ordinary values, which are deep-cloned when passed to spawns, a \lstinline|Ref| is \emph{shared by reference}---all threads see the same underlying data.
+
+\subsection{\texttt{Ref::new()}, \texttt{.get()}, \texttt{.set()}}
+
+\index{Ref::new@\texttt{Ref::new()}}
+\index{Ref@\texttt{Ref}!get}
+\index{Ref@\texttt{Ref}!set}
+
+\begin{lstlisting}[language=Lattice, caption={Ref basics}]
+let counter = Ref::new(0)
+
+print(counter.get())      // 0
+counter.set(42)
+print(counter.get())      // 42
+print(counter.inner_type()) // Int
+\end{lstlisting}
+
+The API is deliberately minimal:
+
+\begin{itemize}
+  \item \lstinline|Ref::new(value)| --- Creates a new \lstinline|Ref| wrapping the given value. Registered as a native function (\texttt{native\_ref\_new} in \filename{src/runtime.c}).
+  \item \lstinline|.get()| (or \lstinline|.deref()|) --- Returns a deep clone of the inner value.
+  \item \lstinline|.set(value)| --- Replaces the inner value. Fails on a frozen \lstinline|Ref|.
+  \item \lstinline|.inner_type()| --- Returns a string describing the type of the wrapped value.
+\end{itemize}
+
+Under the hood (see \filename{src/stackvm.c}, the \texttt{VAL\_REF} case in the builtin method handler), \lstinline|.get()| calls \texttt{value\_deep\_clone} on the inner value, giving each caller its own independent copy.
+The \lstinline|Ref| itself is a \texttt{LatRef} struct (\filename{include/value.h}) containing a \texttt{LatValue} and a reference count.
+
+\subsection{Ref Proxying}
+
+\index{Ref@\texttt{Ref}!proxying}
+
+A \lstinline|Ref| proxies many methods to its inner value.
+If the inner value is an \lstinline|Array|, you can call \lstinline|.push()|, \lstinline|.pop()|, and \lstinline|.len()| directly on the \lstinline|Ref|.
+If it is a \lstinline|Map|, you can call \lstinline|.get(key)|, \lstinline|.set(key, val)|, \lstinline|.keys()|, and more:
+
+\begin{lstlisting}[language=Lattice, caption={Ref proxying to inner types}]
+let scores = Ref::new(Map::new())
+
+// These calls go through to the inner Map:
+scores.set("Alice", 95)
+scores.set("Bob", 87)
+print(scores.get("Alice"))  // 95
+print(scores.len())         // 2
+print(scores.keys())        // ["Alice", "Bob"]
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Ref with Array inner type}]
+let items = Ref::new([])
+
+items.push("hammer")
+items.push("nails")
+items.push("screwdriver")
+print(items.len())    // 3
+print(items.get())    // ["hammer", "nails", "screwdriver"]
+\end{lstlisting}
+
+This proxying makes \lstinline|Ref| feel natural---you rarely need to unwrap the inner value manually.
+
+\begin{notebox}{Freezing a Ref}
+\index{Ref@\texttt{Ref}!freezing}
+You can \lstinline|freeze| a \lstinline|Ref|, which prevents \lstinline|.set()|, \lstinline|.push()|, \lstinline|.pop()|, and other mutating operations.
+The inner value itself is not frozen---only the \lstinline|Ref|'s ability to be mutated through its API is locked.
+This is useful when you want to share read-only data without sublimating.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{When to Use Channels vs.\ \texttt{Ref}}\label{sec:channels-vs-ref}
+%% ─────────────────────────────────────────────────────────────
+
+\index{channels!vs Ref}
+\index{Ref@\texttt{Ref}!vs channels}
+
+This is one of the most common questions in concurrent Lattice programming: ``Should I use a channel or a Ref?''
+
+The short answer: \textbf{prefer channels for communication, use Ref for shared state that does not need message-passing semantics.}
+
+Here is a decision guide:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Scenario} & \textbf{Channel} & \textbf{Ref} \\
+\midrule
+Passing results from producer to consumer & \checkmark & \\
+Streaming data through a pipeline & \checkmark & \\
+Shared configuration (read-mostly) & & \checkmark \\
+Aggregate counter (write from many threads) & \checkmark & \\
+Cancellation flag (boolean signal) & & \checkmark \\
+Request-reply between two threads & \checkmark & \\
+Accumulating results into a collection & \checkmark & \checkmark\textsuperscript{*} \\
+\bottomrule
+\end{tabular}
+\caption{Channel vs.\ Ref decision matrix. \textsuperscript{*}Ref works for accumulation but beware race conditions.}
+\label{tab:channel-vs-ref}
+\end{table}
+
+\subsection{The Core Trade-Off}
+
+\begin{itemize}
+  \item \textbf{Channels} provide \emph{ordering} and \emph{blocking}. A \lstinline|recv()| naturally waits for data, so you get synchronization for free. Channels also guarantee that each message is consumed exactly once.
+  \item \textbf{Ref} provides \emph{latest-value semantics}. A \lstinline|.get()| always returns the current value, even if it has been overwritten multiple times. There is no ordering of writes, and no blocking---you always get an answer immediately.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Channel: ordered, exactly-once delivery}]
+let ch = Channel::new()
+ch.send(1)
+ch.send(2)
+ch.send(3)
+print(ch.recv())  // 1 (always)
+print(ch.recv())  // 2 (always)
+print(ch.recv())  // 3 (always)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Ref: latest-value semantics}]
+let state = Ref::new("initial")
+
+scope {
+  spawn { state.set("updated by A") }
+  spawn { state.set("updated by B") }
+}
+
+print(state.get())  // "updated by A" or "updated by B"
+\end{lstlisting}
+
+\begin{tipbox}{Rule of Thumb}
+If you find yourself writing \lstinline|ref.get()| followed by \lstinline|ref.set(...)| in a spawn, you probably have a race condition.
+Restructure to use a channel: send partial results to an aggregator that does the read-modify-write on a single thread.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Deadlock Avoidance}\label{sec:deadlock-avoidance}
+%% ─────────────────────────────────────────────────────────────
+
+\index{deadlock}
+\index{deadlock!avoidance}
+
+A deadlock occurs when two or more threads are waiting for each other, and none can make progress.
+Lattice's structured concurrency model eliminates some deadlock patterns by design, but it does not eliminate all of them.
+
+\subsection{Classic Channel Deadlock}
+
+The most common deadlock in channel-based code: two threads each waiting to receive from the other's channel.
+
+\begin{lstlisting}[language=Lattice, caption={Deadlock: circular recv}]
+// WARNING: This will deadlock!
+let ch_a = Channel::new()
+let ch_b = Channel::new()
+
+scope {
+  spawn {
+    let val = ch_b.recv()  // Waiting for B to send
+    ch_a.send(val + 1)
+  }
+  spawn {
+    let val = ch_a.recv()  // Waiting for A to send
+    ch_b.send(val + 1)
+  }
+}
+// Neither spawn can proceed: both are blocked on recv.
+\end{lstlisting}
+
+\begin{warnbox}{Deadlock Is Not Detected}
+Lattice does not have a deadlock detector.
+If your program deadlocks, it will hang silently.
+The structured concurrency model means the \lstinline|scope| will never return, and the program will appear frozen.
+\end{warnbox}
+
+\subsection{Rules for Avoiding Deadlocks}
+
+\begin{enumerate}
+  \item \textbf{Avoid circular channel dependencies.} If thread A needs a value from thread B and vice versa, redesign so that data flows in one direction, or use a mediator thread.
+
+  \item \textbf{Always close channels when done.} An unclosed channel causes \lstinline|recv()| to block forever when the buffer is drained. A forgotten \lstinline|close()| is the most common cause of ``my program hangs'' bugs.
+
+  \item \textbf{Use \lstinline|select| with \lstinline|timeout| for defensive waiting.} If you are not certain a value will arrive, protect yourself with a timeout:
+
+\begin{lstlisting}[language=Lattice, caption={Timeout as deadlock prevention}]
+let result = select {
+  slow_channel -> val { val }
+  timeout 5000 { print("Possible deadlock!"); nil }
+}
+\end{lstlisting}
+
+  \item \textbf{Prefer fan-in to circular patterns.} Instead of two threads exchanging messages directly, have both send to a central coordinator channel and let a single thread make decisions.
+
+  \item \textbf{Send before receive when possible.} If a thread must both send and receive, do the sends first (or in a non-blocking way) so that you are not holding a blocking receive while another thread waits on your send.
+\end{enumerate}
+
+\subsection{Deadlock-Free Pattern: The Coordinator}
+
+\begin{lstlisting}[language=Lattice, caption={Coordinator pattern avoids circular waits}]
+let requests = Channel::new()
+let responses = Channel::new()
+
+scope {
+  // Worker A: send request, wait for response
+  spawn {
+    requests.send("compute_42")
+    let answer = responses.recv()
+    print("A got: ${answer}")
+  }
+
+  // Coordinator: receive request, send response
+  spawn {
+    let req = requests.recv()
+    if req == "compute_42" {
+      responses.send(42)
+    }
+    requests.close()
+    responses.close()
+  }
+}
+\end{lstlisting}
+
+Data flows in one direction (worker $\to$ coordinator $\to$ worker), so there is no cycle.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Common Patterns}\label{sec:common-concurrency-patterns}
+%% ─────────────────────────────────────────────────────────────
+
+\subsection{Worker Pool}\label{subsec:worker-pool}
+
+\index{worker pool}
+\index{concurrency patterns!worker pool}
+
+A fixed set of workers that consume from a shared job queue:
+
+\begin{lstlisting}[language=Lattice, caption={Worker pool pattern}]
+fn run_worker_pool(jobs: Channel, results: Channel, num_workers: Int) {
+  scope {
+    // Launch workers --- use nested spawns for dynamic count
+    spawn {
+      scope {
+        spawn {
+          flux job = jobs.recv()
+          while job != nil {
+            results.send("W1: ${job} done")
+            job = jobs.recv()
+          }
+        }
+        spawn {
+          flux job = jobs.recv()
+          while job != nil {
+            results.send("W2: ${job} done")
+            job = jobs.recv()
+          }
+        }
+        spawn {
+          flux job = jobs.recv()
+          while job != nil {
+            results.send("W3: ${job} done")
+            job = jobs.recv()
+          }
+        }
+      }
+      results.close()
+    }
+  }
+}
+
+let jobs = Channel::new()
+let results = Channel::new()
+
+// Enqueue jobs
+for i in 0..9 {
+  jobs.send("task_${i}")
+}
+jobs.close()
+
+// Run the pool
+run_worker_pool(jobs, results, 3)
+
+// Collect results
+flux r = results.recv()
+while r != nil {
+  print(r)
+  r = results.recv()
+}
+\end{lstlisting}
+
+The key insight: because multiple workers call \lstinline|recv()| on the same \lstinline|jobs| channel, work is distributed automatically.
+When the channel is closed and drained, all workers exit their loops.
+
+\subsection{Broadcast}\label{subsec:broadcast}
+
+\index{broadcast pattern}
+\index{concurrency patterns!broadcast}
+
+Channels are point-to-point: each value is consumed by exactly one receiver.
+To broadcast a value to multiple listeners, you need multiple channels:
+
+\begin{lstlisting}[language=Lattice, caption={Broadcast pattern}]
+fn broadcast(value: any, listeners: Array) {
+  for listener in listeners {
+    listener.send(value)
+  }
+}
+
+let listener_a = Channel::new()
+let listener_b = Channel::new()
+let listener_c = Channel::new()
+let listeners = [listener_a, listener_b, listener_c]
+
+broadcast("system shutting down", listeners)
+
+// Each listener gets the message independently
+print(listener_a.recv())  // system shutting down
+print(listener_b.recv())  // system shutting down
+print(listener_c.recv())  // system shutting down
+\end{lstlisting}
+
+For a real system, you might wrap this in a \lstinline|Broadcaster| struct that manages the listener list and handles subscriptions:
+
+\begin{lstlisting}[language=Lattice, caption={Broadcaster with subscribers}]
+fn make_broadcaster() {
+  let subscribers = Ref::new([])
+
+  let subscribe = |ch: Channel| {
+    let current = subscribers.get()
+    current.push(ch)
+    subscribers.set(current)
+  }
+
+  let publish = |message: any| {
+    let subs = subscribers.get()
+    for sub in subs {
+      sub.send(message)
+    }
+  }
+
+  return [subscribe, publish]
+}
+
+let fns = make_broadcaster()
+let subscribe = fns[0]
+let publish = fns[1]
+
+let ch1 = Channel::new()
+let ch2 = Channel::new()
+subscribe(ch1)
+subscribe(ch2)
+
+publish("hello everyone")
+print(ch1.recv())  // hello everyone
+print(ch2.recv())  // hello everyone
+\end{lstlisting}
+
+\subsection{Request-Reply}\label{subsec:request-reply}
+
+\index{request-reply pattern}
+\index{concurrency patterns!request-reply}
+
+A common pattern in concurrent services: a client sends a request along with a ``reply channel,'' and the server sends the response back on that channel.
+
+\begin{lstlisting}[language=Lattice, caption={Request-reply pattern}]
+let server_inbox = Channel::new()
+
+scope {
+  // Server: process requests
+  spawn {
+    flux req = server_inbox.recv()
+    while req != nil {
+      let query = req[0]
+      let reply_ch = req[1]
+      if query == "ping" {
+        reply_ch.send("pong")
+      } else {
+        reply_ch.send("unknown: ${query}")
+      }
+      req = server_inbox.recv()
+    }
+  }
+
+  // Client: send request with reply channel
+  spawn {
+    let reply = Channel::new()
+    server_inbox.send(["ping", reply])
+    print("Server says: ${reply.recv()}")
+
+    let reply2 = Channel::new()
+    server_inbox.send(["hello", reply2])
+    print("Server says: ${reply2.recv()}")
+
+    server_inbox.close()
+  }
+}
+// Output:
+// Server says: pong
+// Server says: unknown: hello
+\end{lstlisting}
+
+Each request bundles a fresh reply channel.
+The server reads the request, computes the answer, and sends it back on the client's reply channel.
+This pattern decouples clients from the server's internal state and allows multiple clients to interact with a single server concurrently.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Testing Concurrent Code}\label{sec:testing-concurrent-code}
+%% ─────────────────────────────────────────────────────────────
+
+\index{testing!concurrent code}
+\index{concurrency!testing}
+
+Concurrent code is notoriously hard to test.
+Bugs may appear only under specific timing conditions, making them intermittent and frustrating.
+Here are strategies that help.
+
+\subsection{Deterministic Tests with Channels}
+
+The best concurrent tests eliminate timing from the equation.
+Use channels as synchronization points to create a deterministic order of operations:
+
+\begin{lstlisting}[language=Lattice, caption={Deterministic concurrent test}]
+fn test_producer_consumer() {
+  let ch = Channel::new()
+  let results = Channel::new()
+
+  scope {
+    spawn {
+      ch.send(10)
+      ch.send(20)
+      ch.send(30)
+      ch.close()
+    }
+    spawn {
+      flux sum = 0
+      flux val = ch.recv()
+      while val != nil {
+        sum = sum + val
+        val = ch.recv()
+      }
+      results.send(sum)
+    }
+  }
+
+  let total = results.recv()
+  if total != 60 {
+    print("FAIL: expected 60, got ${total}")
+  } else {
+    print("PASS: producer-consumer sum is correct")
+  }
+}
+
+test_producer_consumer()
+\end{lstlisting}
+
+The channels enforce ordering: the consumer sees all three values before computing the sum.
+No sleep calls, no timing assumptions.
+
+\subsection{Stress Testing with Repeated Runs}
+
+Some concurrency bugs only manifest under contention.
+Run your test many times:
+
+\begin{lstlisting}[language=Lattice, caption={Stress test via repeated runs}]
+fn test_concurrent_counter_stress() {
+  flux failures = 0
+
+  for trial in 0..100 {
+    let results = Channel::new()
+
+    scope {
+      spawn { results.send(1) }
+      spawn { results.send(1) }
+      spawn { results.send(1) }
+    }
+
+    let total = results.recv() + results.recv() + results.recv()
+    if total != 3 {
+      failures = failures + 1
+    }
+  }
+
+  if failures > 0 {
+    print("FAIL: ${failures}/100 trials failed")
+  } else {
+    print("PASS: all 100 trials correct")
+  }
+}
+
+test_concurrent_counter_stress()
+\end{lstlisting}
+
+\subsection{Testing with Timeouts}
+
+Protect tests from deadlocks by using \lstinline|select| with a timeout:
+
+\begin{lstlisting}[language=Lattice, caption={Test with timeout protection}]
+fn test_with_timeout() {
+  let result_ch = Channel::new()
+
+  scope {
+    spawn {
+      // Code under test
+      result_ch.send("computed_value")
+    }
+  }
+
+  let outcome = select {
+    result_ch -> val { val }
+    timeout 2000 { "TIMEOUT" }
+  }
+
+  if outcome == "TIMEOUT" {
+    print("FAIL: test timed out (possible deadlock)")
+  } else if outcome == "computed_value" {
+    print("PASS: got expected result")
+  } else {
+    print("FAIL: unexpected result: ${outcome}")
+  }
+}
+
+test_with_timeout()
+\end{lstlisting}
+
+If the test deadlocks, the timeout arm fires after 2 seconds instead of hanging forever.
+
+\subsection{Testing Error Propagation}
+
+Verify that errors from spawns reach the parent:
+
+\begin{lstlisting}[language=Lattice, caption={Testing error propagation}]
+fn test_spawn_error_propagation() {
+  flux caught_error = false
+
+  try {
+    scope {
+      spawn {
+        // Deliberately cause an error
+        let arr = [1, 2, 3]
+        let bad = arr[99]  // Out of bounds
+      }
+    }
+  } catch err {
+    caught_error = true
+  }
+
+  if caught_error {
+    print("PASS: error from spawn was caught")
+  } else {
+    print("FAIL: error was not propagated")
+  }
+}
+
+test_spawn_error_propagation()
+\end{lstlisting}
+
+\subsection{Rules of Thumb for Concurrent Tests}
+
+\begin{enumerate}
+  \item \textbf{Never use sleep for synchronization.} Use channels instead---they provide both data transfer and synchronization in one primitive.
+  \item \textbf{Test the contract, not the timing.} Assert on \emph{what} values you receive, not \emph{when} you receive them. Concurrent order is nondeterministic by design.
+  \item \textbf{Run stress tests in CI.} A test that passes once might fail under load. Run concurrent tests 100+ times in your continuous integration pipeline.
+  \item \textbf{Isolate concurrent tests.} Each test should create its own channels and spawns. Shared global state between tests is a recipe for flaky results.
+  \item \textbf{Use timeouts as safety nets.} Every concurrent test should have a maximum runtime to prevent CI pipelines from hanging.
+\end{enumerate}
+
+\begin{tipbox}{The GC and Concurrency}
+\index{garbage collection!concurrent}
+Each spawned thread gets its own \texttt{DualHeap} and GC state, so garbage collection in one thread does not pause other threads.
+If you are writing stress tests that allocate heavily inside spawns, you can be confident that GC pauses are thread-local.
+See the test file \filename{tests/test\_gc\_concurrent.lat} for examples of GC-heavy concurrent workloads.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch21-exercises}
+%% ─────────────────────────────────────────────────────────────
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+
+  \item \textbf{Safe Counter.} Implement a thread-safe counter using a channel: one spawn acts as the ``counter server'' and processes increment/get requests sent by other spawns. Verify that the final count matches the expected total.
+
+  \item \textbf{Deadlock Detection.} Write a program that deliberately deadlocks (two spawns doing circular \lstinline|recv()|). Then fix it using the coordinator pattern described in \cref{sec:deadlock-avoidance}.
+
+  \item \textbf{Worker Pool Benchmark.} Create a worker pool with 4 workers that processes 100 jobs. Each job is a string to be reversed. Collect all results and verify that every job was processed exactly once.
+
+  \item \textbf{Broadcast System.} Implement a pub-sub system using channels: a publisher broadcasts messages to all subscribers, each subscriber counts the messages it receives, and at the end each subscriber reports its count. Verify all subscribers received the same number of messages.
+
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{What's Next}
+%% ─────────────────────────────────────────────────────────────
+
+With structured concurrency, channels, select, and the patterns in this chapter, you have a complete toolkit for writing concurrent Lattice programs that are safe, composable, and testable.
+In the next part of the book, we shift gears from the language core to the standard library---starting with files, paths, and the filesystem in \cref{ch:files-paths-filesystem}.
+\end{antml:parameter>
+</invoke>

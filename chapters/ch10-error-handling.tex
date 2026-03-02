@@ -1,0 +1,724 @@
+\chapter{Error Handling}\label{ch:error-handling}
+
+\index{error handling}
+
+Things go wrong. Files disappear between the time you check for them and the time you open them. Network requests time out. Users type letters where numbers belong. A language that pretends errors do not happen is a language that produces programs crashing at 3\,a.m.\ with no explanation.
+
+Lattice takes errors seriously without making them painful. It gives you multiple tools---each suited to a different situation---and lets you choose the right one for the job. At the most basic level, the \lstinline|error()| function creates error values that you can test with \lstinline|is_error()|. When you need structured recovery, \lstinline|try/catch| intercepts errors and hands you a detailed error map with a message, a line number, and a stack trace. For code that uses \lstinline|Result| maps, the \lstinline|?| operator unwraps successes and propagates failures in a single character. And \lstinline|defer| ensures that cleanup code runs no matter how a scope exits---normally or through an error.
+
+\begin{lstlisting}[language=Lattice, caption={A quick tour of error handling}]
+fn safe_divide(a: Float, b: Float) -> Map {
+    if b == 0.0 {
+        return err("division by zero")
+    }
+    return ok(a / b)
+}
+
+let result = safe_divide(10.0, 0.0)
+
+let message = match result {
+    {tag: "ok", value} => "Result: ${value}",
+    {tag: "err", value} => "Error: ${value}"
+}
+
+print(message) // Error: division by zero
+\end{lstlisting}
+
+This chapter builds from the ground up. We start with the simplest error tools, progress through \lstinline|try/catch| and the \lstinline|?| operator, explore \lstinline|defer| for resource cleanup, revisit contracts from \cref{ch:functions-closures}, and finish with patterns for designing programs that fail gracefully.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Error Values: \texttt{error()} and \texttt{is\_error()}}\label{sec:error-values}
+\index{error()@\texttt{error()}}
+\index{is\_error()@\texttt{is\_error()}}
+
+The simplest way to signal a problem in Lattice is to return an error value. The built-in \lstinline|error()| function takes a string message and produces a special value that looks like a string but carries an error marker:
+
+\begin{lstlisting}[language=Lattice, caption={Creating and detecting error values}]
+let bad = error("something went wrong")
+
+print(is_error(bad))   // true
+print(is_error("ok"))  // false
+print(is_error(42))    // false
+\end{lstlisting}
+
+Under the hood, \lstinline|error("msg")| returns a string prefixed with an internal marker (\lstinline|EVAL_ERROR:|). When this marked string flows back to the runtime---for example, as a return value from a native function---the VM recognizes the prefix and routes it through the exception handler system. The \lstinline|is_error()| function checks for this same prefix.
+
+\begin{lstlisting}[language=Lattice, caption={Using error() in a function}]
+fn parse_int(s: String) -> any {
+    let digits = "0123456789"
+    for i in 0..s.len() {
+        if !digits.contains(s.char_at(i)) {
+            return error("invalid character: ${s.char_at(i)}")
+        }
+    }
+    // ... parsing logic ...
+    return 42 // simplified
+}
+
+let result = parse_int("12x4")
+
+if is_error(result) {
+    print("Parse failed")
+} else {
+    print("Got: ${result}")
+}
+// Parse failed
+\end{lstlisting}
+
+This approach works, but it has a limitation: the caller must remember to check \lstinline|is_error()| on every return value. If you forget, the error value silently masquerades as a string. For more robust error handling, Lattice offers two better alternatives: the \lstinline|Result| type (\cref{sec:result-type}) and \lstinline|try/catch| (\cref{sec:try-catch}).
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{The Result Type}\label{sec:result-type}
+\index{Result type}
+\index{ok()@\texttt{ok()}}
+\index{err()@\texttt{err()}}
+
+Lattice's standard library (in \filename{lib/fn.lat}) provides a convention for representing outcomes that might succeed or fail: the \lstinline|Result| type. A Result is a plain \lstinline|Map| with two keys:
+
+\begin{itemize}
+  \item \lstinline|"tag"|: either \lstinline|"ok"| or \lstinline|"err"|
+  \item \lstinline|"value"|: the success value or the error message
+\end{itemize}
+
+Two helper functions create Result maps:
+
+\begin{lstlisting}[language=Lattice, caption={Creating Result values}]
+let success = ok(42)
+let failure = err("file not found")
+
+print(success) // {tag: ok, value: 42}
+print(failure) // {tag: err, value: file not found}
+\end{lstlisting}
+
+\begin{defnbox}{Result Convention}
+A \emph{Result} is a Map with a \lstinline|"tag"| field set to \lstinline|"ok"| or \lstinline|"err"| and a \lstinline|"value"| field carrying the payload. The standard library functions \lstinline|ok(value)| and \lstinline|err(message)| construct Result maps. The \lstinline|?| operator and functions like \lstinline|is_ok()|, \lstinline|is_err()|, \lstinline|unwrap()|, and \lstinline|unwrap_or()| work with this convention.
+\end{defnbox}
+
+\subsection{Working with Results}\label{sec:result-helpers}
+\index{is\_ok()@\texttt{is\_ok()}}
+\index{is\_err()@\texttt{is\_err()}}
+\index{unwrap()@\texttt{unwrap()}}
+\index{unwrap\_or()@\texttt{unwrap\_or()}}
+
+The standard library provides several functions for inspecting and transforming Results:
+
+\begin{lstlisting}[language=Lattice, caption={Result helper functions}]
+let result = ok(100)
+
+print(is_ok(result))   // true
+print(is_err(result))  // false
+
+// Extract the value (crashes if err!)
+print(unwrap(result))  // 100
+
+// Extract with a default fallback
+let r2 = err("timeout")
+print(unwrap_or(r2, 0)) // 0
+\end{lstlisting}
+
+\begin{warnbox}{unwrap() on Errors}
+Calling \lstinline|unwrap()| on an \lstinline|err| Result triggers an assertion failure: \lstinline|"unwrap() called on Err: ..."|. Use \lstinline|unwrap()| only when you are certain the Result is \lstinline|ok|, or prefer \lstinline|unwrap_or()| for a safe fallback.
+\end{warnbox}
+
+You can transform Results without unwrapping them using \lstinline|map_result()| and \lstinline|flat_map_result()|:
+
+\begin{lstlisting}[language=Lattice, caption={Transforming Results}]
+let result = ok(5)
+
+// Apply a function to the ok value
+let doubled = map_result(result, |x| x * 2)
+print(unwrap(doubled)) // 10
+
+// Chain operations that return Results
+let chained = flat_map_result(ok(10), |x| {
+    if x > 100 {
+        return err("too large")
+    }
+    return ok(x * x)
+})
+print(unwrap(chained)) // 100
+\end{lstlisting}
+
+\lstinline|map_result()| applies a function to the value inside an \lstinline|ok| and rewraps the result; if the input is \lstinline|err|, it passes through unchanged. \lstinline|flat_map_result()| does the same but expects the function to return a Result itself, avoiding double-wrapping.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{try/catch}\label{sec:try-catch}
+\index{try/catch}
+
+When an operation might throw a runtime error---a type mismatch, a division by zero, an assertion failure, or a contract violation---you can intercept it with \lstinline|try/catch|:
+
+\begin{lstlisting}[language=Lattice, caption={Basic try/catch}]
+let result = try {
+    let x = 10 / 0
+    x
+} catch e {
+    print("Caught: ${e.get("message")}")
+    -1
+}
+
+print(result) // -1
+\end{lstlisting}
+
+\subsection{try/catch Is an Expression}\label{sec:try-catch-expression}
+\index{try/catch!as expression}
+
+Like \lstinline|if/else| and \lstinline|match|, \lstinline|try/catch| is an expression. The value of the \lstinline|try| block (if it succeeds) or the \lstinline|catch| block (if an error occurs) becomes the value of the entire expression:
+
+\begin{lstlisting}[language=Lattice, caption={try/catch produces a value}]
+fn safe_get(items: Array, index: Int) -> any {
+    return try {
+        items[index]
+    } catch e {
+        nil
+    }
+}
+
+print(safe_get([10, 20, 30], 1))  // 20
+print(safe_get([10, 20, 30], 99)) // nil
+\end{lstlisting}
+
+\subsection{The Error Map}\label{sec:error-map}
+\index{error map}
+
+The variable after \lstinline|catch| (always required---you cannot omit it) is bound to a structured error \lstinline|Map| with three fields:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Key} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\lstinline|"message"| & String & The error message \\
+\lstinline|"line"| & Int & Source line where the error occurred \\
+\lstinline|"stack"| & Array & Stack trace (array of strings) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[language=Lattice, caption={Inspecting the error map}]
+try {
+    assert(false, "something broke")
+} catch e {
+    print(e.get("message")) // something broke
+    print(e.get("line"))    // line number
+    print(e.get("stack"))   // [<script> at line N]
+}
+\end{lstlisting}
+
+The stack trace is an array of strings, each in the format \lstinline|"function_name() at line N"|. For the top-level script, it appears as \lstinline|"<script> at line N"|. For closures without names, it appears as \lstinline|"<closure> at line N"|.
+
+\begin{lstlisting}[language=Lattice, caption={Reading the stack trace}]
+fn inner() -> any {
+    return error("deep error")
+}
+
+fn middle() -> any {
+    return inner()
+}
+
+try {
+    middle()
+} catch e {
+    let trace = e.get("stack")
+    for entry in trace {
+        print("  ${entry}")
+    }
+}
+// Prints the call chain from inner() through middle() to <script>
+\end{lstlisting}
+
+\subsection{What Can Be Caught?}\label{sec:catchable-errors}
+\index{try/catch!catchable errors}
+
+The \lstinline|try/catch| mechanism catches a wide range of runtime errors:
+
+\begin{itemize}
+  \item Division by zero
+  \item Index out of bounds
+  \item Type mismatches (parameter and return type checks)
+  \item Assertion failures (\lstinline|assert()|, \lstinline|assert_eq()|, etc.)
+  \item Contract violations (\lstinline|require| and \lstinline|ensure|)
+  \item \lstinline|error()| values routed through the runtime
+  \item Freeze and anneal contract failures
+  \item Missing module exports
+\end{itemize}
+
+Under the hood, \lstinline|try| compiles to \lstinline|OP_PUSH_EXCEPTION_HANDLER|, which registers a handler with the VM. The handler records the catch block's instruction pointer, the current call frame index, and a snapshot of the stack top. When an error fires (via the \lstinline|VM_ERROR| macro or \lstinline|OP_THROW|), the VM looks for the nearest handler, unwinds the call stack to the handler's frame, restores the stack, and jumps to the catch block with the error map pushed on top. You can see this mechanism in \filename{src/stackvm.c}.
+
+\begin{notebox}{Handler Limit}
+The VM supports up to 64 nested exception handlers (\lstinline|STACKVM_HANDLER_MAX|). This is more than enough for any reasonable program. If you exceed this limit, the VM throws its own error: \lstinline|"too many nested exception handlers"|.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{The \texttt{?}\ Operator}\label{sec:question-operator}
+\index{?@\texttt{?} operator}
+\index{error propagation}
+
+The \lstinline|?| operator is Lattice's most concise error-handling tool. It works with Result maps (\cref{sec:result-type}): if the Result is \lstinline|ok|, the \lstinline|?| extracts the inner value; if it is \lstinline|err|, it immediately returns the error from the current function.
+
+\begin{lstlisting}[language=Lattice, caption={The ? operator in action}]
+fn read_config(path: String) -> Map {
+    // Imagine these return Results
+    let content = read_file(path)?   // propagates err
+    let parsed = parse_json(content)? // propagates err
+    return ok(parsed)
+}
+\end{lstlisting}
+
+Without \lstinline|?|, you would need to manually check each Result:
+
+\begin{lstlisting}[language=Lattice, caption={Manual error checking (the verbose way)}]
+fn read_config(path: String) -> Map {
+    let content_result = read_file(path)
+    if is_err(content_result) {
+        return content_result
+    }
+    let content = unwrap(content_result)
+
+    let parsed_result = parse_json(content)
+    if is_err(parsed_result) {
+        return parsed_result
+    }
+    return ok(unwrap(parsed_result))
+}
+\end{lstlisting}
+
+The \lstinline|?| operator compresses each three-line check-and-unwrap into a single postfix character.
+
+\subsection{How \texttt{?} Works}\label{sec:question-mechanics}
+\index{?@\texttt{?} operator!mechanics}
+\index{OP\_TRY\_UNWRAP}
+
+At compile time, \lstinline|expr?| compiles to the expression followed by a single \lstinline|OP_TRY_UNWRAP| opcode. At runtime, this opcode inspects the top of the stack:
+
+\begin{enumerate}
+  \item If the value is a Map with \lstinline|"tag"| = \lstinline|"ok"|: extract the \lstinline|"value"| field and replace the stack top with it. Execution continues normally.
+  \item If the value is a Map with \lstinline|"tag"| = \lstinline|"err"|: immediately return from the current function with the error map as the return value. No exception handler is needed; the operator uses the normal return path.
+  \item If the value is not a conforming Result map: throw a runtime error: \lstinline|"'?' operator requires a result map with \{tag: \"ok\"|\"err\", value: ...\}"|.
+\end{enumerate}
+
+\begin{warnbox}{? Requires Result Maps}
+The \lstinline|?| operator only works with maps that follow the Result convention (\lstinline|ok()|/\lstinline|err()| maps). Using \lstinline|?| on a plain integer, string, or non-conforming map will throw a runtime error. If you are working with \lstinline|error()| values instead of Result maps, use \lstinline|is_error()| or \lstinline|try/catch| instead.
+\end{warnbox}
+
+\subsection{Chaining \texttt{?}}\label{sec:chaining-question}
+
+Because \lstinline|?| unwraps the \lstinline|ok| value in place, you can chain it with method calls and further operations:
+
+\begin{lstlisting}[language=Lattice, caption={Chaining the ? operator}]
+fn process_data(input: Map) -> Map {
+    let validated = validate(input)?
+    let transformed = transform(validated)?
+    let saved = save_to_db(transformed)?
+    return ok("Processed ${saved} records")
+}
+\end{lstlisting}
+
+Each \lstinline|?| either continues with the unwrapped value or short-circuits the entire function, returning the first error encountered. This creates a clean, linear flow of operations where errors are handled implicitly.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{panic()}\label{sec:panic}
+\index{panic()@\texttt{panic()}}
+
+When something goes so catastrophically wrong that recovery makes no sense, \lstinline|panic()| signals a fatal error:
+
+\begin{lstlisting}[language=Lattice, caption={Using panic() for unrecoverable errors}]
+fn initialize(config: Map) -> any {
+    let db_url = config.get("database_url")
+    if db_url == nil {
+        panic("Cannot start without a database URL")
+    }
+    return db_url
+}
+\end{lstlisting}
+
+\lstinline|panic()| is semantically different from \lstinline|error()|: it communicates that the program has reached a state that should never happen---an invariant violation, a logic error, or a missing critical resource. Use \lstinline|error()| and Result types for expected failures (network timeouts, invalid user input); reserve \lstinline|panic()| for bugs and impossible situations.
+
+\begin{tipbox}{When to panic()}
+Good uses of \lstinline|panic()|: unreachable code branches, failed internal invariants, missing required configuration at startup. Bad uses: user input validation, file-not-found errors, network failures---these are expected and should be handled with Results or \lstinline|try/catch|.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{defer}\label{sec:defer}
+\index{defer}
+
+Resources need cleanup. Files should be closed, locks released, temporary directories removed. The problem with manual cleanup is that errors can cause early exits, skipping the cleanup code. \lstinline|defer| solves this by guaranteeing that a block of code runs when the enclosing scope exits, no matter how it exits:
+
+\begin{lstlisting}[language=Lattice, caption={defer ensures cleanup runs}]
+fn process_file(path: String) -> any {
+    let handle = open_file(path)
+    defer {
+        close_file(handle)
+        print("File closed")
+    }
+
+    // Even if this throws, the defer block runs
+    let data = read_all(handle)
+    return parse(data)
+}
+\end{lstlisting}
+
+\subsection{Execution Order: LIFO}\label{sec:defer-lifo}
+\index{defer!execution order}
+
+When multiple \lstinline|defer| blocks are registered in the same scope, they execute in \emph{last-in, first-out} (LIFO) order---the most recently deferred block runs first:
+
+\begin{lstlisting}[language=Lattice, caption={Defers run in reverse order}]
+fn demo() -> any {
+    defer { print("First deferred, runs last") }
+    defer { print("Second deferred, runs first") }
+    print("Function body")
+    return nil
+}
+
+demo()
+// Function body
+// Second deferred, runs first
+// First deferred, runs last
+\end{lstlisting}
+
+This LIFO ordering is intentional: resources acquired later typically depend on resources acquired earlier, so they should be released first.
+
+\subsection{Scope-Aware Execution}\label{sec:defer-scopes}
+\index{defer!scope}
+
+Defers are tied to their enclosing scope. When a scope exits---whether it is a function body, a block, or a loop iteration---only the defers registered in that scope run:
+
+\begin{lstlisting}[language=Lattice, caption={Defer and scope boundaries}]
+fn outer() -> any {
+    defer { print("outer defer") }
+
+    for i in 0..3 {
+        defer { print("loop defer ${i}") }
+        print("iteration ${i}")
+    }
+
+    print("after loop")
+    return nil
+}
+
+outer()
+// iteration 0
+// loop defer 0
+// iteration 1
+// loop defer 1
+// iteration 2
+// loop defer 2
+// after loop
+// outer defer
+\end{lstlisting}
+
+Each loop iteration creates and destroys a scope, so the loop's defer runs at the end of each iteration, not at the end of the function.
+
+\subsection{Defer and Errors}\label{sec:defer-errors}
+\index{defer!with errors}
+
+Defers run even when an error causes an early exit. This is the whole point---cleanup that only runs on the happy path is not reliable cleanup:
+
+\begin{lstlisting}[language=Lattice, caption={Defer runs on error paths}]
+fn risky() -> any {
+    defer { print("cleanup always runs") }
+
+    print("about to fail")
+    assert(false, "intentional failure")
+    print("this never prints")
+    return nil
+}
+
+try {
+    risky()
+} catch e {
+    print("caught: ${e.get("message")}")
+}
+// about to fail
+// cleanup always runs
+// caught: intentional failure
+\end{lstlisting}
+
+\subsection{Defer and Return Values}\label{sec:defer-return}
+\index{defer!return value preservation}
+
+An important detail: deferred blocks do not affect the return value of the enclosing function. The return value is determined \emph{before} defers execute, and it is preserved across all defer block executions:
+
+\begin{lstlisting}[language=Lattice, caption={Defer does not alter return values}]
+fn compute() -> Int {
+    defer { print("cleaning up") }
+    return 42
+}
+
+let result = compute()
+// cleaning up
+print(result) // 42
+\end{lstlisting}
+
+Under the hood, when \lstinline|OP_DEFER_RUN| executes, the VM saves the current top-of-stack value (the return value), runs each defer body, then restores the saved value. Defer bodies share the parent frame's local variables, so they can read (and even modify) locals, but they cannot change what the function returns.
+
+\subsection{How Defer Compiles}\label{sec:defer-compilation}
+\index{defer!compilation}
+
+The defer body is compiled inline in the function's bytecode. An \lstinline|OP_DEFER_PUSH| instruction records the body's location and scope depth, then a jump skips past the body during normal execution. When \lstinline|OP_DEFER_RUN| fires (at scope exit or function return), the VM creates a lightweight wrapper and executes the body as a sub-frame.
+
+At every return point in a compiled function, the compiler emits the sequence: (1) return type check, (2) ensure postcondition checks, (3) \lstinline|OP_DEFER_RUN| with scope depth 0 (run all defers), (4) \lstinline|OP_RETURN|. This guarantees defers run regardless of which return path the function takes.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Contracts Revisited}\label{sec:contracts-revisited}
+\index{require contract}
+\index{ensure contract}
+\index{contracts}
+
+In \cref{ch:functions-closures} we introduced \lstinline|require| and \lstinline|ensure| contracts. Now that we understand error handling, let us see how they fit into the bigger picture.
+
+\subsection{require: Preconditions}\label{sec:require-preconditions}
+
+A \lstinline|require| contract checks a condition at function entry. If the condition is false, it throws an error that can be caught by \lstinline|try/catch|:
+
+\begin{lstlisting}[language=Lattice, caption={require throws catchable errors}]
+fn withdraw(balance: Float, amount: Float) -> Float
+    require amount > 0.0, "amount must be positive"
+    require amount <= balance, "insufficient funds"
+{
+    return balance - amount
+}
+
+// Successful call
+print(withdraw(100.0, 30.0)) // 70.0
+
+// Failed precondition
+try {
+    withdraw(100.0, -5.0)
+} catch e {
+    print(e.get("message"))
+    // require failed in 'withdraw': amount must be positive
+}
+\end{lstlisting}
+
+The error message always includes the function name and the custom message (or \lstinline|"condition not met"| if no message was provided). Under the hood, the compiler emits the condition expression followed by \lstinline|OP_JUMP_IF_TRUE| (skip if ok) or \lstinline|OP_THROW| with the formatted message string.
+
+\subsection{ensure: Postconditions}\label{sec:ensure-postconditions}
+
+An \lstinline|ensure| contract checks the return value of a function. It takes a closure that receives the return value and must return a truthy value:
+
+\begin{lstlisting}[language=Lattice, caption={ensure validates return values}]
+fn half(n: Int) -> Int
+    ensure |result| { result * 2 == n }, "result must be half of input"
+{
+    return n / 2
+}
+
+print(half(10)) // 5
+
+// With an odd number, integer division truncates
+try {
+    half(7)
+} catch e {
+    print(e.get("message"))
+    // ensure failed in 'half': result must be half of input
+}
+\end{lstlisting}
+
+The ensure check runs at every return point---both explicit \lstinline|return| statements and the implicit trailing expression. The compiler inserts the check \emph{before} defers run, so the order at each return point is: type check $\to$ ensure checks $\to$ defer execution $\to$ actual return.
+
+\subsection{Combining Contracts with try/catch}\label{sec:contracts-try-catch}
+
+Because contract violations throw catchable errors, you can use \lstinline|try/catch| to handle them gracefully:
+
+\begin{lstlisting}[language=Lattice, caption={Catching contract violations}]
+fn positive_sqrt(n: Float) -> Float
+    require n >= 0.0, "cannot take sqrt of negative number"
+{
+    // Newton's method approximation
+    flux guess = n / 2.0
+    for _ in 0..20 {
+        guess = (guess + n / guess) / 2.0
+    }
+    return guess
+}
+
+let values = [4.0, -1.0, 9.0, -16.0]
+
+for v in values {
+    let result = try {
+        positive_sqrt(v)
+    } catch e {
+        e.get("message")
+    }
+    print("sqrt(${v}) = ${result}")
+}
+// sqrt(4.0) = 2.0
+// sqrt(-1.0) = require failed in 'positive_sqrt': ...
+// sqrt(9.0) = 3.0
+// sqrt(-16.0) = require failed in 'positive_sqrt': ...
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Assertions}\label{sec:assertions}
+\index{assert()@\texttt{assert()}}
+\index{assert\_eq()@\texttt{assert\_eq()}}
+
+Lattice provides a family of assertion functions for testing invariants:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Function} & \textbf{Purpose} \\
+\midrule
+\lstinline|assert(cond)| & Fails if \lstinline|cond| is falsy \\
+\lstinline|assert(cond, msg)| & Fails with custom message \\
+\lstinline|assert_eq(a, b)| & Fails if \lstinline|a != b| \\
+\lstinline|assert_ne(a, b)| & Fails if \lstinline|a == b| \\
+\lstinline|assert_true(val)| & Fails if \lstinline|val| is not \lstinline|true| \\
+\lstinline|assert_false(val)| & Fails if \lstinline|val| is not \lstinline|false| \\
+\lstinline|assert_nil(val)| & Fails if \lstinline|val| is not \lstinline|nil| \\
+\lstinline|assert_contains(s, sub)| & Fails if \lstinline|s| does not contain \lstinline|sub| \\
+\lstinline|assert_type(val, type)| & Fails if \lstinline|val| is not of type \lstinline|type| \\
+\lstinline|assert_throws(closure)| & Fails if closure does \emph{not} throw \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All assertion failures are catchable with \lstinline|try/catch|. The \lstinline|assert_throws()| function is particularly useful in tests---it calls a closure and succeeds only if the closure throws:
+
+\begin{lstlisting}[language=Lattice, caption={Testing that code throws}]
+test "division by zero throws" {
+    assert_throws(|| {
+        let x = 1 / 0
+    })
+}
+
+test "require contracts throw on violation" {
+    fn positive(n: Int) -> Int
+        require n > 0, "must be positive"
+    {
+        return n
+    }
+
+    assert_throws(|| { positive(-1) })
+}
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{The \texttt{try\_fn} Helper}\label{sec:try-fn}
+\index{try\_fn()@\texttt{try\_fn()}}
+
+The standard library provides \lstinline|try_fn()|, which bridges the gap between \lstinline|try/catch| exceptions and the \lstinline|Result| type. It runs a closure inside a \lstinline|try/catch| and returns the outcome as a Result:
+
+\begin{lstlisting}[language=Lattice, caption={try\_fn converts exceptions to Results}]
+let result = try_fn(|| {
+    let x = 10 / 0
+    x
+})
+
+print(is_err(result))         // true
+print(result.get("value"))    // error map with message, line, stack
+\end{lstlisting}
+
+This is useful when you want to call a function that might throw but you prefer to work with Result maps rather than \lstinline|try/catch| blocks:
+
+\begin{lstlisting}[language=Lattice, caption={Using try\_fn with the ? operator}]
+fn safe_pipeline(data: any) -> Map {
+    let step1 = try_fn(|| { validate(data) })?
+    let step2 = try_fn(|| { transform(step1) })?
+    return ok(step2)
+}
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Designing for Graceful Failure}\label{sec:graceful-failure}
+
+Now that we have seen all the error handling tools, let us discuss when to use each one.
+
+\subsection{Choosing the Right Tool}\label{sec:choosing-error-tool}
+
+\begin{center}
+\begin{tabular}{p{4cm}p{8cm}}
+\toprule
+\textbf{Situation} & \textbf{Recommended Approach} \\
+\midrule
+Expected failures (parsing, I/O, validation) & Return \lstinline|Result| maps with \lstinline|ok()|/\lstinline|err()| \\
+Calling code that throws & Wrap in \lstinline|try/catch| or \lstinline|try_fn()| \\
+Chaining fallible operations & Use \lstinline|?| operator with Results \\
+Bugs and impossible states & \lstinline|panic()| or \lstinline|assert()| \\
+Function input validation & \lstinline|require| contracts \\
+Function output guarantees & \lstinline|ensure| contracts \\
+Resource cleanup & \lstinline|defer| \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{The Error Boundary Pattern}\label{sec:error-boundary}
+
+A common architecture is to let errors propagate freely through the interior of your program and catch them at well-defined \emph{boundaries}---the top of a request handler, the main loop of a CLI tool, the entry point of a worker:
+
+\begin{lstlisting}[language=Lattice, caption={The error boundary pattern}]
+fn handle_request(req: any) -> String {
+    // Interior code uses ? and Results freely
+    let result = try {
+        let user = authenticate(req)?
+        let data = fetch_data(user)?
+        let response = format_response(data)?
+        unwrap(response)
+    } catch e {
+        // Boundary: convert any error to a user-friendly response
+        let msg = e.get("message")
+        print("Error handling request: ${msg}")
+        "500 Internal Server Error"
+    }
+    return result
+}
+\end{lstlisting}
+
+Interior functions return Results and use \lstinline|?| to propagate errors upward. The boundary catches everything, logs the details, and returns a safe response to the caller.
+
+\subsection{Fail Fast, Recover High}\label{sec:fail-fast}
+
+A principle that serves Lattice programs well: \textbf{fail fast at the point of failure, recover at the point where you have enough context to do something useful.}
+
+Do not catch errors deep inside helper functions just to re-throw them. Let them propagate. Catch them where you can take meaningful action---retry, return a default, log and continue, or shut down cleanly.
+
+\begin{lstlisting}[language=Lattice, caption={Let errors propagate to where context exists}]
+// Bad: catching too early
+fn get_user_name(id: Int) -> String {
+    let result = try {
+        fetch_user(id)
+    } catch e {
+        // We don't know what to do here!
+        return "Unknown"
+    }
+    return result.get("name")
+}
+
+// Better: propagate and let the caller decide
+fn get_user_name(id: Int) -> Map {
+    let user = fetch_user(id)?
+    return ok(user.get("name"))
+}
+
+// Caller has context to handle the error
+fn display_profile(id: Int) -> String {
+    let name = match get_user_name(id) {
+        {tag: "ok", value} => value,
+        {tag: "err", value} => "Guest"
+    }
+    return "Welcome, ${name}!"
+}
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:error-handling-exercises}
+
+\begin{enumerate}
+  \item \textbf{Safe division.} Write a function \lstinline|fn safe_div(a: Float, b: Float) -> Map| that returns \lstinline|ok(a / b)| when \lstinline|b| is not zero and \lstinline|err("division by zero")| otherwise. Then write a function \lstinline|fn chain_divide(values: Array) -> Map| that divides the first element by each subsequent element in sequence, using \lstinline|?| to propagate errors.
+
+  \item \textbf{Resource manager.} Write a function that simulates opening three resources (use print statements to show ``opened resource N''). Use three \lstinline|defer| blocks to close them. Introduce an error after opening the second resource and verify that all opened resources are still closed.
+
+  \item \textbf{Retry logic.} Write a function \lstinline|fn retry(attempts: Int, action: any) -> Map| that calls the \lstinline|action| closure up to \lstinline|attempts| times. If the action succeeds (returns without throwing), return \lstinline|ok(result)|. If all attempts throw, return \lstinline|err("all attempts failed")|. Use \lstinline|try/catch| inside the retry loop.
+
+  \item \textbf{Contract design.} Write a function \lstinline|fn clamp(value: Int, low: Int, high: Int) -> Int| with a \lstinline|require| contract that ensures \lstinline|low <= high|, and an \lstinline|ensure| contract that verifies the result is within the \lstinline|[low, high]| range. Test it with values inside and outside the range, and verify that the contracts catch violations.
+
+  \item \textbf{Pipeline with errors.} Build a data processing pipeline with three stages---validate, transform, and format---each returning a Result. Write a \lstinline|fn pipeline(input: any) -> Map| that chains the three stages using \lstinline|?|. Test it with inputs that fail at each stage and verify that the correct error is returned.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────
+
+\bigskip
+\noindent\textbf{What's Next}\quad
+With control flow, functions, collections, strings, pattern matching, and error handling in your toolkit, you are equipped to write substantial Lattice programs. But we have been working with values that are either immutable by default or mutable by declaration without fully understanding \emph{why}. In Part~III, we dive deep into the \emph{phase system}---Lattice's most distinctive feature. \Cref{ch:phases-explained} reveals how the fluid, crystal, and sublimated phases govern mutability, how freezing and thawing work at the memory level, and why thinking of values as materials with physical states leads to safer, more predictable programs.

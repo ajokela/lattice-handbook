@@ -1,0 +1,670 @@
+\chapter{Strict Mode and Static Phase Checking}\label{ch:strict-mode}
+
+\index{strict mode|(}
+\index{static phase checking|(}
+
+Throughout this part of the book, we have explored the phase system as a runtime concept: values carry phase tags, \lstinline|freeze()| changes them, and the VM checks them on every mutation.
+But runtime checks, by definition, happen \emph{while your program is running}.
+A phase violation in rarely-executed code might lurk undetected for months.
+
+Lattice offers a way to catch these errors earlier: \emph{strict mode}.
+By adding \lstinline|#mode strict| at the top of a file, you activate a static phase checker that analyzes your code \emph{before} execution and rejects programs that violate phase rules.
+Strict mode does not eliminate runtime phase checks---it adds a layer of compile-time verification on top of them.
+
+In this chapter, we explore what strict mode changes, how the static phase checker works, how to use phase annotations and constraints, and how to design APIs that take full advantage of phase-aware overloading.
+
+\section{\texttt{\#mode strict} --- What Changes}\label{sec:mode-strict}
+
+\index{strict mode!enabling}
+\index{\#mode strict@\texttt{\#mode strict}}
+
+To enable strict mode, add a mode directive at the very beginning of your file:
+
+\begin{lstlisting}[language=Lattice, caption={Enabling strict mode}]
+#mode strict
+
+flux counter = 0
+fix name = freeze("Lattice")
+\end{lstlisting}
+
+The directive is processed by the lexer (\filename{src/lexer.c}) as a \lstinline|TOK_MODE_DIRECTIVE| token and stored in the program's AST as the \lstinline|AstMode| field (either \lstinline|MODE_CASUAL| or \lstinline|MODE_STRICT|, defined in \filename{include/ast.h}).
+If no directive is present, the default is \lstinline|MODE_CASUAL|.
+
+When strict mode is active, the following rules are enforced by the static phase checker before any code executes:
+
+\begin{enumerate}
+  \item \textbf{No \texttt{let} bindings.}\quad Every variable must use \lstinline|flux| or \lstinline|fix|. The phase checker rejects \lstinline|let| with:
+  \begin{quote}\small
+    \texttt{strict mode: use 'flux' or 'fix' instead of 'let' for binding 'x'}
+  \end{quote}
+
+  \item \textbf{No assigning to crystal bindings.}\quad If a variable was declared with \lstinline|fix| (or its expression was determined to be crystal), assignment to it is an error:
+  \begin{quote}\small
+    \texttt{strict mode: cannot assign to crystal binding 'config'}
+  \end{quote}
+
+  \item \textbf{No redundant freeze or thaw.}\quad Freezing an already-crystal value or thawing an already-fluid value is flagged:
+  \begin{quote}\small
+    \texttt{strict mode: cannot freeze an already crystal value}\\
+    \texttt{strict mode: cannot thaw an already fluid value}
+  \end{quote}
+
+  \item \textbf{No phase mismatch on binding.}\quad Binding a crystal expression with \lstinline|flux| is an error:
+  \begin{quote}\small
+    \texttt{cannot bind crystal value with flux for 'x'}
+  \end{quote}
+
+  \item \textbf{No fluid values in \texttt{spawn}.}\quad Referencing a fluid variable inside a \lstinline|spawn| block is rejected:
+  \begin{quote}\small
+    \texttt{strict mode: cannot use fluid binding 'counter' across thread boundary in spawn}
+  \end{quote}
+
+  \item \textbf{Destructuring requires explicit phase.}\quad Destructuring bindings must specify \lstinline|flux| or \lstinline|fix|.
+
+  \item \textbf{Phase annotations are validated.}\quad \lstinline|@fluid| and \lstinline|@crystal| annotations are checked against the initializer's actual phase.
+
+  \item \textbf{Function arguments checked against parameter phases.}\quad If a function declares parameter phases, the checker verifies that call-site arguments have compatible phases.
+\end{enumerate}
+
+\begin{notebox}{Strict Mode Is Per-File}
+The \lstinline|#mode strict| directive applies to the file where it appears.
+You can have strict-mode library code called by casual-mode application code, or vice versa.
+The phase checker runs independently on each file during compilation.
+\end{notebox}
+
+\section{The Static Phase Checker}\label{sec:static-phase-checker}
+
+\index{phase checker}
+
+The static phase checker is implemented in \filename{src/phase\_check.c}.
+It is a single-pass abstract interpreter that walks the AST, tracking the phase of every binding in a scope stack, and emitting errors when phase rules are violated.
+
+\subsection{Architecture}
+
+The checker maintains a \lstinline|PhaseChecker| struct with:
+
+\begin{itemize}
+  \item \lstinline|mode| --- the \lstinline|AstMode| (\lstinline|MODE_CASUAL| or \lstinline|MODE_STRICT|).
+  \item \lstinline|errors| --- a vector of error message strings.
+  \item \lstinline|scope_stack| --- a stack of hash maps (\lstinline|LatMap|), each mapping variable names to their \lstinline|AstPhase| (the compile-time phase annotation, not the runtime tag).
+  \item \lstinline|struct_defs| --- a map of struct declarations for looking up field types.
+  \item \lstinline|fn_defs| --- a map of function declarations for checking call-site argument phases.
+\end{itemize}
+
+\subsection{Scope Tracking}
+
+The checker uses a scope stack to track variable phases through nested blocks.
+When a new scope begins (function body, loop body, if-branch, block expression), \lstinline|pc_push_scope()| creates a fresh map.
+When the scope ends, \lstinline|pc_pop_scope()| discards it.
+Variable lookup (\lstinline|pc_lookup()|) searches from the innermost scope outward, mimicking runtime variable resolution:
+
+\begin{lstlisting}[language=Lattice, caption={Phase tracking through scopes}]
+#mode strict
+
+flux outer = 10
+
+if outer > 5 {
+    fix inner = freeze(outer)
+    // Phase checker knows: outer=fluid, inner=crystal
+    // inner = 20  // Error: cannot assign to crystal binding
+}
+// Phase checker knows: inner is out of scope now
+\end{lstlisting}
+
+\subsection{Expression Phase Inference}
+
+The function \lstinline|pc_check_expr()| recursively analyzes each expression and returns its inferred phase:
+
+\begin{itemize}
+  \item \textbf{Literals} (integers, floats, strings, booleans, nil): return \lstinline|PHASE_UNSPECIFIED|.
+  \item \textbf{Identifiers}: return the phase registered in the scope stack via \lstinline|pc_lookup()|.
+  \item \textbf{Freeze expressions}: check the inner expression, then return \lstinline|PHASE_CRYSTAL|. In strict mode, if the inner expression is already crystal, emit an error.
+  \item \textbf{Thaw expressions}: return \lstinline|PHASE_FLUID|. In strict mode, if the inner expression is already fluid, emit an error.
+  \item \textbf{Clone expressions}: return the same phase as the inner expression.
+  \item \textbf{Tuple expressions}: always return \lstinline|PHASE_CRYSTAL| (tuples are inherently immutable).
+  \item \textbf{Field access}: if the object is crystal, the accessed field is also crystal.
+  \item \textbf{Forge blocks}: always return \lstinline|PHASE_CRYSTAL|.
+  \item \textbf{Anneal expressions}: always return \lstinline|PHASE_CRYSTAL|.
+\end{itemize}
+
+\subsection{Statement Checking}
+
+The function \lstinline|pc_check_stmt()| handles bindings, assignments, loops, and other statements:
+
+\begin{itemize}
+  \item \textbf{Bindings}: In strict mode, \lstinline|PHASE_UNSPECIFIED| (i.e., \lstinline|let|) triggers an error. The phase of the binding is recorded: \lstinline|PHASE_FLUID| for \lstinline|flux|, \lstinline|PHASE_CRYSTAL| for \lstinline|fix|. Cross-phase binding (e.g., crystal value into \lstinline|flux| binding) is flagged.
+
+  \item \textbf{Assignments}: In strict mode, if the target identifier is crystal, the assignment is rejected.
+
+  \item \textbf{Import statements}: Imported bindings are registered as \lstinline|PHASE_UNSPECIFIED|.
+\end{itemize}
+
+\subsection{The Spawn Checker}
+
+\index{strict mode!spawn checking}
+
+Strict mode includes a specialized checker for \lstinline|spawn| blocks: \lstinline|pc_check_spawn_expr()| and \lstinline|pc_check_spawn_stmt()| in \filename{src/phase\_check.c}.
+These functions walk the spawn body and flag any reference to a fluid binding from an outer scope:
+
+\begin{lstlisting}[language=Lattice, caption={The spawn checker in action}]
+#mode strict
+
+flux shared = [1, 2, 3]
+fix safe = freeze([4, 5, 6])
+
+scope {
+    spawn {
+        // print(shared)  // Error: cannot use fluid binding
+        //                //        'shared' in spawn
+        print(safe)        // OK: safe is crystal
+    }
+}
+\end{lstlisting}
+
+This check catches potential data races at compile time.
+In casual mode, the same code would run and might produce incorrect results if the fluid value were modified concurrently.
+Strict mode prevents this entire class of bugs.
+
+\section{Phase Annotations: \texttt{@fluid}, \texttt{@crystal}}\label{sec:phase-annotations}
+
+\index{phase annotations|(}
+\index{@fluid@\texttt{@fluid}}
+\index{@crystal@\texttt{@crystal}}
+
+Phase annotations are optional markers that assert the expected phase of a binding or function.
+They are placed before the declaration using the \lstinline|@| symbol:
+
+\begin{lstlisting}[language=Lattice, caption={Phase annotations on variable bindings}]
+#mode strict
+
+@crystal
+fix config = freeze(Map::new())
+
+@fluid
+flux counter = 0
+\end{lstlisting}
+
+\subsection{Annotation Syntax}
+
+The parser recognizes two annotations: \lstinline|@fluid| and \lstinline|@crystal|.
+They can appear before:
+
+\begin{itemize}
+  \item \textbf{Variable bindings}: \lstinline|@crystal fix x = freeze(42)|
+  \item \textbf{Function declarations}: \lstinline|@fluid fn process(data: any) { ... }|
+\end{itemize}
+
+Any other annotation name (e.g., \lstinline|@readonly|, \lstinline|@mutable|) produces a parse error:
+\begin{quote}\small
+  \texttt{unknown annotation '@readonly' (expected @fluid or @crystal)}
+\end{quote}
+
+If an annotation appears before a construct that is not a function or binding, the parser also rejects it:
+\begin{quote}\small
+  \texttt{@fluid/@crystal annotation must precede fn or variable binding}
+\end{quote}
+
+\subsection{What Annotations Do}
+
+Annotations are \emph{assertions}, not directives.
+They do not change the phase of the value---they verify that the value's phase matches the annotation.
+The phase checker validates annotations against the initializer's inferred phase:
+
+\begin{lstlisting}[language=Lattice, caption={Annotation violation}]
+#mode strict
+
+@crystal
+flux counter = 0
+// Error: @crystal annotation violated: initializer for 'counter' is fluid
+\end{lstlisting}
+
+The reverse also triggers an error:
+
+\begin{lstlisting}[language=Lattice, caption={Reverse annotation violation}]
+#mode strict
+
+@fluid
+fix data = freeze([1, 2, 3])
+// Error: @fluid annotation violated: initializer for 'data' is crystal
+\end{lstlisting}
+
+\subsection{Annotations on Functions}
+
+When applied to a function, a phase annotation indicates the expected phase behavior of the function's return value or its overall role in the phase system:
+
+\begin{lstlisting}[language=Lattice, caption={Annotated functions}]
+#mode strict
+
+@crystal
+fn default_config() {
+    return freeze(Map::new())
+}
+
+@fluid
+fn create_buffer(size: any) {
+    flux buf = []
+    for i in 0..size {
+        buf.push(0)
+    }
+    return buf
+}
+\end{lstlisting}
+
+These annotations serve as documentation and contract: they signal to readers (and to the phase checker) the function's intended phase behavior.
+
+\begin{tipbox}{Annotations as Documentation}
+Even in casual mode, phase annotations are valuable as documentation.
+They make the author's intent explicit without requiring strict mode's full enforcement.
+Consider adding them to public API functions in library code.
+\end{tipbox}
+
+\index{phase annotations|)}
+
+\section{Phase Constraints: \texttt{(\textasciitilde|\,*)}, \texttt{(flux|\,fix)}}\label{sec:phase-constraints}
+
+\index{phase constraints|(}
+\index{PhaseConstraint}
+
+While annotations assert a single phase, \emph{phase constraints} on function parameters specify which phases are acceptable for an argument.
+Constraints use a compact syntax inside parentheses, with the pipe symbol \lstinline{|} separating alternatives:
+
+\begin{lstlisting}[language=Lattice, caption={Phase constraints on parameters}]
+#mode strict
+
+fn display_value(data: (~|*) any) {
+    // data can be either fluid (~) or crystal (*)
+    print(data)
+}
+
+fn read_only_process(data: (*) any) {
+    // data must be crystal
+    print("Processing: " + to_string(data))
+}
+\end{lstlisting}
+
+\subsection{Constraint Syntax}
+
+Phase constraints are parsed by the type expression parser in \filename{src/parser.c}.
+Inside parentheses, the following symbols are recognized:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Symbol} & \textbf{Meaning} \\
+\midrule
+\lstinline|~| or \lstinline|flux| & Accepts fluid values (\lstinline|PCON_FLUID|) \\
+\lstinline|*| or \lstinline|fix| & Accepts crystal values (\lstinline|PCON_CRYSTAL|) \\
+\lstinline|sublimated| & Accepts sublimated values (\lstinline|PCON_SUBLIMATED|) \\
+\bottomrule
+\end{tabular}
+\caption{Phase constraint symbols.}\label{tab:phase-constraint-symbols}
+\end{table}
+
+Constraints are represented internally as a bitmask (\lstinline|PhaseConstraint| type, defined in \filename{include/ast.h}):
+
+\begin{itemize}
+  \item \lstinline|PCON_FLUID| = \lstinline|0x01|
+  \item \lstinline|PCON_CRYSTAL| = \lstinline|0x02|
+  \item \lstinline|PCON_SUBLIMATED| = \lstinline|0x04|
+  \item \lstinline|PCON_ANY| = \lstinline|0x07| (all bits set)
+\end{itemize}
+
+Multiple symbols are combined with the pipe (\lstinline{|}) separator:
+
+\begin{lstlisting}[language=Lattice, caption={Composite phase constraints}]
+#mode strict
+
+// Accept fluid or crystal, but not sublimated
+fn flexible_handler(val: (~|*) any) {
+    print(to_string(val))
+}
+
+// Accept only crystal or sublimated (immutable variants)
+fn immutable_handler(val: (*|sublimated) any) {
+    print(to_string(val))
+}
+\end{lstlisting}
+
+\subsection{Constraint Checking}
+
+The function \lstinline|constraint_accepts()| in \filename{src/phase\_check.c} checks whether a given argument phase satisfies a constraint bitmask:
+
+\begin{itemize}
+  \item If the constraint is 0 (no constraint specified), any phase is accepted.
+  \item Otherwise, the argument's phase must have its corresponding bit set in the bitmask.
+  \item \lstinline|PHASE_UNSPECIFIED| arguments are always accepted (they are compatible with any constraint).
+\end{itemize}
+
+In strict mode, the phase checker verifies constraints at every call site:
+
+\begin{lstlisting}[language=Lattice, caption={Constraint violation in strict mode}]
+#mode strict
+
+fn process_frozen(data: (*) any) {
+    print(data)
+}
+
+flux mutable_data = [1, 2, 3]
+// process_frozen(mutable_data)
+// Error: strict mode: no matching overload for 'process_frozen'
+//        with given argument phases
+\end{lstlisting}
+
+\begin{defnbox}{Phase Constraint}
+\index{phase constraints!definition}
+A \emph{phase constraint} is a bitmask attached to a function parameter's type that specifies which value phases are acceptable for that argument.
+Constraints are checked at compile time in strict mode and during overload resolution at runtime.
+\end{defnbox}
+
+\index{phase constraints|)}
+
+\section{Phase-Dependent Function Overloading}\label{sec:phase-overloading}
+
+\index{function overloading!phase-dependent|(}
+
+One of Lattice's most distinctive features is \emph{phase-dependent function overloading}: you can define multiple versions of a function with the same name but different parameter phase constraints, and the runtime (or the strict-mode checker) selects the appropriate one based on the phases of the actual arguments.
+
+\begin{lstlisting}[language=Lattice, caption={Phase-dependent overloading}]
+fn process(data: flux any) {
+    print("Processing mutable data in-place")
+    data.push(0)
+}
+
+fn process(data: fix any) {
+    print("Processing frozen data (creating a copy)")
+    flux copy = thaw(data)
+    copy.push(0)
+    return freeze(copy)
+}
+
+flux live_data = [1, 2, 3]
+fix frozen_data = freeze([4, 5, 6])
+
+process(live_data)    // Calls the flux overload
+process(frozen_data)  // Calls the fix overload
+\end{lstlisting}
+
+\subsection{How Overload Resolution Works}
+
+Functions with the same name are chained together in a linked list via the \lstinline|next_overload| pointer in the \lstinline|FnDecl| struct (\filename{include/ast.h}).
+When a function is called, the runtime walks this chain to find the best matching overload.
+
+The \lstinline|resolve_overload()| function in \filename{src/eval.c} implements the resolution algorithm:
+
+\begin{enumerate}
+  \item For each overload candidate, check \textbf{arity compatibility}: does the argument count match the parameter count (accounting for default values and variadic parameters)?
+
+  \item For each argument, check \textbf{phase compatibility}: is the argument's runtime phase compatible with the parameter's declared phase?
+
+  \item Compute a \textbf{score} for the match. Exact phase matches score highest (3 points each), compatible-but-unspecified matches score lower (1--2 points).
+
+  \item Select the candidate with the highest total score. If no candidate is compatible, emit an error:
+  \begin{quote}\small
+    \texttt{no matching overload for 'process' with given argument phases}
+  \end{quote}
+\end{enumerate}
+
+The scoring system ensures that more specific overloads are preferred.
+An overload declaring \lstinline|flux| for a parameter will beat one declaring no phase (unspecified) when passed a fluid argument.
+
+\subsection{Overloading in Strict Mode}
+
+In strict mode, the phase checker performs a compile-time version of overload resolution.
+When a call expression targets a function name that has multiple overloads, the checker:
+
+\begin{enumerate}
+  \item Infers the phase of each argument expression.
+  \item Tests each overload's parameter constraints against the inferred argument phases.
+  \item If no overload matches, emits:
+  \begin{quote}\small
+    \texttt{strict mode: no matching overload for 'process' with given argument phases}
+  \end{quote}
+\end{enumerate}
+
+This means phase-mismatch errors are caught before the program runs:
+
+\begin{lstlisting}[language=Lattice, caption={Compile-time overload checking}]
+#mode strict
+
+fn handle(data: flux any) {
+    data.push(0)
+}
+
+fix frozen = freeze([1, 2, 3])
+// handle(frozen)
+// Error: strict mode: no matching overload for 'handle'
+//        with given argument phases
+\end{lstlisting}
+
+\subsection{Registration and Chaining}
+
+When the evaluator or compiler encounters multiple function declarations with the same name, it registers them using \lstinline|register_fn_overload()| (in \filename{src/eval.c} for the tree-walker, and \lstinline|pc_register_fn()| in \filename{src/phase\_check.c} for the static checker).
+
+Two functions with the same name are considered different overloads if their \emph{phase signatures} differ.
+The function \lstinline|phase_signatures_match()| compares parameter counts and per-parameter phases:
+
+\begin{lstlisting}[language=Lattice, caption={Different phase signatures create overloads}]
+// These are two different overloads:
+fn serialize(data: flux any) { /* ... */ }
+fn serialize(data: fix any) { /* ... */ }
+
+// These have the SAME phase signature (both unspecified):
+fn parse(input: any) { /* version 1 */ }
+fn parse(input: any) { /* version 2: replaces version 1 */ }
+\end{lstlisting}
+
+If two functions have identical phase signatures, the second definition \emph{replaces} the first (it is not treated as a new overload).
+Only functions with \emph{different} phase signatures coexist in the overload chain.
+
+\begin{warnbox}{Overload Ambiguity}
+If an argument is \lstinline|VTAG_UNPHASED| (e.g., from a \lstinline|let| binding in casual mode), it is compatible with both fluid and crystal overloads.
+The resolver picks the one with the highest score, but if scores are tied, the last-registered overload wins.
+In strict mode, \lstinline|let| is forbidden, so unphased ambiguity does not arise.
+\end{warnbox}
+
+\index{function overloading!phase-dependent|)}
+
+\section{Designing APIs That Are Phase-Aware}\label{sec:phase-aware-apis}
+
+\index{phase-aware API design}
+
+The phase system is most powerful when your API boundaries are designed with phases in mind.
+Here are patterns and guidelines for building phase-aware libraries and modules.
+
+\subsection{Produce Crystal, Accept Any}
+
+A common pattern: functions that return data should return it frozen (crystal), while functions that accept data should be flexible about the input phase:
+
+\begin{lstlisting}[language=Lattice, caption={Produce crystal, accept any}]
+fn get_defaults() {
+    // Always return frozen defaults
+    return forge {
+        flux temp = Map::new()
+        temp.set("timeout", "30")
+        temp.set("retries", "3")
+        freeze(temp)
+    }
+}
+
+fn apply_config(base: any, overrides: any) {
+    // Accept any phase, thaw if needed
+    flux working = thaw(base)
+    // Apply overrides...
+    return freeze(working)
+}
+\end{lstlisting}
+
+\subsection{Phase-Specific Behavior via Overloading}
+
+Use overloading to provide optimized paths for different phases:
+
+\begin{lstlisting}[language=Lattice, caption={Optimized paths via phase overloading}]
+fn update_score(scores: flux Array, index: any, delta: any) {
+    // Fluid path: modify in place (efficient)
+    scores[index] = scores[index] + delta
+    return scores
+}
+
+fn update_score(scores: fix Array, index: any, delta: any) {
+    // Crystal path: create modified copy
+    flux copy = thaw(scores)
+    copy[index] = copy[index] + delta
+    return freeze(copy)
+}
+\end{lstlisting}
+
+Callers do not need to know which overload is selected---the function handles both cases correctly.
+
+\subsection{Guard Clauses with \texttt{phase\_of()}}
+
+For functions that need phase-dependent behavior in casual mode (where overloading may not be strictly enforced), use runtime phase checks as guard clauses:
+
+\begin{lstlisting}[language=Lattice, caption={Runtime phase guards}]
+fn safe_update(collection: any, key: any, value: any) {
+    if phase_of(collection) == "crystal" {
+        print("Warning: cannot update crystal collection")
+        return collection
+    }
+    if phase_of(collection) == "sublimated" {
+        print("Error: collection is permanently sealed")
+        return collection
+    }
+    collection.set(key, value)
+    return collection
+}
+\end{lstlisting}
+
+\subsection{Strict Mode in Library Code}
+
+Consider enabling strict mode in library code even if your application code uses casual mode.
+Libraries are consumed by many callers, and phase errors in library code can be particularly hard to debug:
+
+\begin{lstlisting}[language=Lattice, caption={Strict mode for library safety}]
+// lib/cache.lat
+#mode strict
+
+@crystal
+fn create_cache(max_size: any) {
+    return forge {
+        flux temp = Map::new()
+        temp.set("__max_size", to_string(max_size))
+        freeze(temp)
+    }
+}
+
+fn cache_get(cache: fix any, key: any) {
+    return cache.get(key)
+}
+\end{lstlisting}
+
+\subsection{Documenting Phase Expectations}
+
+Even without strict mode, use comments and naming conventions to signal phase expectations:
+
+\begin{lstlisting}[language=Lattice, caption={Phase documentation conventions}]
+// Convention: functions returning frozen data end with _frozen
+fn load_config_frozen(path: any) {
+    // ... load and return frozen config ...
+    return freeze(config)
+}
+
+// Convention: functions taking mutable data start with mutate_
+fn mutate_append(list: any, item: any) {
+    list.push(item)
+}
+\end{lstlisting}
+
+\begin{tipbox}{Phase-Aware API Checklist}
+When designing a public API, ask these questions:
+\begin{enumerate}
+  \item Should returned values be frozen? (Usually yes, for safety.)
+  \item Do different parameter phases warrant different behavior? (Consider overloading.)
+  \item Should the function reject certain phases? (Use constraints or runtime guards.)
+  \item Is this code safety-critical enough for strict mode? (Libraries: probably yes.)
+\end{enumerate}
+\end{tipbox}
+
+\section{Putting It All Together: A Strict-Mode Example}\label{sec:strict-mode-example}
+
+Let us write a complete strict-mode program that demonstrates phase annotations, constraints, overloading, and the spawn checker:
+
+\begin{lstlisting}[language=Lattice, caption={A complete strict-mode program}]
+#mode strict
+
+// Phase-annotated configuration builder
+@crystal
+fn build_config(host: any, port: any) {
+    return forge {
+        flux temp = Map::new()
+        temp.set("host", host)
+        temp.set("port", to_string(port))
+        temp.set("started_at", "2024-01-15T10:00:00Z")
+        freeze(temp)
+    }
+}
+
+// Phase-dependent overloads for processing
+fn process_request(config: fix any, path: any) {
+    fix response = freeze("200 OK: " + path)
+    return response
+}
+
+// Entry point
+fn main() {
+    fix config = build_config("0.0.0.0", 8080)
+
+    // config is crystal---safe to share across spawn boundaries
+    fix paths = freeze(["/api/health", "/api/users", "/api/data"])
+
+    scope {
+        for path in paths {
+            spawn {
+                // All bindings here are crystal---strict mode is happy
+                fix result = process_request(config, path)
+                print(result)
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+This program compiles without any strict-mode errors because:
+\begin{itemize}
+  \item Every binding uses \lstinline|flux| or \lstinline|fix| (no \lstinline|let|).
+  \item Only crystal values (\lstinline|config|, \lstinline|paths|) cross the spawn boundary.
+  \item The \lstinline|process_request| function's parameter constraint matches the crystal argument.
+  \item Phase annotations on \lstinline|build_config| match its forge-block return (crystal).
+\end{itemize}
+
+\section{Exercises}\label{sec:ch14-exercises}
+
+\begin{enumerate}
+  \item \textbf{Strict Mode Conversion.}
+    Take any program you have written while following this book and add \lstinline|#mode strict| at the top.
+    Fix all the phase errors the checker reports.
+    How many \lstinline|let| bindings did you have to change to \lstinline|flux| or \lstinline|fix|?
+
+  \item \textbf{Phase-Overloaded API.}
+    Write a function \lstinline|sort_data| with two overloads: one for fluid arrays (sorts in place) and one for crystal arrays (returns a new sorted frozen array).
+    Test both overloads and verify the correct one is called.
+
+  \item \textbf{Constraint Design.}
+    Write a function that accepts only crystal or sublimated values using the \lstinline|(*|sublimated)| constraint syntax.
+    Test it with fluid, crystal, and sublimated arguments.
+    Verify that the fluid argument is rejected in strict mode.
+
+  \item \textbf{Spawn Safety.}
+    Write a strict-mode program with a scope containing multiple spawn blocks.
+    Try to reference a fluid variable from within a spawn and observe the compile-time error.
+    Then fix the program by freezing the shared data before the scope.
+\end{enumerate}
+
+\bigskip
+
+\noindent\textbf{What's Next.}\quad
+With the phase system fully explored---from basic \lstinline|flux|/\lstinline|fix| declarations through memory arenas, alloy structs, reactive bonds, and strict-mode static checking---we are ready to move beyond values and into the world of composite types.
+In Part~IV, we explore how Lattice's struct, enum, trait, and generic systems interact with the phase system you now understand, giving you the tools to build sophisticated, type-safe abstractions.
+
+\index{strict mode|)}
+\index{static phase checking|)}

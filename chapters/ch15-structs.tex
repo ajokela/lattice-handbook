@@ -1,0 +1,1023 @@
+\chapter{Structs}\label{ch:structs}
+\index{struct}
+
+Every interesting program eventually needs to group related data together.
+An array of coordinates, a pair of first-and-last names, a record that bundles
+a user's email with their role---the moment your data grows beyond a single
+value, you reach for a \emph{struct}.
+
+Lattice structs are lightweight, named containers for fields. They are
+pass-by-value, they support methods through trait implementations and callable
+fields, and they integrate naturally with the phase system you met in
+\cref{ch:phases-explained}. In this chapter we will define structs, read and
+write their fields, attach behavior, customise equality, and peer under the
+hood with the reflection API.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Defining and Instantiating Structs}\label{sec:struct-defining}
+\index{struct!definition}
+
+A struct definition gives a name and a list of typed fields:
+
+\begin{lstlisting}[language=Lattice, caption={A minimal struct definition}]
+struct Point { x: any, y: any }
+\end{lstlisting}
+
+The keyword \lstinline|struct| is followed by a name that must begin with an
+uppercase letter, then a pair of braces enclosing comma-separated fields.
+Each field has a name and a type annotation. Right now the most common
+annotation is \lstinline|any|, which accepts every type; we will explore
+richer type annotations when we reach generics in \cref{ch:generics}.
+
+\begin{defnbox}{Struct}
+A \emph{struct} is a named, composite value type whose data is stored in
+a fixed set of named fields. Structs are \textbf{pass-by-value}: assigning
+a struct to a new variable produces an independent copy.
+\end{defnbox}
+
+Once defined, you create an instance with a \emph{struct literal}---the struct
+name followed by braces and field initialisers:
+
+\begin{lstlisting}[language=Lattice, caption={Creating struct instances}]
+struct Point { x: any, y: any }
+
+let origin = Point { x: 0, y: 0 }
+let target = Point { x: 42, y: 17 }
+
+print(origin)  // Point { x: 0, y: 0 }
+print(target)  // Point { x: 42, y: 17 }
+\end{lstlisting}
+
+Every field must be supplied when constructing an instance---there are no
+default values at the language level. If you want defaults, write a factory
+function:
+
+\begin{lstlisting}[language=Lattice, caption={A factory function with defaults}]
+struct Config {
+    host: String,
+    port: Int,
+    verbose: Bool
+}
+
+fn default_config() -> Config {
+    return Config {
+        host: "localhost",
+        port: 8080,
+        verbose: false
+    }
+}
+
+let cfg = default_config()
+print(cfg.port)  // 8080
+\end{lstlisting}
+
+\subsection{Nested Structs}
+
+Fields can hold any value, including other structs:
+
+\begin{lstlisting}[language=Lattice, caption={Nested structs}]
+struct Point { x: any, y: any }
+struct Rect { origin: any, width: any, height: any }
+
+let r = Rect {
+    origin: Point { x: 5, y: 10 },
+    width: 100,
+    height: 50
+}
+
+print(r.origin.x)  // 5
+print(r.width)     // 100
+\end{lstlisting}
+
+Nesting is a natural way to compose data. Because structs are
+pass-by-value, the \lstinline|Point| inside the \lstinline|Rect| is a
+full copy, not a reference. Modifying the original \lstinline|Point| after
+constructing the \lstinline|Rect| has no effect on \lstinline|r.origin|.
+
+\subsection{Structs with Typed Fields}
+
+Although \lstinline|any| works everywhere, you can annotate fields with
+concrete types for documentation and, in strict mode, static checking:
+
+\begin{lstlisting}[language=Lattice, caption={Typed struct fields}]
+struct Entity {
+    id: Int,
+    name: String,
+    x: Int,
+    y: Int,
+    hp: Int,
+    max_hp: Int,
+    tag: String
+}
+\end{lstlisting}
+
+This reads like a blueprint: an \lstinline|Entity| carries an integer ID, a
+name, a position, health, and a tag string. Readers of your code---and the
+compiler in strict mode---will thank you for the specificity.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Field Access and Mutation}\label{sec:struct-fields}
+\index{struct!field access}
+\index{struct!mutation}
+
+Reading a field uses dot notation:
+
+\begin{lstlisting}[language=Lattice, caption={Field access}]
+struct Point { x: any, y: any }
+
+let p = Point { x: 3, y: 4 }
+print(p.x)      // 3
+print(p.y)      // 4
+print(p.x + p.y) // 7
+\end{lstlisting}
+
+\subsection{Mutation Requires \texttt{flux}}
+
+Because structs follow the phase system, a struct bound with \lstinline|let|
+(or \lstinline|fix|) is \emph{crystallised}---its fields cannot be changed.
+To mutate fields, bind the struct with \lstinline|flux|:
+
+\begin{lstlisting}[language=Lattice, caption={Mutating struct fields}]
+struct Point { x: any, y: any }
+
+flux p = Point { x: 1, y: 2 }
+print(p.x)  // 1
+
+p.x = 99
+print(p.x)  // 99
+
+p.y = 88
+print(p.y)  // 88
+\end{lstlisting}
+
+Compound assignment operators work on fields too:
+
+\begin{lstlisting}[language=Lattice, caption={Compound field assignment}]
+struct Point { x: any, y: any }
+
+flux p = Point { x: 10, y: 20 }
+p.x += 5
+print(p.x)  // 15
+p.y -= 10
+print(p.y)  // 10
+p.x *= 2
+print(p.x)  // 30
+\end{lstlisting}
+
+\begin{warnbox}{Mutation is Shallow}
+When you mutate a field on a \lstinline|flux| struct, you are updating
+\emph{that copy's} field. Because structs are pass-by-value, any other
+variable that received a copy of the struct is unaffected. This is one of
+the most important mental-model points in Lattice. We will return to it in
+\cref{sec:struct-pass-by-value}.
+\end{warnbox}
+
+\subsection{Optional Field Access}
+
+If you have a value that might be \lstinline|nil|, the optional-chaining
+operator \lstinline|?.| lets you access fields safely:
+
+\begin{lstlisting}[language=Lattice, caption={Optional field access}]
+struct User { name: any, email: any }
+
+fn find_user(id: any) -> any {
+    if id == 1 {
+        return User { name: "Alice", email: "alice@example.com" }
+    }
+    return nil
+}
+
+let user = find_user(42)
+print(user?.name)   // nil (no crash)
+print(user?.email)  // nil
+\end{lstlisting}
+
+If the receiver is \lstinline|nil|, the entire expression evaluates to
+\lstinline|nil| instead of producing a runtime error. This pairs well
+with the \lstinline|??| nil-coalescing operator covered in
+\cref{ch:control-flow}.
+
+\subsection{Passing Structs to Functions}
+
+Structs can be passed as function arguments and returned from functions.
+Remember: each pass produces an independent copy.
+
+\begin{lstlisting}[language=Lattice, caption={Structs as arguments and return values}]
+struct Point { x: any, y: any }
+
+fn sum_point(pt: any) -> any {
+    return pt.x + pt.y
+}
+
+fn make_point(a: any, b: any) -> Point {
+    return Point { x: a, y: b }
+}
+
+let p = Point { x: 3, y: 4 }
+print(sum_point(p))  // 7
+
+let q = make_point(100, 200)
+print(q.x)  // 100
+print(q.y)  // 200
+\end{lstlisting}
+
+\subsection{Structs in Collections}
+
+Arrays, maps, and sets can all hold structs:
+
+\begin{lstlisting}[language=Lattice, caption={An array of structs}]
+struct Point { x: any, y: any }
+
+let points = [
+    Point { x: 1, y: 2 },
+    Point { x: 3, y: 4 },
+    Point { x: 5, y: 6 }
+]
+
+for pt in points {
+    print(pt.x + pt.y)
+}
+// Output: 3, 7, 11
+print(len(points))  // 3
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Methods via Traits: \texttt{impl} Blocks}\label{sec:struct-methods}
+\index{struct!methods}
+\index{impl}
+
+Lattice attaches behaviour to structs through \emph{trait implementations}.
+A trait declares a set of method signatures; an \lstinline|impl| block
+provides the bodies for a specific struct. We will explore traits in depth
+in \cref{ch:traits}, but here is enough to get you started.
+
+\begin{lstlisting}[language=Lattice, caption={A trait and its implementation}]
+struct Point { x: any, y: any }
+
+trait Describable {
+    fn describe(self: any) -> any
+}
+
+impl Describable for Point {
+    fn describe(self: any) -> any {
+        return "Point(" + to_string(self.x) + ", " + to_string(self.y) + ")"
+    }
+}
+
+let p = Point { x: 7, y: 8 }
+print(p.describe())  // Point(7, 8)
+\end{lstlisting}
+
+The first parameter of every method is \lstinline|self|, which receives
+a copy of the struct instance the method was called on. Inside the body
+you read fields with \lstinline|self.x|, \lstinline|self.y|, and so on.
+
+\begin{notebox}{Methods Return New Values}
+Because \lstinline|self| is a copy, methods that ``modify'' the struct
+must return a new instance. The original is untouched:
+
+\begin{lstlisting}[language=Lattice]
+trait Scalable {
+    fn scale(self: any, factor: any) -> any
+}
+
+impl Scalable for Point {
+    fn scale(self: any, factor: any) -> any {
+        return Point { x: self.x * factor, y: self.y * factor }
+    }
+}
+
+let p = Point { x: 5, y: 10 }
+let q = p.scale(3)
+print(q.x)  // 15
+print(q.y)  // 30
+print(p.x)  // 5  (unchanged)
+\end{lstlisting}
+\end{notebox}
+
+\subsection{Multiple Traits per Struct}
+
+A single struct can implement as many traits as you like:
+
+\begin{lstlisting}[language=Lattice, caption={A struct implementing multiple traits}]
+struct Point { x: any, y: any }
+
+trait HasArea {
+    fn area(self: any) -> any
+}
+
+trait Describable {
+    fn describe(self: any) -> any
+}
+
+impl HasArea for Point {
+    fn area(self: any) -> any {
+        return self.x * self.y
+    }
+}
+
+impl Describable for Point {
+    fn describe(self: any) -> any {
+        return "Point(" + to_string(self.x) + ", " + to_string(self.y) + ")"
+    }
+}
+
+let p = Point { x: 3, y: 4 }
+print(p.area())      // 12
+print(p.describe())  // Point(3, 4)
+\end{lstlisting}
+
+Under the hood, the compiler registers each method with a key of the form
+\texttt{TypeName::method\_name} in the global scope. When you call
+\lstinline|p.describe()|, the VM looks up \texttt{Point::describe} and
+invokes it with \lstinline|self| bound to a clone of \lstinline|p|. You can
+see how method dispatch is compiled in \filename{src/stackcompiler.c}---look
+for the \texttt{OP\_INVOKE} family of opcodes.
+
+\subsection{Methods in Loops}
+
+Methods compose naturally with iteration:
+
+\begin{lstlisting}[language=Lattice, caption={Calling methods in a loop}]
+struct Point { x: any, y: any }
+
+trait HasArea {
+    fn area(self: any) -> any
+}
+
+impl HasArea for Point {
+    fn area(self: any) -> any {
+        return self.x * self.y
+    }
+}
+
+let points = [
+    Point { x: 1, y: 1 },
+    Point { x: 2, y: 3 },
+    Point { x: 4, y: 5 }
+]
+
+flux total = 0
+for p in points {
+    total = total + p.area()
+}
+print(total)  // 1 + 6 + 20 = 27
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Callable Struct Fields}\label{sec:struct-callable-fields}
+\index{struct!callable fields}
+\index{closure!as struct field}
+
+Besides attaching methods through traits, you can embed closures directly
+as struct fields. Any field whose value is a closure becomes \emph{callable}:
+when you invoke it with dot syntax, Lattice finds the closure field and
+calls it.
+
+\begin{lstlisting}[language=Lattice, caption={A struct with a callable closure field}]
+struct Greeter {
+    greeting: String,
+    greet: Fn
+}
+
+let hello = Greeter {
+    greeting: "Hello",
+    greet: |self| {
+        self.greeting + ", world!"
+    }
+}
+
+print(hello.greet())  // Hello, world!
+\end{lstlisting}
+
+The closure receives \lstinline|self| as its first argument when called
+through dot notation, just like a trait method. The difference is that the
+closure is stored \emph{inside} the struct value itself---it travels with
+the data.
+
+\subsection{Stateful Callable Fields}
+
+Callable fields shine when you want per-instance behaviour. Consider a
+vending machine where each operation is a closure:
+
+\begin{lstlisting}[language=Lattice, caption={Vending machine with callable fields}]
+struct VendingMachine {
+    balance: Int,
+    inventory: Map,
+    state: String,
+    insert_coin: Fn,
+    select_item: Fn,
+    dispense: Fn,
+    display: Fn
+}
+
+fn make_vending_machine() -> VendingMachine {
+    flux inv = Map::new()
+    inv.set("cola", 150)
+    inv.set("chips", 100)
+    inv.set("candy", 75)
+
+    return VendingMachine {
+        balance: 0,
+        inventory: inv,
+        state: "idle",
+        insert_coin: |self, amount| {
+            self.balance + amount
+        },
+        select_item: |self, item| {
+            if !self.inventory.has(item) {
+                "error: unknown item"
+            } else {
+                let price = self.inventory.get(item)
+                if self.balance < price {
+                    "error: insufficient funds"
+                } else {
+                    "ok:" + item
+                }
+            }
+        },
+        dispense: |self, item| {
+            let price = self.inventory.get(item)
+            let change = self.balance - price
+            "Dispensing " + item + "! Change: " + to_string(change) + " cents"
+        },
+        display: |self| {
+            "Balance: " + to_string(self.balance) + " cents"
+        }
+    }
+}
+\end{lstlisting}
+
+Each closure can read \lstinline|self.balance| and
+\lstinline|self.inventory|. The caller updates the struct's mutable state
+after each operation:
+
+\begin{lstlisting}[language=Lattice, caption={Driving the vending machine}]
+flux vm = make_vending_machine()
+print(vm.display())  // Balance: 0 cents
+
+vm.balance = vm.insert_coin(25)
+vm.balance = vm.insert_coin(25)
+vm.balance = vm.insert_coin(25)
+print(vm.display())  // Balance: 75 cents
+
+let result = vm.select_item("candy")
+print(result)  // ok:candy
+print(vm.dispense("candy"))  // Dispensing candy! Change: 0 cents
+\end{lstlisting}
+
+\begin{tipbox}{Trait Methods vs.\ Callable Fields}
+Use \textbf{trait methods} when the behaviour is shared across multiple
+structs that implement the same interface. Use \textbf{callable fields}
+when the behaviour is unique to each \emph{instance}, or when you want to
+swap behaviour at runtime by assigning a different closure to the field.
+\end{tipbox}
+
+\subsection{How the Runtime Resolves Calls}
+
+When you write \lstinline|vm.display()|, the runtime checks two places:
+
+\begin{enumerate}
+  \item \textbf{Callable field}: Does the struct have a field named
+    \lstinline|display| whose value is a closure? If so, call it, passing
+    the struct as \lstinline|self|.
+  \item \textbf{Trait method}: Is there an impl method registered as
+    \lstinline|VendingMachine::display|? If so, call that with a clone
+    of the struct as \lstinline|self|.
+\end{enumerate}
+
+Callable fields take priority. If a struct has both a closure field named
+\lstinline|area| and a trait method \lstinline|area|, the closure field
+wins. You can inspect how this dispatch works in \filename{src/eval.c}---the
+method-call handler first scans \lstinline|field_names| for a matching
+closure before falling through to the impl registry.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Custom Equality with \texttt{eq}}\label{sec:struct-equality}
+\index{struct!equality}
+\index{eq (custom equality)}
+
+By default, two structs are equal if they have the same name and all their
+fields are recursively equal:
+
+\begin{lstlisting}[language=Lattice, caption={Default struct equality}]
+struct Point { x: any, y: any }
+
+let a = Point { x: 1, y: 2 }
+let b = Point { x: 1, y: 2 }
+let c = Point { x: 3, y: 4 }
+
+print(a == b)  // true
+print(a == c)  // false
+print(a != c)  // true
+\end{lstlisting}
+
+This is structural equality---it compares data, not identity. Two distinct
+instances with the same field values are considered equal.
+
+\subsection{Overriding Equality with an \texttt{eq} Field}
+
+Sometimes you want a different notion of equality. Perhaps two users should
+be equal if they share the same ID, regardless of other fields. Lattice
+lets you override equality by adding a closure field named \lstinline|eq|:
+
+\begin{lstlisting}[language=Lattice, caption={Custom equality via the \texttt{eq} field}]
+struct User {
+    id: Int,
+    name: String,
+    email: String,
+    eq: Fn
+}
+
+fn make_user(id: Int, name: String, email: String) -> User {
+    return User {
+        id: id,
+        name: name,
+        email: email,
+        eq: |self, other| {
+            self.id == other.id
+        }
+    }
+}
+
+let alice1 = make_user(1, "Alice", "alice@example.com")
+let alice2 = make_user(1, "Alice A.", "alice.a@example.com")
+let bob = make_user(2, "Bob", "bob@example.com")
+
+print(alice1 == alice2)  // true  (same ID)
+print(alice1 == bob)     // false (different ID)
+\end{lstlisting}
+
+The \lstinline|eq| closure receives two arguments: \lstinline|self| (the
+left-hand operand) and \lstinline|other| (the right-hand operand). Its
+return value is converted to a boolean. The \lstinline|!=| operator
+automatically negates the result.
+
+\begin{warnbox}{The \texttt{eq} Field Must Be a Closure}
+The custom equality mechanism specifically checks for a field named
+\lstinline|eq| whose value is a \lstinline|VAL_CLOSURE|. If you name a
+non-closure field \lstinline|eq|, it will not be used for equality
+comparisons---the default structural equality applies instead.
+\end{warnbox}
+
+\subsection{When Custom Equality Matters}
+
+Custom equality is valuable for:
+
+\begin{itemize}
+  \item \textbf{Identity-based comparison}: Compare by ID or key rather
+    than every field.
+  \item \textbf{Ignoring computed fields}: Skip over cached or derived
+    data that should not affect equality.
+  \item \textbf{Tolerance-based comparison}: For structs containing
+    floating-point values, you might compare with a tolerance:
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Approximate equality for geometry}]
+struct Coordinate {
+    lat: Float,
+    lng: Float,
+    eq: Fn
+}
+
+fn make_coord(lat: Float, lng: Float) -> Coordinate {
+    return Coordinate {
+        lat: lat,
+        lng: lng,
+        eq: |self, other| {
+            let dlat = self.lat - other.lat
+            let dlng = self.lng - other.lng
+            if dlat < 0 { dlat = 0.0 - dlat }
+            if dlng < 0 { dlng = 0.0 - dlng }
+            dlat < 0.0001 && dlng < 0.0001
+        }
+    }
+}
+
+let a = make_coord(51.5074, -0.1278)
+let b = make_coord(51.5074, -0.1278)
+print(a == b)  // true
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Struct Reflection}\label{sec:struct-reflection}
+\index{struct!reflection}
+\index{struct\_name}
+\index{struct\_fields}
+\index{struct\_to\_map}
+\index{struct\_from\_map}
+
+Lattice provides four built-in functions for inspecting and transforming
+structs at runtime. These live in the category of \emph{reflection}---code
+that examines the shape of data programmatically.
+
+\subsection{\texttt{struct\_name()}}
+
+Returns the type name of a struct as a string:
+
+\begin{lstlisting}[language=Lattice, caption={Getting a struct's type name}]
+struct Point { x: any, y: any }
+struct Rect { width: any, height: any }
+
+let p = Point { x: 10, y: 20 }
+let r = Rect { width: 5, height: 3 }
+
+print(struct_name(p))  // "Point"
+print(struct_name(r))  // "Rect"
+\end{lstlisting}
+
+This is useful for logging, serialisation, and dynamic dispatch.
+
+\subsection{\texttt{struct\_fields()}}
+
+Returns an array of field-name strings:
+
+\begin{lstlisting}[language=Lattice, caption={Listing a struct's fields}]
+struct Config {
+    host: String,
+    port: Int,
+    verbose: Bool
+}
+
+let cfg = Config { host: "localhost", port: 8080, verbose: false }
+let fields = struct_fields(cfg)
+print(fields)  // ["host", "port", "verbose"]
+\end{lstlisting}
+
+The order of names matches the order in the struct definition.
+
+\subsection{\texttt{struct\_to\_map()}}
+
+Converts a struct into a \lstinline|Map| where keys are field names and
+values are field values:
+
+\begin{lstlisting}[language=Lattice, caption={Converting a struct to a map}]
+struct Point { x: any, y: any }
+
+let p = Point { x: 42, y: 17 }
+let m = struct_to_map(p)
+
+print(m)            // {x: 42, y: 17}
+print(m.get("x"))   // 42
+print(m.get("y"))   // 17
+\end{lstlisting}
+
+This is the fastest way to bridge between structs and the map-based world
+of JSON serialisation (see \cref{ch:json-toml-yaml-csv}).
+
+\subsection{\texttt{struct\_from\_map()}}
+
+Goes the other direction---creates a struct from a type name and a map:
+
+\begin{lstlisting}[language=Lattice, caption={Creating a struct from a map}]
+struct Point { x: any, y: any }
+
+flux m = Map::new()
+m.set("x", 100)
+m.set("y", 200)
+
+let p = struct_from_map("Point", m)
+print(p.x)  // 100
+print(p.y)  // 200
+\end{lstlisting}
+
+If a field is missing from the map, it defaults to \lstinline|nil|. The
+struct definition must already exist in scope---\lstinline|struct_from_map|
+looks up the registered struct metadata at runtime.
+
+\subsection{A Practical Reflection Example}
+
+Combining these functions, you can write a generic ``debug print'' utility:
+
+\begin{lstlisting}[language=Lattice, caption={A generic struct inspector}]
+struct Point { x: any, y: any }
+struct User { name: any, age: any }
+
+fn inspect(val: any) -> String {
+    let name = struct_name(val)
+    let fields = struct_fields(val)
+    let m = struct_to_map(val)
+    flux parts = []
+    for f in fields {
+        parts.push(f + "=" + to_string(m.get(f)))
+    }
+    return name + "(" + parts.join(", ") + ")"
+}
+
+let p = Point { x: 3, y: 4 }
+let u = User { name: "Alice", age: 30 }
+
+print(inspect(p))  // Point(x=3, y=4)
+print(inspect(u))  // User(name=Alice, age=30)
+\end{lstlisting}
+
+\begin{notebox}{Reflection at Runtime}
+Struct reflection functions operate at \emph{runtime}. The compiler stores
+field metadata as a hidden global (keyed as \texttt{\_\_struct\_StructName}
+in the constant pool). This means reflection incurs a small cost, but it
+works for any struct, even those defined in imported modules. See
+\filename{src/stackcompiler.c} for how metadata is emitted during
+compilation.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Struct Destructuring}\label{sec:struct-destructuring}
+\index{struct!destructuring}
+
+When you want to extract multiple fields at once, destructuring is more
+concise than repeated dot access:
+
+\begin{lstlisting}[language=Lattice, caption={Struct destructuring}]
+struct Point { x: any, y: any }
+
+let p = Point { x: 55, y: 66 }
+let { x, y } = p
+print(x)  // 55
+print(y)  // 66
+\end{lstlisting}
+
+The \lstinline|let { x, y } = p| syntax binds local variables
+\lstinline|x| and \lstinline|y| to the values of
+\lstinline|p.x| and \lstinline|p.y| respectively. The variable names must
+match the field names.
+
+Destructuring works in any binding context where patterns are accepted,
+including \lstinline|match| arms (see \cref{ch:pattern-matching}).
+
+\begin{tipbox}{Selective Destructuring}
+You do not have to destructure every field. Extracting only the fields you
+need is perfectly valid:
+
+\begin{lstlisting}[language=Lattice]
+struct Rect { origin: any, width: any, height: any }
+
+let r = Rect { origin: Point { x: 0, y: 0 }, width: 100, height: 50 }
+let { width, height } = r
+print(width * height)  // 5000
+\end{lstlisting}
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Pass-by-Value Semantics}\label{sec:struct-pass-by-value}
+\index{struct!pass-by-value}
+\index{pass-by-value}
+
+This is the section that will save you from the most common struct-related
+confusion. Lattice structs are \textbf{pass-by-value}. Every assignment,
+every function argument, every return value produces an \emph{independent
+copy} of the struct. There are no hidden references, no shared state, no
+aliasing surprises.
+
+\begin{lstlisting}[language=Lattice, caption={Pass-by-value in action}]
+struct Point { x: any, y: any }
+
+flux a = Point { x: 1, y: 2 }
+flux b = a          // b is a copy of a
+b.x = 999
+
+print(a.x)  // 1   (unchanged)
+print(b.x)  // 999
+\end{lstlisting}
+
+After \lstinline|flux b = a|, the variables \lstinline|a| and \lstinline|b|
+hold entirely separate structs. Mutating one has zero effect on the other.
+
+\subsection{Implications for Function Calls}
+
+When you pass a struct to a function, the function receives its own copy:
+
+\begin{lstlisting}[language=Lattice, caption={Functions receive copies}]
+struct Counter { value: any }
+
+fn try_to_increment(c: any) {
+    flux local = c
+    local.value = local.value + 1
+    print(local.value)  // 11
+}
+
+let counter = Counter { value: 10 }
+try_to_increment(counter)
+print(counter.value)  // 10 (unchanged)
+\end{lstlisting}
+
+The function's local copy is incremented, but the caller's
+\lstinline|counter| retains its original value. If you want the change to
+be visible to the caller, the function must \emph{return} the new struct:
+
+\begin{lstlisting}[language=Lattice, caption={Returning the modified struct}]
+struct Counter { value: any }
+
+fn increment(c: any) -> Counter {
+    return Counter { value: c.value + 1 }
+}
+
+flux counter = Counter { value: 10 }
+counter = increment(counter)
+print(counter.value)  // 11
+\end{lstlisting}
+
+\subsection{Why Pass-by-Value?}
+
+You might wonder why Lattice chose value semantics when many popular
+languages use references. The answer ties into the phase system:
+
+\begin{itemize}
+  \item \textbf{No aliasing bugs}: Two variables never point at the same
+    struct, so freezing one cannot affect another.
+  \item \textbf{Thread safety}: In concurrent code (\cref{ch:scope-spawn}),
+    spawned tasks receive their own copy of any struct, eliminating data
+    races by construction.
+  \item \textbf{Predictability}: When you see \lstinline|let x = y|, you
+    know that \lstinline|x| is independent. No need to check whether the
+    type is a ``value type'' or a ``reference type.''
+\end{itemize}
+
+\begin{defnbox}{Value Semantics}
+In Lattice, structs (and buffers) are \textbf{value types}. Assignment copies
+the entire struct, including all nested data. The runtime uses
+\texttt{value\_deep\_clone()} in \filename{include/value.h} to produce the
+copy. For large structs this means more memory, but it guarantees isolation.
+\end{defnbox}
+
+\subsection{The \texttt{clone} Keyword}
+
+If you want to be explicit about copying---perhaps for readability in
+performance-sensitive code---you can use the \lstinline|clone| keyword:
+
+\begin{lstlisting}[language=Lattice, caption={Explicit cloning}]
+struct Point { x: any, y: any }
+
+let original = Point { x: 1, y: 2 }
+flux copy = clone original
+copy.x = 42
+
+print(original.x)  // 1
+print(copy.x)      // 42
+\end{lstlisting}
+
+In practice, assignment already clones, so \lstinline|clone| is primarily
+a documentation signal: ``I know this is making a copy, and I intend that.''
+
+\subsection{When Copies Get Expensive}
+
+For small structs like \lstinline|Point|, copying is negligible. For structs
+with many fields or large nested arrays, the cost can add up. Strategies for
+managing this include:
+
+\begin{itemize}
+  \item \textbf{Keep structs lean}: Store IDs or indices into a central
+    collection rather than embedding large data directly.
+  \item \textbf{Use \lstinline|Ref| for shared state}: When you genuinely
+    need shared mutable access, wrap a value in a \lstinline|Ref|
+    (covered in \cref{ch:phases-explained}).
+  \item \textbf{Prefer functional updates}: Return new structs from methods
+    rather than mutating fields---the compiler can often optimise this path.
+\end{itemize}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{A Larger Example: Entity Component System}\label{sec:struct-ecs}
+\index{ECS}
+
+Let's bring everything together with a complete example. An Entity Component
+System (ECS) is a game architecture pattern where entities are bags of
+data and systems are functions that transform arrays of entities. It is a
+perfect showcase for struct-centric design.
+
+\begin{lstlisting}[language=Lattice, caption={An ECS in Lattice}]
+struct Entity {
+    id: Int,
+    name: String,
+    x: Int,
+    y: Int,
+    dx: Int,
+    dy: Int,
+    hp: Int,
+    max_hp: Int,
+    tag: String
+}
+
+fn make_entity(id: Int, name: String, tag: String) -> Entity {
+    return Entity {
+        id: id, name: name,
+        x: 0, y: 0, dx: 0, dy: 0,
+        hp: 0, max_hp: 0, tag: tag
+    }
+}
+
+fn render_entity(e: Entity) {
+    flux line = "  [" + to_string(e.id) + "] " + e.name
+    line += " at (" + to_string(e.x) + "," + to_string(e.y) + ")"
+    if e.max_hp > 0 {
+        line += " HP:" + to_string(e.hp) + "/" + to_string(e.max_hp)
+    }
+    print(line)
+}
+
+// System: apply velocity to position
+fn movement_system(entities: [Entity]) -> [Entity] {
+    flux result = []
+    for e in entities {
+        flux moved = e
+        moved.x = e.x + e.dx
+        moved.y = e.y + e.dy
+        result.push(moved)
+    }
+    return result
+}
+\end{lstlisting}
+
+The movement system iterates over entities, creates updated copies with new
+positions, and returns the new array. Because structs are pass-by-value,
+each \lstinline|flux moved = e| produces an independent copy that we can
+mutate without affecting the original.
+
+\begin{lstlisting}[language=Lattice, caption={Running the ECS simulation}]
+fn main() {
+    flux player = make_entity(0, "Hero", "player")
+    player.x = 0
+    player.y = 0
+    player.dx = 1
+    player.dy = 1
+    player.hp = 100
+    player.max_hp = 100
+
+    flux goblin = make_entity(1, "Goblin", "enemy")
+    goblin.x = 3
+    goblin.y = 3
+    goblin.dx = -1
+    goblin.dy = -1
+
+    flux entities = [player, goblin]
+
+    flux tick = 0
+    while tick < 3 {
+        print("--- Tick " + to_string(tick) + " ---")
+        for e in entities {
+            render_entity(e)
+        }
+        entities = movement_system(entities)
+        tick += 1
+    }
+}
+\end{lstlisting}
+
+This pattern---immutable-by-default data flowing through pure transformation
+functions---is idiomatic Lattice. The phase system and value semantics make
+it safe; the struct system makes it readable.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:struct-exercises}
+
+\begin{enumerate}
+  \item \textbf{RGB colour struct.}
+    Define a struct \lstinline|Color| with fields \lstinline|r|,
+    \lstinline|g|, and \lstinline|b| (all integers 0--255). Write a
+    function \lstinline|mix(a: Color, b: Color) -> Color| that returns
+    the average of each channel. Verify that mixing
+    \lstinline|Color { r: 255, g: 0, b: 0 }| with
+    \lstinline|Color { r: 0, g: 0, b: 255 }| gives
+    \lstinline|Color { r: 127, g: 0, b: 127 }|.
+
+  \item \textbf{Bank account.}
+    Create a \lstinline|BankAccount| struct with fields \lstinline|owner|,
+    \lstinline|balance|, and callable fields \lstinline|deposit| and
+    \lstinline|withdraw|. The \lstinline|withdraw| field should return
+    an error string if the balance is insufficient. Drive a sequence of
+    transactions and print the final balance.
+
+  \item \textbf{Custom equality.}
+    Define a \lstinline|Student| struct with fields \lstinline|id|,
+    \lstinline|name|, and \lstinline|gpa|. Add an \lstinline|eq| closure
+    that compares students by \lstinline|id| only. Demonstrate that two
+    \lstinline|Student| instances with the same ID but different GPAs are
+    considered equal.
+
+  \item \textbf{Reflection round-trip.}
+    Write a function that takes any struct, converts it to a map with
+    \lstinline|struct_to_map|, doubles every numeric value in the map,
+    and converts it back with \lstinline|struct_from_map|. Test it with
+    \lstinline|Point { x: 5, y: 10 }| and verify the result is
+    \lstinline|Point { x: 10, y: 20 }|.
+
+  \item \textbf{Value semantics drill.}
+    Without running the code, predict the output of this program, then
+    verify your prediction:
+    \begin{lstlisting}[language=Lattice]
+struct Box { value: any }
+flux a = Box { value: [1, 2, 3] }
+flux b = a
+b.value.push(4)
+print(len(a.value))
+print(len(b.value))
+    \end{lstlisting}
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section*{What's Next}
+
+Structs give your data a name and a shape. But what if a value can be
+\emph{one of several shapes}? A network response might be a success or
+a failure. A drawing command might be a circle, a rectangle, or a line.
+In the next chapter we meet \emph{enums}---Lattice's answer to
+sum types---and discover how to model these ``one of many'' scenarios
+with precision and safety.

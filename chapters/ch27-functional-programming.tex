@@ -1,0 +1,655 @@
+\chapter{Functional Programming in Lattice}\label{ch:functional-programming}
+
+\index{functional programming}\index{pipe()}\index{compose()}\index{identity()}
+
+Lattice is not a purely functional language---it has mutable variables, side effects, and imperative loops.
+But it provides a rich set of functional tools that, when used well, can make your code more concise, more composable, and easier to reason about.
+
+In \cref{ch:lazy-iterators}, we built pipelines of iterator transformations.
+This chapter takes those ideas further.
+We will explore Lattice's built-in functional primitives---\lstinline|pipe()|, \lstinline|compose()|, and \lstinline|identity()|---then dive into the \lstinline|fn| standard library's currying, partial application, and collection utilities.
+By the end, you will know when functional style shines in Lattice and when to reach for something else.
+
+%% ───────────────────────────────────────────────────────────
+\section{pipe(), compose(), and identity()}\label{sec:pipe-compose-identity}
+\index{pipe()}\index{compose()}\index{identity()}
+
+These three built-in functions form the foundation of functional composition in Lattice.
+They are implemented directly in the runtime (\filename{src/runtime.c} and \filename{src/eval.c}), so they are always available without any imports.
+
+\subsection{pipe() --- Threading Values Through Functions}\label{subsec:pipe}
+\index{pipe()!usage}
+
+The \lstinline|pipe()| function takes a value and one or more functions, then threads the value through each function left to right:
+
+\begin{lstlisting}[language=Lattice, caption={Basic pipe usage}]
+let result = pipe(5,
+    |x| { x * 2 },
+    |x| { x + 1 },
+    |x| { x * x }
+)
+print(result)  // 121  (5 -> 10 -> 11 -> 121)
+\end{lstlisting}
+
+Each function receives the output of the previous one.
+The first argument is the initial value; every subsequent argument must be a closure.
+
+\begin{defnbox}{pipe()}
+\lstinline|pipe(val, f1, f2, ..., fn)| computes \lstinline|fn(...f2(f1(val)))|.
+It evaluates left to right: the value flows \emph{forward} through the chain, like water through a series of pipes.
+\end{defnbox}
+
+Without \lstinline|pipe()|, you would write deeply nested function calls:
+
+\begin{lstlisting}[language=Lattice, caption={Nested calls vs.\ pipe}]
+// Without pipe: read inside-out
+let result = square(increment(double(5)))
+
+// With pipe: read top-to-bottom
+let result = pipe(5,
+    |x| { x * 2 },
+    |x| { x + 1 },
+    |x| { x * x }
+)
+\end{lstlisting}
+
+The pipe version reads in the order that operations happen---no mental stack unwinding required.
+
+Here is a more realistic example, processing a string:
+
+\begin{lstlisting}[language=Lattice, caption={String processing with pipe}]
+let raw_input = "  Hello, Lattice World!  "
+
+let processed = pipe(raw_input,
+    |s| { s.trim() },
+    |s| { s.lower() },
+    |s| { s.replace(",", "") },
+    |s| { s.split(" ") }
+)
+
+print(processed)  // [hello, lattice, world!]
+\end{lstlisting}
+
+\begin{tipbox}{pipe() with Named Functions}
+You are not limited to anonymous closures.
+Named functions work too:
+\begin{lstlisting}[language=Lattice]
+fn double(x: Int) -> Int { return x * 2 }
+fn increment(x: Int) -> Int { return x + 1 }
+
+let result = pipe(5, double, increment)
+print(result)  // 11
+\end{lstlisting}
+\end{tipbox}
+
+\subsection{compose() --- Building New Functions from Old}\label{subsec:compose}
+\index{compose()!usage}
+
+While \lstinline|pipe()| immediately applies a chain of functions to a value, \lstinline|compose()| builds a \emph{new function} from two existing ones---without calling either:
+
+\begin{lstlisting}[language=Lattice, caption={Composing functions}]
+let double = |x| { x * 2 }
+let increment = |x| { x + 1 }
+
+// compose(f, g) returns a new function: |x| { f(g(x)) }
+let double_then_increment = compose(increment, double)
+
+print(double_then_increment(5))   // 11  (double(5)=10, increment(10)=11)
+print(double_then_increment(10))  // 21  (double(10)=20, increment(20)=21)
+\end{lstlisting}
+
+\begin{warnbox}{Argument Order}
+\lstinline|compose(f, g)| applies \lstinline|g| first, then \lstinline|f|.
+In mathematical notation: \lstinline|compose(f, g)(x) = f(g(x))|.
+This is right-to-left, like function composition in mathematics.
+If you find this confusing, use \lstinline|pipe()| instead---it flows left-to-right.
+\end{warnbox}
+
+The value of \lstinline|compose()| is that it creates a reusable function you can pass around, store in variables, or use as a callback:
+
+\begin{lstlisting}[language=Lattice, caption={Composed functions as callbacks}]
+let to_celsius = |f| { (f - 32) * 5 / 9 }
+let round_temp = |c| { to_int(c) }
+let format_temp = |c| { to_string(c) + " C" }
+
+// Build a single conversion function
+let convert = compose(format_temp, compose(round_temp, to_celsius))
+
+let temps_f = [98.6, 212.0, 32.0, 72.5]
+let temps_c = iter(temps_f).map(convert).collect()
+print(temps_c)  // [37 C, 100 C, 0 C, 22 C]
+\end{lstlisting}
+
+Under the hood, \lstinline|compose()| creates a new closure that captures both \lstinline|f| and \lstinline|g| as upvalues.
+In the tree-walk evaluator (\filename{src/eval.c}), it builds an AST node for \lstinline|f(g(x))| with a fresh environment.
+In the stack VM (\filename{src/runtime.c}), it generates bytecode: load \lstinline|g|, call with \lstinline|x|, load \lstinline|f|, call with the result.
+Either way, the composed function behaves like any other closure.
+
+\subsection{identity() --- The Do-Nothing Function}\label{subsec:identity}
+\index{identity()!usage}
+
+The \lstinline|identity()| function returns its argument unchanged:
+
+\begin{lstlisting}[language=Lattice, caption={The identity function}]
+print(identity(42))        // 42
+print(identity("hello"))   // hello
+print(identity([1, 2, 3])) // [1, 2, 3]
+\end{lstlisting}
+
+At first glance, this seems useless.
+Why would you want a function that does nothing?
+The answer is that \lstinline|identity()| serves as a \emph{default} or \emph{neutral element} in functional pipelines:
+
+\begin{lstlisting}[language=Lattice, caption={identity() as a default transform}]
+fn process_data(values: Array, transform: Fn) -> Array {
+    return iter(values).map(transform).collect()
+}
+
+// Sometimes we want a transform, sometimes we don't
+let raw = [1, 2, 3, 4, 5]
+
+let doubled = process_data(raw, |x| { x * 2 })
+print(doubled)  // [2, 4, 6, 8, 10]
+
+let unchanged = process_data(raw, identity)
+print(unchanged)  // [1, 2, 3, 4, 5]
+\end{lstlisting}
+
+Rather than adding special-case logic for ``no transformation,'' you pass \lstinline|identity| as the transform.
+The code stays uniform.
+
+Another use: \lstinline|identity| is the neutral element for \lstinline|compose()|.
+Composing any function with \lstinline|identity| gives back the original function:
+
+\begin{lstlisting}[language=Lattice, caption={identity() as composition neutral}]
+let double = |x| { x * 2 }
+
+let same = compose(double, identity)
+print(same(5))  // 10
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{The fn Standard Library Module}\label{sec:fn-stdlib}
+\index{fn standard library}\index{standard library!fn}
+
+The \lstinline|fn| module (\filename{lib/fn.lat}) bundles a collection of functional programming utilities into a single import.
+We encountered its lazy sequence functions in \cref{ch:lazy-iterators}; now let's explore the rest.
+
+\begin{lstlisting}[language=Lattice, caption={Importing the fn module}]
+import "lib/fn" as F
+\end{lstlisting}
+
+\subsection{Function Composition Utilities}\label{subsec:fn-composition}
+\index{fn standard library!comp}\index{fn standard library!flip}\index{fn standard library!constant}
+
+The module provides several utilities for building and combining functions:
+
+\begin{lstlisting}[language=Lattice, caption={comp, flip, and constant}]
+import "lib/fn" as F
+
+// comp(f, g) is a module-accessible wrapper around compose()
+let add_one_then_double = F.comp(|x| { x * 2 }, |x| { x + 1 })
+print(add_one_then_double(4))  // 10
+
+// flip(f) reverses the argument order of a 2-argument function
+let div = |a, b| { a / b }
+let inv_div = F.flip(div)
+print(inv_div(2, 10))  // 5  (calls div(10, 2))
+
+// constant(v) returns a function that always returns v
+let always_zero = F.constant(0)
+print(always_zero(99))     // 0
+print(always_zero("hi"))   // 0
+\end{lstlisting}
+
+\subsection{apply\_n --- Repeated Application}\label{subsec:fn-apply-n}
+\index{fn standard library!apply\_n}
+
+The \lstinline|F.apply_n(f, n, value)| function applies \lstinline|f| to \lstinline|value| a total of \lstinline|n| times:
+
+\begin{lstlisting}[language=Lattice, caption={Repeated function application}]
+import "lib/fn" as F
+
+let double = |x| { x * 2 }
+print(F.apply_n(double, 0, 3))  // 3
+print(F.apply_n(double, 1, 3))  // 6
+print(F.apply_n(double, 4, 1))  // 16  (1 -> 2 -> 4 -> 8 -> 16)
+\end{lstlisting}
+
+This is a controlled form of recursion---useful for simulations, numerical methods, or any situation where you want to iterate a transformation a fixed number of times.
+
+\subsection{thread() --- Module-Level Piping}\label{subsec:fn-thread}
+\index{fn standard library!thread}
+
+The \lstinline|F.thread(value, f1, f2)| function is the module's equivalent of a two-function \lstinline|pipe()|, for cases where you want to use the \lstinline|fn| module's qualified syntax:
+
+\begin{lstlisting}[language=Lattice, caption={thread for 2-step piping}]
+import "lib/fn" as F
+
+let result = F.thread(10,
+    |x| { x + 5 },
+    |x| { x * 2 }
+)
+print(result)  // 30
+\end{lstlisting}
+
+For longer chains, the built-in \lstinline|pipe()| is more flexible since it accepts any number of functions.
+
+\subsection{Collection Utilities}\label{subsec:fn-collections}
+\index{fn standard library!group\_by}\index{fn standard library!partition}\index{fn standard library!frequencies}
+
+Beyond sequences and composition, the \lstinline|fn| module includes utilities for working with arrays and maps.
+
+\subsubsection{group\_by --- Categorize Elements}
+\index{fn standard library!group\_by}
+
+\begin{lstlisting}[language=Lattice, caption={Grouping elements}]
+import "lib/fn" as F
+
+let words = ["apple", "avocado", "banana", "blueberry", "cherry"]
+let grouped = F.group_by(words, |w| { w[0] })
+
+print(grouped)
+// {a: [apple, avocado], b: [banana, blueberry], c: [cherry]}
+\end{lstlisting}
+
+The key function determines which group each element belongs to.
+The result is a map from keys to arrays of matching elements.
+
+\subsubsection{partition --- Split into Two Groups}
+\index{fn standard library!partition}
+
+\begin{lstlisting}[language=Lattice, caption={Partitioning an array}]
+import "lib/fn" as F
+
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let result = F.partition(numbers, |n| { n % 2 == 0 })
+
+print(result[0])  // [2, 4, 6, 8, 10]  (matches)
+print(result[1])  // [1, 3, 5, 7, 9]   (non-matches)
+\end{lstlisting}
+
+\subsubsection{frequencies --- Count Occurrences}
+\index{fn standard library!frequencies}
+
+\begin{lstlisting}[language=Lattice, caption={Counting element frequencies}]
+import "lib/fn" as F
+
+let votes = ["yes", "no", "yes", "yes", "no", "abstain"]
+let tally = F.frequencies(votes)
+
+print(tally)
+// {yes: 3, no: 2, abstain: 1}
+\end{lstlisting}
+
+\subsubsection{uniq\_by --- Deduplicate by Key}
+\index{fn standard library!uniq\_by}
+
+\begin{lstlisting}[language=Lattice, caption={Deduplication by a key function}]
+import "lib/fn" as F
+
+let items = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+let unique_mod3 = F.uniq_by(items, |x| { x % 3 })
+
+print(unique_mod3)  // [1, 2, 3]  (first occurrence of each mod-3 class)
+\end{lstlisting}
+
+\subsection{The Result Type}\label{subsec:fn-result}
+\index{fn standard library!Result type}\index{Result type (fn module)}
+
+The \lstinline|fn| module also provides a lightweight \lstinline|Result| type for representing success or failure without exceptions:
+
+\begin{lstlisting}[language=Lattice, caption={The Result type from the fn module}]
+import "lib/fn" as F
+
+let success = F.ok(42)
+let failure = F.err("something went wrong")
+
+print(F.is_ok(success))   // true
+print(F.is_err(failure))  // true
+
+print(F.unwrap(success))  // 42
+print(F.unwrap_or(failure, 0))  // 0
+
+// Transform the Ok value
+let doubled = F.map_result(success, |x| { x * 2 })
+print(F.unwrap(doubled))  // 84
+
+// Chain operations that might fail
+let chained = F.flat_map_result(success, |x| {
+    if x > 0 { F.ok(x * 10) } else { F.err("must be positive") }
+})
+print(F.unwrap(chained))  // 420
+\end{lstlisting}
+
+The \lstinline|F.try_fn()| wrapper catches runtime errors and returns a Result:
+
+\begin{lstlisting}[language=Lattice, caption={Catching errors with try\_fn}]
+import "lib/fn" as F
+
+let safe = F.try_fn(|_| { 100 / 4 })
+print(F.unwrap(safe))  // 25
+
+let risky = F.try_fn(|_| { 100 / 0 })
+print(F.is_err(risky))  // true
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{Currying and Partial Application Patterns}\label{sec:currying}
+\index{currying}\index{partial application}
+
+Currying and partial application are techniques for breaking a multi-argument function into a chain of single-argument functions.
+This lets you ``pre-fill'' some arguments and pass the specialized function around.
+
+\subsection{curry() --- One Argument at a Time}\label{subsec:curry}
+\index{fn standard library!curry}
+
+The \lstinline|F.curry()| function transforms a 2- or 3-argument function into a chain of single-argument functions:
+
+\begin{lstlisting}[language=Lattice, caption={Currying a 2-argument function}]
+import "lib/fn" as F
+
+let add = F.curry(|a, b| { a + b })
+
+// Now add(5) returns a new function that adds 5
+let add_five = add(5)
+print(add_five(3))   // 8
+print(add_five(10))  // 15
+
+// Or call it all at once via chaining
+print(add(2)(3))     // 5
+\end{lstlisting}
+
+Three-argument functions work the same way:
+
+\begin{lstlisting}[language=Lattice, caption={Currying a 3-argument function}]
+import "lib/fn" as F
+
+let volume = F.curry(|length, width, height| {
+    length * width * height
+})
+
+let slab = volume(10)        // fix the length
+let narrow_slab = slab(2)    // fix the width
+print(narrow_slab(5))        // 100
+
+print(volume(3)(4)(5))       // 60
+\end{lstlisting}
+
+\begin{defnbox}{Currying}
+\emph{Currying} transforms a function \lstinline|f(a, b)| into \lstinline|f(a)(b)|.
+Each call with one argument returns a new function that ``remembers'' the provided argument and waits for the rest.
+\end{defnbox}
+
+\subsection{partial() --- Bind Some Arguments Now}\label{subsec:partial}
+\index{fn standard library!partial}
+
+While currying requires you to provide arguments one at a time in order, \lstinline|F.partial()| lets you bind any number of leading arguments at once:
+
+\begin{lstlisting}[language=Lattice, caption={Partial application}]
+import "lib/fn" as F
+
+let greet = |greeting, name| { greeting + ", " + name + "!" }
+
+let hello = F.partial(greet, "Hello")
+let howdy = F.partial(greet, "Howdy")
+
+print(hello("Alice"))  // Hello, Alice!
+print(howdy("Bob"))    // Howdy, Bob!
+\end{lstlisting}
+
+You can bind multiple arguments at once:
+
+\begin{lstlisting}[language=Lattice, caption={Binding multiple arguments}]
+import "lib/fn" as F
+
+let log_message = |level, component, msg| {
+    print("[" + level + "] " + component + ": " + msg)
+}
+
+let log_error = F.partial(log_message, "ERROR")
+let log_db_error = F.partial(log_message, "ERROR", "database")
+
+log_error("auth", "invalid token")
+// [ERROR] auth: invalid token
+
+log_db_error("connection timeout")
+// [ERROR] database: connection timeout
+\end{lstlisting}
+
+\subsection{Currying with Iterators}\label{subsec:curry-with-iterators}
+
+Currying and partial application become especially powerful when combined with iterators, because they let you create specialized transform functions on the fly:
+
+\begin{lstlisting}[language=Lattice, caption={Curried functions in pipelines}]
+import "lib/fn" as F
+
+// A curried multiplier
+let multiply = F.curry(|factor, x| { factor * x })
+
+let prices = [12.50, 8.99, 24.00, 5.75]
+
+// Create specialized multipliers
+let with_tax = multiply(1.08)
+let discounted = multiply(0.85)
+
+// Use them in pipelines
+let taxed_prices = iter(prices).map(with_tax).collect()
+print(taxed_prices)  // [13.5, 9.7092, 25.92, 6.21]
+
+let sale_prices = iter(prices).map(discounted).collect()
+print(sale_prices)  // [10.625, 7.6415, 20.4, 4.8875]
+\end{lstlisting}
+
+Compare this with the alternative---writing a fresh closure for each operation.
+Currying lets you express the intent (``multiply by 1.08'') more directly than \lstinline+|x| { x * 1.08 }+.
+
+\begin{tipbox}{Curry or Partial?}
+Use \lstinline|curry()| when you want to apply arguments one at a time and the function has 2--3 parameters.
+Use \lstinline|partial()| when you want to bind one or more leading arguments in a single call, especially for functions with many parameters.
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{When Functional Style Shines in Lattice}\label{sec:when-functional}
+\index{functional programming!best practices}
+
+Functional programming is a tool, not a religion.
+Lattice gives you both imperative and functional styles; the art is knowing when each one serves you best.
+
+\subsection{Data Transformation Pipelines}\label{subsec:when-pipelines}
+
+Functional style is at its best when you are transforming data through a series of well-defined steps:
+
+\begin{lstlisting}[language=Lattice, caption={A data transformation pipeline}]
+import "lib/fn" as F
+
+let raw_records = [
+    "Alice,95,Math",
+    "Bob,87,Science",
+    "Carol,92,Math",
+    "Dave,78,Science",
+    "Eve,96,Math"
+]
+
+// Parse, filter, and summarize in one flow
+let top_math_scores = pipe(raw_records,
+    |records| { iter(records).map(|r| { r.split(",") }).collect() },
+    |parsed| { iter(parsed).filter(|r| { r[2] == "Math" }).collect() },
+    |math| { iter(math).map(|r| { to_int(r[1]) }).collect() },
+    |scores| { iter(scores).filter(|s| { s >= 90 }).collect() }
+)
+
+print(top_math_scores)  // [95, 92, 96]
+\end{lstlisting}
+
+Each step has a clear purpose, and the whole pipeline reads like a recipe.
+
+\subsection{Callback-Heavy APIs}\label{subsec:when-callbacks}
+
+When working with APIs that accept callbacks---event handlers, sorting comparators, validation rules---functional tools help you build specialized callbacks without repetitive boilerplate:
+
+\begin{lstlisting}[language=Lattice, caption={Building validators with partial application}]
+import "lib/fn" as F
+
+let is_between = |min_val, max_val, x| {
+    x >= min_val && x <= max_val
+}
+
+let is_valid_age = F.partial(is_between, 0, 150)
+let is_valid_score = F.partial(is_between, 0, 100)
+
+let ages = [25, -3, 42, 200, 17]
+let valid_ages = iter(ages).filter(is_valid_age).collect()
+print(valid_ages)  // [25, 42, 17]
+\end{lstlisting}
+
+\subsection{Configuration and Strategy Patterns}\label{subsec:when-strategy}
+
+Functions are values in Lattice.
+You can store them in maps, pass them as arguments, and return them from other functions.
+This makes the strategy pattern natural:
+
+\begin{lstlisting}[language=Lattice, caption={Strategy pattern with functions}]
+let strategies = Map::new()
+strategies.set("uppercase", |s| { s.upper() })
+strategies.set("lowercase", |s| { s.lower() })
+strategies.set("reverse", |s| { s.reverse() })
+
+fn apply_strategy(strategy_name: String, text: String) -> String {
+    let transform = strategies.get(strategy_name)
+    return transform(text)
+}
+
+print(apply_strategy("uppercase", "hello"))   // HELLO
+print(apply_strategy("reverse", "Lattice"))   // ecittaL
+\end{lstlisting}
+
+\subsection{When Imperative Style Is Better}\label{subsec:when-imperative}
+
+Functional style is not always the clearest choice.
+Prefer imperative code when:
+
+\begin{itemize}[nosep]
+  \item The logic involves complex branching or early returns that don't fit neatly into a pipeline.
+  \item You need to accumulate state across multiple collections simultaneously.
+  \item The code would require deeply nested function calls that obscure the intent.
+  \item Performance matters and you need fine-grained control over allocation.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Sometimes a loop is clearer}]
+// Functional version -- hard to follow
+let result = pipe(items,
+    |xs| { iter(xs).filter(|x| { x > threshold }).collect() },
+    |xs| {
+        iter(xs).reduce(|acc, x| {
+            if x > acc { x } else { acc }
+        }, 0)
+    }
+)
+
+// Imperative version -- immediately clear
+flux max_val = 0
+for item in items {
+    if item > threshold && item > max_val {
+        max_val = item
+    }
+}
+\end{lstlisting}
+
+The best Lattice code uses both styles where each is strongest.
+Functional pipelines for data transformations; imperative loops for stateful logic.
+
+\begin{tipbox}{The Litmus Test}
+If you have to read a functional pipeline more than twice to understand what it does, it is probably trying to be too clever.
+Break it into named intermediate variables or switch to a loop.
+Clarity always beats cleverness.
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:fp-putting-together}
+
+Let's close with a larger example that combines iterators, \lstinline|pipe()|, currying, and the \lstinline|fn| module into a cohesive program.
+
+\begin{lstlisting}[language=Lattice, caption={A complete functional example}]
+import "lib/fn" as F
+
+// --- Data ---
+let inventory = [
+    ["Widget A", 29.99, 150],
+    ["Widget B", 9.99, 500],
+    ["Gadget C", 49.95, 30],
+    ["Gadget D", 14.50, 200],
+    ["Doohickey E", 4.99, 1000]
+]
+
+// --- Helpers built with currying ---
+let min_price = F.curry(|threshold, item| { item[1] >= threshold })
+let min_stock = F.curry(|threshold, item| { item[2] >= threshold })
+
+// --- Pipeline: find valuable items with good stock ---
+let report = pipe(inventory,
+    |items| { iter(items).filter(min_price(10.0)).collect() },
+    |items| { iter(items).filter(min_stock(100)).collect() },
+    |items| {
+        iter(items).map(|item| {
+            let name = item[0]
+            let total_value = item[1] * item[2]
+            name + ": $" + to_string(total_value)
+        }).collect()
+    }
+)
+
+for line in report {
+    print(line)
+}
+// Widget A: $4498.5
+// Widget B: $4995.0
+// Gadget D: $2900.0
+\end{lstlisting}
+
+Each piece is small and testable on its own.
+The curried predicates can be reused across different pipelines.
+The \lstinline|pipe()| call makes the overall flow readable.
+And because the iterator operations are lazy where possible, no unnecessary work is done.
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:fp-exercises}
+
+\begin{enumerate}
+  \item \textbf{Compose Three.}
+    Lattice's built-in \lstinline|compose()| takes exactly two functions.
+    Write a function \lstinline|compose3(f, g, h)| that composes three: \lstinline|compose3(f, g, h)(x) = f(g(h(x)))|.
+    Test it by composing three arithmetic operations.
+
+  \item \textbf{Curried Filter.}
+    Using \lstinline|F.curry()|, create a reusable \lstinline|longer_than| predicate that filters strings by minimum length.
+    Use it to extract all words longer than 5 characters from the sentence \lstinline|"The quick brown fox jumped over the lazy dog"|.
+
+  \item \textbf{Word Frequency Pipeline.}
+    Given a block of text (a multi-line string), use \lstinline|pipe()| and the \lstinline|fn| module to:
+    \begin{enumerate}[nosep]
+      \item Split the text into words.
+      \item Convert all words to lowercase.
+      \item Count the frequency of each word using \lstinline|F.frequencies()|.
+    \end{enumerate}
+    Print the resulting frequency map.
+
+  \item \textbf{Result Pipeline.}
+    Write a sequence of operations using \lstinline|F.ok()|, \lstinline|F.flat_map_result()|, and \lstinline|F.map_result()| to:
+    \begin{enumerate}[nosep]
+      \item Start with a string that might represent a number.
+      \item Parse it to an integer (returning \lstinline|F.err()| if it fails).
+      \item Double the number.
+      \item Check that it is positive (returning \lstinline|F.err()| if not).
+    \end{enumerate}
+    Test with both valid and invalid inputs.
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\bigskip
+\begin{center}\rule{0.5\linewidth}{0.4pt}\end{center}
+\medskip
+
+\noindent\textbf{What's Next}\quad
+With iterators and functional tools in your kit, you are well-equipped to write expressive, composable Lattice code.
+In \cref{ch:modules-imports}, we turn to a different kind of composition: organizing your code into \emph{modules} and \emph{packages}, so that the functions and types you build can be shared, reused, and managed as your projects grow.

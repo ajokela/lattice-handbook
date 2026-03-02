@@ -1,0 +1,847 @@
+\chapter{Control Flow}\label{ch:control-flow}
+
+\index{control flow}
+
+Every program needs to make decisions. Should we charge the customer or show an error? Has the sensor reading crossed a threshold? Are there more items to process? Control flow is how a program answers these questions and acts accordingly.
+
+What makes Lattice's control flow distinctive is a commitment to \emph{expressions over statements}. In many languages, \lstinline|if/else| is a statement---it does something, but it doesn't produce a value. In Lattice, \lstinline|if/else| is an expression: it evaluates to a result you can bind, pass, or return. This seemingly small design choice ripples through the entire language, making code more concise and composable.
+
+Let's see what that looks like in practice.
+
+%% ─────────────────────────────────────────────
+\section{if/else as Expressions}\label{sec:if-else-expressions}
+\index{if expression}\index{else}
+
+Here is the most basic conditional in Lattice:
+
+\begin{lstlisting}[language=Lattice, caption={A basic if/else}]
+let temperature = 38
+
+if temperature > 37 {
+  print("Fever detected")
+} else {
+  print("Temperature normal")
+}
+// Output: Fever detected
+\end{lstlisting}
+
+Nothing surprising so far---this looks like most C-family languages. But watch what happens when we use \lstinline|if| on the right side of a binding:
+
+\begin{lstlisting}[language=Lattice, caption={if/else as an expression}]
+let temperature = 38
+
+let status = if temperature > 37 {
+  "fever"
+} else {
+  "normal"
+}
+
+print(status) // Output: fever
+\end{lstlisting}
+
+\index{expression!if/else}
+The \lstinline|if/else| block evaluated to \lstinline|"fever"|, and that value was bound to \lstinline|status|. There is no need for a ternary operator---\lstinline|if/else| \emph{is} the ternary operator.
+
+\begin{defnbox}{Expressions vs.\ Statements}
+An \emph{expression} produces a value. A \emph{statement} performs an action. In Lattice, \lstinline|if/else|, \lstinline|match|, and blocks are all expressions. The last expression in a branch becomes the value of the entire construct.
+\end{defnbox}
+
+\subsection{How the Value Is Determined}\label{sec:if-else-value}
+
+The rule is straightforward: the \emph{last expression} in whichever branch executes becomes the value of the whole \lstinline|if/else|. You don't write \lstinline|return|---the value flows naturally:
+
+\begin{lstlisting}[language=Lattice, caption={Multi-line branches still produce values}]
+let age = 25
+
+let category = if age < 13 {
+  let label = "child"
+  label
+} else if age < 20 {
+  let label = "teenager"
+  label
+} else {
+  let label = "adult"
+  label
+}
+
+print(category) // Output: adult
+\end{lstlisting}
+
+Each branch can contain multiple statements, but only the final expression contributes the value. Intermediate bindings like \lstinline|let label| are scoped to their branch and cleaned up automatically.
+
+\subsection{What Happens Without an else?}\label{sec:if-without-else}
+
+If you omit the \lstinline|else| branch, the expression evaluates to \lstinline|nil| when the condition is false:
+
+\begin{lstlisting}[language=Lattice, caption={Missing else produces nil}]
+let temperature = 36
+
+let warning = if temperature > 37 {
+  "fever detected"
+}
+
+print(warning) // Output: nil
+\end{lstlisting}
+
+\begin{warnbox}{nil from Missing else Branches}
+When you use \lstinline|if| as an expression without an \lstinline|else|, the ``false'' path evaluates to \lstinline|nil|. This is fine if you expect it, but can be surprising if you forget the \lstinline|else| branch. If you want a guaranteed non-nil result, always include both branches.
+\end{warnbox}
+
+Under the hood, the compiler (in \filename{src/stackcompiler.c}) emits an \lstinline|OP_JUMP_IF_FALSE| instruction for the condition, compiles both branches, and uses \lstinline|OP_JUMP| to skip the else branch when the then-path executes. When no \lstinline|else| is present, the compiler emits an \lstinline|OP_NIL| instruction as the fallback value. When a branch ends with an expression, the compiler uses \texttt{end\_scope\_preserve\_tos} to keep that value on the stack while cleaning up branch-local variables.
+
+\subsection{Nested and Chained Conditions}\label{sec:chained-if}
+\index{else if}
+
+You can chain \lstinline|else if| branches as deeply as you need:
+
+\begin{lstlisting}[language=Lattice, caption={Chained else if}]
+fn classify_bmi(bmi: Float) -> String {
+  if bmi < 18.5 {
+    "underweight"
+  } else if bmi < 25.0 {
+    "normal"
+  } else if bmi < 30.0 {
+    "overweight"
+  } else {
+    "obese"
+  }
+}
+
+print(classify_bmi(22.3)) // Output: normal
+\end{lstlisting}
+
+Because each branch is an expression, the entire chain acts as a single expression that evaluates to one string. No explicit \lstinline|return| needed---the function's body is the \lstinline|if/else| chain, and its result becomes the return value.
+
+\begin{tipbox}{When to Use if/else vs.\ match}
+If you're testing a single variable against many values, or destructuring data, \lstinline|match| (\cref{ch:pattern-matching}) is usually clearer. Use \lstinline|if/else| for boolean conditions and two-way branches.
+\end{tipbox}
+
+\subsection{Blocks as Expressions}\label{sec:blocks-as-expressions}
+\index{block expression}
+
+The expression-oriented design extends to plain blocks too. A block enclosed in \lstinline|{ }| evaluates to its last expression:
+
+\begin{lstlisting}[language=Lattice, caption={Block expressions}]
+let hypotenuse = {
+  let a = 3.0
+  let b = 4.0
+  (a * a + b * b)
+}
+
+print(hypotenuse) // Output: 25.0
+\end{lstlisting}
+
+Block expressions are useful for computing a value that requires intermediate bindings you don't want to leak into the surrounding scope. The variables \lstinline|a| and \lstinline|b| exist only within the block. If a block ends with a statement rather than an expression (for instance, if the last line is a \lstinline|let| binding), the block evaluates to \lstinline|unit|.
+
+%% ─────────────────────────────────────────────
+\section{Loops: while, loop, for}\label{sec:loops}
+\index{loops}\index{while}\index{loop}\index{for}
+
+Lattice provides three loop constructs, each suited to a different situation.
+
+\subsection{while Loops}\label{sec:while-loops}
+
+A \lstinline|while| loop repeats its body as long as a condition is true:
+
+\begin{lstlisting}[language=Lattice, caption={Counting with while}]
+flux count = 0
+
+while count < 5 {
+  print(count)
+  count = count + 1
+}
+// Output: 0 1 2 3 4
+\end{lstlisting}
+
+\index{flux}
+Notice the \lstinline|flux| binding---since we need to mutate \lstinline|count| on each iteration, it must be declared in the fluid phase. A \lstinline|let| or \lstinline|fix| binding cannot be reassigned, so the compiler would reject \lstinline|count = count + 1|.
+
+The compiler translates a \lstinline|while| loop into a tight bytecode sequence: compile the condition, emit \lstinline|OP_JUMP_IF_FALSE| to skip the body, compile the body, then emit \lstinline|OP_LOOP| to jump back to the condition check. The \lstinline|OP_LOOP| instruction uses a backwards jump offset, making the loop machinery compact and efficient.
+
+\begin{lstlisting}[language=Lattice, caption={Building a string with while}]
+let words = ["the", "quick", "brown", "fox"]
+flux result = ""
+flux i = 0
+
+while i < words.len() {
+  if i > 0 {
+    result = result + " "
+  }
+  result = result + words[i]
+  i = i + 1
+}
+
+print(result) // Output: the quick brown fox
+\end{lstlisting}
+
+\subsection{Infinite Loops with loop}\label{sec:loop-keyword}
+\index{loop!infinite}
+
+When you want a loop that runs until explicitly stopped, use \lstinline|loop|:
+
+\begin{lstlisting}[language=Lattice, caption={An infinite loop with break}]
+flux attempts = 0
+
+loop {
+  attempts = attempts + 1
+  if attempts >= 3 {
+    print("Giving up after 3 attempts")
+    break
+  }
+  print("Attempt ${attempts}")
+}
+// Output:
+// Attempt 1
+// Attempt 2
+// Giving up after 3 attempts
+\end{lstlisting}
+
+A \lstinline|loop| is semantically equivalent to \lstinline|while true|, but it communicates intent more clearly: this loop runs forever unless something inside it says otherwise. The compiler generates almost identical bytecode---it omits the condition check entirely, jumping back unconditionally with \lstinline|OP_LOOP|.
+
+\lstinline|loop| is especially useful for retry logic, event processing, and REPL-like read-eval-print cycles:
+
+\begin{lstlisting}[language=Lattice, caption={A retry pattern with loop}]
+fn fetch_with_retry(url: String, max_retries: Int) -> String {
+  flux retries = 0
+  loop {
+    let response = http_get(url)
+    if response != nil {
+      return response
+    }
+    retries = retries + 1
+    if retries >= max_retries {
+      return "failed after ${max_retries} retries"
+    }
+  }
+}
+\end{lstlisting}
+
+\subsection{for Loops and Iteration}\label{sec:for-loops}
+\index{for loop}\index{iteration}
+
+The \lstinline|for| loop iterates over collections and ranges:
+
+\begin{lstlisting}[language=Lattice, caption={Iterating over an array}]
+let fruits = ["apple", "banana", "cherry"]
+
+for fruit in fruits {
+  print("I like ${fruit}")
+}
+// Output:
+// I like apple
+// I like banana
+// I like cherry
+\end{lstlisting}
+
+The \lstinline|for| loop works with any iterable value: arrays, ranges, strings (iterating over characters), maps (iterating over key-value pairs), and sets.
+
+\begin{lstlisting}[language=Lattice, caption={Iterating over a range}]
+for n in 0..5 {
+  print(n)
+}
+// Output: 0 1 2 3 4
+\end{lstlisting}
+
+Under the hood, the compiler uses two dedicated opcodes for iteration. First, \lstinline|OP_ITER_INIT| converts the iterable (array, range, etc.) into an internal iterator state that tracks the collection and the current index. Then at the top of each iteration, \lstinline|OP_ITER_NEXT| pushes the next value onto the stack or jumps past the loop body when the iterator is exhausted. You can see this machinery in \filename{src/stackcompiler.c}---the compiler reserves two anonymous local slots for the iterator state (the collection reference and the index counter) and binds the loop variable as a named local on each iteration.
+
+\begin{lstlisting}[language=Lattice, caption={Iterating with an index}]
+let languages = ["Lattice", "Rust", "Python", "Go"]
+
+for i in 0..languages.len() {
+  print("${i}: ${languages[i]}")
+}
+// Output:
+// 0: Lattice
+// 1: Rust
+// 2: Python
+// 3: Go
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Iterating over a string's characters}]
+let greeting = "Hello"
+
+for ch in greeting.chars() {
+  print(ch)
+}
+// Output: H e l l o
+\end{lstlisting}
+
+\begin{tipbox}{The Loop Variable Is Fresh Each Iteration}
+The loop variable (like \lstinline|fruit| or \lstinline|n| above) is a new binding on every iteration. You cannot assign to it from outside the loop body, and closures captured inside the loop each see their own copy of that iteration's value.
+\end{tipbox}
+
+\subsection{Nested Loops}\label{sec:nested-loops}
+
+Loops nest naturally. Each loop manages its own iterator state independently:
+
+\begin{lstlisting}[language=Lattice, caption={Nested loops for a multiplication table}]
+for row in 1..6 {
+  flux line = ""
+  for col in 1..6 {
+    let product = row * col
+    line = line + "${product}\t"
+  }
+  print(line)
+}
+// Output:
+// 1  2  3  4  5
+// 2  4  6  8  10
+// 3  6  9  12 15
+// 4  8  12 16 20
+// 5  10 15 20 25
+\end{lstlisting}
+
+The compiler handles nesting by saving and restoring the loop state (break jump list, loop start address, loop depth, and local counts) at each loop boundary. This means \lstinline|break| and \lstinline|continue| always apply to the innermost loop, regardless of nesting depth.
+
+%% ─────────────────────────────────────────────
+\section{break, continue, return}\label{sec:break-continue-return}
+\index{break}\index{continue}\index{return}
+
+These three keywords give you fine-grained control over how loops and functions execute.
+
+\subsection{break --- Exit the Loop}\label{sec:break}
+
+The \lstinline|break| keyword immediately exits the innermost enclosing loop:
+
+\begin{lstlisting}[language=Lattice, caption={Finding the first negative number}]
+let readings = [12, 45, -3, 67, -8, 22]
+
+for reading in readings {
+  if reading < 0 {
+    print("First negative: ${reading}")
+    break
+  }
+}
+// Output: First negative: -3
+\end{lstlisting}
+
+When the compiler encounters \lstinline|break|, it emits \lstinline|OP_POP| instructions to clean up any locals declared inside the loop (or \lstinline|OP_CLOSE_UPVALUE| if the local has been captured by a closure), then emits an \lstinline|OP_JUMP| whose target is patched later to point just past the loop body. The compiler tracks break jump locations in a dynamic array, handling nested loops correctly by saving and restoring the break count at each loop boundary.
+
+\begin{warnbox}{break Outside a Loop}
+Using \lstinline|break| outside of a loop is a compile-time error. The compiler checks \lstinline|loop_depth| and rejects the program with \texttt{"break outside of loop"} if you try.
+\end{warnbox}
+
+\subsection{continue --- Skip to the Next Iteration}\label{sec:continue}
+
+The \lstinline|continue| keyword skips the rest of the current iteration and jumps to the next one:
+
+\begin{lstlisting}[language=Lattice, caption={Skipping negative readings}]
+let readings = [12, -3, 45, -8, 67]
+
+for reading in readings {
+  if reading < 0 {
+    continue
+  }
+  print("Processing: ${reading}")
+}
+// Output:
+// Processing: 12
+// Processing: 45
+// Processing: 67
+\end{lstlisting}
+
+\index{continue!compilation}
+Like \lstinline|break|, the compiler pops any locals declared inside the loop before jumping. But instead of jumping past the loop, \lstinline|continue| emits an \lstinline|OP_LOOP| that jumps back to the loop's start point---the condition check for \lstinline|while| loops, or the \lstinline|OP_ITER_NEXT| for \lstinline|for| loops.
+
+The compiler separately tracks the local count for \lstinline|break| and \lstinline|continue| because in a \lstinline|for| loop they have different cleanup requirements. The \lstinline|continue| path must preserve the iterator state (the two anonymous locals for the collection and index counter) while only popping the loop variable and body-local variables. The \lstinline|break| path, on the other hand, pops everything including the iterator state.
+
+\begin{lstlisting}[language=Lattice, caption={continue and break working together}]
+let data = [10, 0, 20, 0, 30, 0, 40]
+flux sum = 0
+
+for value in data {
+  if value == 0 {
+    continue  // skip zeros
+  }
+  sum = sum + value
+  if sum > 50 {
+    break  // stop once we exceed 50
+  }
+}
+
+print(sum) // Output: 60 (10 + 20 + 30)
+\end{lstlisting}
+
+\subsection{return --- Exit the Function}\label{sec:return}
+
+The \lstinline|return| keyword exits the current function immediately, optionally with a value:
+
+\begin{lstlisting}[language=Lattice, caption={Early return from a function}]
+fn find_index(haystack: Array, needle: any) -> Int {
+  for i in 0..haystack.len() {
+    if haystack[i] == needle {
+      return i
+    }
+  }
+  return -1
+}
+
+let colors = ["red", "green", "blue"]
+print(find_index(colors, "green"))  // Output: 1
+print(find_index(colors, "yellow")) // Output: -1
+\end{lstlisting}
+
+If you omit the value after \lstinline|return|, the function returns \lstinline|unit|---Lattice's equivalent of ``nothing meaningful.'' The compiler emits \lstinline|OP_UNIT| in that case, followed by any return-type checks, \lstinline|ensure| contract checks, and \lstinline|defer| cleanup (via \lstinline|OP_DEFER_RUN|) before the final \lstinline|OP_RETURN| instruction.
+
+\begin{lstlisting}[language=Lattice, caption={Implicit return: no return keyword needed}]
+fn double(x: Int) -> Int {
+  x * 2
+}
+
+print(double(21)) // Output: 42
+\end{lstlisting}
+
+Since functions are expressions too, the last expression in a function body becomes its return value. You only need an explicit \lstinline|return| for early exits.
+
+\begin{lstlisting}[language=Lattice, caption={Guard clauses with early return}]
+fn process_order(order: Map) -> String {
+  if order["status"] == "cancelled" {
+    return "Order was cancelled"
+  }
+  if order["total"] == nil {
+    return "Invalid order: no total"
+  }
+  if order["total"] < 0 {
+    return "Invalid order: negative total"
+  }
+
+  // Main logic only reached if all guards pass
+  let tax = order["total"] * 0.08
+  let final_amount = order["total"] + tax
+  "Processed: total = ${final_amount}"
+}
+\end{lstlisting}
+
+This ``guard clause'' pattern---checking error conditions at the top and returning early---keeps the happy path at the main indentation level, making code easier to follow.
+
+\begin{notebox}{break, continue, and Closures}
+These keywords only affect the innermost loop in the current function. You cannot \lstinline|break| out of a closure's loop from outside the closure, nor \lstinline|continue| a loop that belongs to a different function. Each function has its own loop tracking.
+\end{notebox}
+
+%% ─────────────────────────────────────────────
+\section{Ranges}\label{sec:ranges}
+\index{ranges}\index{..@\texttt{..} (range operator)}
+
+Ranges represent a sequence of integers from a start value to an end value. They appear frequently in \lstinline|for| loops and array slicing.
+
+\subsection{Creating Ranges}\label{sec:creating-ranges}
+
+The \lstinline|..| operator creates a half-open range---inclusive of the start, exclusive of the end:
+
+\begin{lstlisting}[language=Lattice, caption={Half-open ranges}]
+let countdown = 0..5
+print(countdown) // Output: 0..5
+
+for n in 0..5 {
+  print(n)
+}
+// Output: 0 1 2 3 4
+\end{lstlisting}
+
+The range \lstinline|0..5| includes 0, 1, 2, 3, and 4---but not 5. This is the same convention used by Python's \lstinline|range()| and Rust's \lstinline|..| operator, and it aligns naturally with zero-indexed arrays: \lstinline|0..array.len()| covers every valid index.
+
+\begin{defnbox}{Range}
+A \emph{range} is a value of type \lstinline|Range| containing a start integer and an end integer. The notation \lstinline|a..b| creates a range from \lstinline|a| (inclusive) to \lstinline|b| (exclusive). Internally, ranges are stored as a pair of \lstinline|int64_t| values in the \lstinline|LatValue| union (see \filename{include/value.h}) and require no heap allocation---they're as cheap to create as a pair of integers.
+\end{defnbox}
+
+\subsection{Ranges with Expressions}\label{sec:range-expressions}
+
+Both endpoints of a range can be arbitrary expressions, not only literals:
+
+\begin{lstlisting}[language=Lattice, caption={Dynamic range endpoints}]
+let page = 2
+let page_size = 10
+let start = page * page_size
+let end = start + page_size
+
+for i in start..end {
+  print("Item ${i}")
+}
+// Output: Item 20, Item 21, ... Item 29
+\end{lstlisting}
+
+The parser handles this by parsing each side of the \lstinline|..| token as an addition-level expression. This means arithmetic works naturally in range endpoints, but if you need lower-precedence operators you should use parentheses.
+
+\subsection{Ranges for Indexing and Slicing}\label{sec:range-slicing}
+\index{slicing}
+
+Ranges are not only for loops---they work as indices to slice arrays and strings:
+
+\begin{lstlisting}[language=Lattice, caption={Slicing with ranges}]
+let letters = ["a", "b", "c", "d", "e"]
+
+let middle = letters[1..4]
+print(middle) // Output: ["b", "c", "d"]
+
+let greeting = "Hello, World!"
+let word = greeting[0..5]
+print(word) // Output: Hello
+\end{lstlisting}
+
+The range \lstinline|1..4| selects elements at indices 1, 2, and 3---three elements total. This consistency between loop ranges and slice ranges means you can reason about both the same way: the range \lstinline|a..b| always means ``from \lstinline|a| up to but not including \lstinline|b|.''
+
+\subsection{Ranges as First-Class Values}\label{sec:ranges-as-values}
+
+Ranges are first-class values. You can store them in variables, pass them to functions, and return them:
+
+\begin{lstlisting}[language=Lattice, caption={Ranges as first-class values}]
+fn page_range(page: Int, page_size: Int) -> Range {
+  let start = page * page_size
+  start..(start + page_size)
+}
+
+let items = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+let second_page = items[page_range(1, 3)]
+print(second_page) // Output: ["d", "e", "f"]
+\end{lstlisting}
+
+At the bytecode level, the compiler emits \lstinline|OP_BUILD_RANGE| which pops the end and start values from the stack and pushes a \lstinline|Range| value. Since ranges contain only two integers stored inline in the value union, they're stack-allocated and extremely cheap to create---no heap allocation, no garbage collection pressure.
+
+\begin{lstlisting}[language=Lattice, caption={Using ranges for batch processing}]
+fn process_batch(items: Array, batch_size: Int) -> Array {
+  let batches = []
+  flux offset = 0
+  while offset < items.len() {
+    let end = if offset + batch_size > items.len() {
+      items.len()
+    } else {
+      offset + batch_size
+    }
+    batches.push(items[offset..end])
+    offset = offset + batch_size
+  }
+  batches
+}
+
+let numbers = [1, 2, 3, 4, 5, 6, 7]
+let batched = process_batch(numbers, 3)
+print(batched) // Output: [[1, 2, 3], [4, 5, 6], [7]]
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{The Nil-Coalescing Operator \texttt{??}}\label{sec:nil-coalescing}
+\index{nil-coalescing operator}\index{??@\texttt{??}}
+
+Working with optional data is a fact of life. APIs return \lstinline|nil| when a key is missing, functions return \lstinline|nil| on failure, and user input may be absent. The nil-coalescing operator \lstinline|??| provides a clean way to supply a fallback:
+
+\begin{lstlisting}[language=Lattice, caption={Basic nil-coalescing}]
+let config = Map::new()
+config["theme"] = "dark"
+
+let theme = config["theme"] ?? "light"
+let language = config["language"] ?? "en"
+
+print(theme)    // Output: dark
+print(language) // Output: en
+\end{lstlisting}
+
+The expression \lstinline|a ?? b| evaluates \lstinline|a|. If the result is not \lstinline|nil|, it becomes the value of the whole expression. If \lstinline|a| is \lstinline|nil|, then \lstinline|b| is evaluated and used instead.
+
+\begin{defnbox}{Nil-Coalescing Operator}
+The operator \lstinline|??| evaluates its left operand first. If that value is not \lstinline|nil|, the right operand is \emph{never evaluated} (short-circuit semantics). If the left operand is \lstinline|nil|, the right operand is evaluated and its value is returned.
+\end{defnbox}
+
+\subsection{Short-Circuit Evaluation}\label{sec:nil-coalesce-short-circuit}
+\index{short-circuit evaluation}
+
+The right side of \lstinline|??| is only evaluated when needed. This matters when the fallback involves computation:
+
+\begin{lstlisting}[language=Lattice, caption={Short-circuit evaluation in action}]
+fn expensive_default() -> String {
+  print("Computing default...")
+  "fallback"
+}
+
+let cached_value = "cached"
+let result = cached_value ?? expensive_default()
+print(result)
+// Output: cached
+// (expensive_default was never called)
+\end{lstlisting}
+
+The compiler implements this with a conditional jump. It compiles the left operand, then emits \lstinline|OP_JUMP_IF_NOT_NIL|---if the value on the stack is not nil, execution skips over the right operand entirely. Only if the value is nil does it pop the nil, evaluate the fallback, and continue. This means the cost of a \lstinline|??| expression when the left side is non-nil is a single comparison and branch---no function call overhead, no allocation.
+
+\subsection{Chaining \texttt{??}}\label{sec:nil-coalesce-chaining}
+
+You can chain multiple \lstinline|??| operators to try several sources in order:
+
+\begin{lstlisting}[language=Lattice, caption={Chaining nil-coalescing operators}]
+let env_port = nil
+let config_port = nil
+let default_port = 8080
+
+let port = env_port ?? config_port ?? default_port
+print(port) // Output: 8080
+\end{lstlisting}
+
+Each \lstinline|??| short-circuits independently. If \lstinline|env_port| is not \lstinline|nil|, neither \lstinline|config_port| nor \lstinline|default_port| is evaluated. If \lstinline|env_port| is \lstinline|nil| but \lstinline|config_port| is not, \lstinline|default_port| is skipped. This creates a natural priority chain for configuration values.
+
+\begin{lstlisting}[language=Lattice, caption={A practical configuration lookup}]
+fn get_setting(key: String, env: Map, config: Map) -> String {
+  env[key] ?? config[key] ?? "default_${key}"
+}
+
+let env_vars = Map::new()
+let config_file = Map::new()
+config_file["port"] = "3000"
+
+print(get_setting("port", env_vars, config_file))    // Output: 3000
+print(get_setting("host", env_vars, config_file))     // Output: default_host
+\end{lstlisting}
+
+\subsection{Combining \texttt{??} with Other Expressions}\label{sec:nil-coalesce-combining}
+
+Because \lstinline|??| is an expression, it composes with everything else:
+
+\begin{lstlisting}[language=Lattice, caption={Nil-coalescing in various contexts}]
+let scores = Map::new()
+scores["alice"] = 95
+
+// In function arguments
+print(scores["bob"] ?? 0) // Output: 0
+
+// In arithmetic
+let alice_score = scores["alice"] ?? 0
+let bob_score = scores["bob"] ?? 0
+let total = alice_score + bob_score
+print(total) // Output: 95
+
+// Combined with if/else
+let grade = if (scores["alice"] ?? 0) >= 90 {
+  "A"
+} else {
+  "B"
+}
+print(grade) // Output: A
+\end{lstlisting}
+
+\begin{tipbox}{\texttt{??} vs.\ if/else for Defaults}
+Use \lstinline|??| when you have a value that might be \lstinline|nil| and want a fallback. Use \lstinline|if/else| when you need to test a condition more complex than nil-ness---like checking whether a number is positive or a string is non-empty. The \lstinline|??| operator only checks for \lstinline|nil|; it does not treat \lstinline|false|, \lstinline|0|, or \lstinline|""| as missing.
+\end{tipbox}
+
+\begin{notebox}{Constant Folding and \texttt{??}}
+The compiler's constant-folding pass (in \filename{src/stackcompiler.c}) deliberately skips \lstinline|??| expressions. Because the operator has short-circuit semantics---the right side may have side effects that should only execute when the left is nil---the compiler does not attempt to evaluate it at compile time. The same applies to \lstinline|&&| and \lstinline{||}.
+\end{notebox}
+
+%% ─────────────────────────────────────────────
+\section{The Pipe Operator}\label{sec:pipe-operator}
+\index{pipe operator}\index{pipe()@\texttt{pipe()}}
+
+When you chain multiple transformations on a value, code can become deeply nested and hard to read:
+
+\begin{lstlisting}[language=Lattice, caption={Deeply nested function calls}]
+// Reading inside-out: replace, then trim, then to_upper
+let result = to_upper(trim(replace(raw_input, "  ", " ")))
+\end{lstlisting}
+
+You have to read this inside-out: first \lstinline|replace|, then \lstinline|trim|, then \lstinline|to_upper|. The \lstinline|pipe()| built-in lets you write transformations in the order they happen:
+
+\begin{lstlisting}[language=Lattice, caption={Using pipe for clarity}]
+let words = [3, 1, 4, 1, 5, 9, 2, 6]
+
+let result = pipe(
+  words,
+  |arr| arr.filter(|x| x > 3),
+  |arr| arr.map(|x| x * 10),
+  |arr| arr.sort_by(|a, b| a - b)
+)
+
+print(result) // Output: [40, 50, 60, 90]
+\end{lstlisting}
+
+\begin{defnbox}{pipe()}
+\lstinline|pipe(value, fn1, fn2, ...)| threads a value through a series of functions from left to right. It evaluates \lstinline|fn1(value)|, passes the result to \lstinline|fn2|, passes that result to \lstinline|fn3|, and so on. The final function's return value is the result of the entire \lstinline|pipe()| call.
+\end{defnbox}
+
+\subsection{How pipe() Works}\label{sec:pipe-mechanics}
+
+The \lstinline|pipe()| function is a variadic built-in that accepts a starting value followed by any number of closures. Each closure receives the result of the previous one:
+
+\begin{lstlisting}[language=Lattice, caption={Step-by-step pipe transformation}]
+let name = pipe(
+  "  hello world  ",
+  |s| s.trim(),
+  |s| s.replace("world", "lattice"),
+  |s| s.to_upper()
+)
+
+print(name) // Output: HELLO LATTICE
+\end{lstlisting}
+
+This is equivalent to the following sequential code:
+
+\begin{lstlisting}[language=Lattice, caption={The same transformations without pipe}]
+let step1 = "  hello world  "
+let step2 = step1.trim()
+let step3 = step2.replace("world", "lattice")
+let name = step3.to_upper()
+
+print(name) // Output: HELLO LATTICE
+\end{lstlisting}
+
+The \lstinline|pipe| version is more compact, and---crucially---it makes the data flow explicit. You read top to bottom and see each transformation in sequence without introducing intermediate variable names.
+
+\subsection{Building Data Pipelines}\label{sec:data-pipelines}
+
+\lstinline|pipe()| shines when processing collections:
+
+\begin{lstlisting}[language=Lattice, caption={A data processing pipeline}]
+let transactions = [
+  ["deposit", 100],
+  ["withdrawal", 50],
+  ["deposit", 200],
+  ["withdrawal", 30],
+  ["deposit", 150]
+]
+
+let total_deposits = pipe(
+  transactions,
+  |txns| txns.filter(|t| t[0] == "deposit"),
+  |txns| txns.map(|t| t[1]),
+  |amounts| amounts.reduce(0, |sum, x| sum + x)
+)
+
+print(total_deposits) // Output: 450
+\end{lstlisting}
+
+Each step of the pipeline is self-contained and readable. If you need to add a step---say, filtering out deposits below 150---you insert one closure in the chain:
+
+\begin{lstlisting}[language=Lattice, caption={Adding a step to the pipeline}]
+let large_deposits = pipe(
+  transactions,
+  |txns| txns.filter(|t| t[0] == "deposit"),
+  |txns| txns.map(|t| t[1]),
+  |amounts| amounts.filter(|a| a >= 150),
+  |amounts| amounts.reduce(0, |sum, x| sum + x)
+)
+
+print(large_deposits) // Output: 350
+\end{lstlisting}
+
+\subsection{pipe() with Named Functions}\label{sec:pipe-named-functions}
+
+You're not limited to inline closures. Any function that takes a single argument works:
+
+\begin{lstlisting}[language=Lattice, caption={Using named functions with pipe}]
+fn double(x: Int) -> Int { x * 2 }
+fn add_one(x: Int) -> Int { x + 1 }
+fn square(x: Int) -> Int { x * x }
+
+let result = pipe(5, double, add_one, square)
+print(result) // Output: 121
+// 5 -> 10 -> 11 -> 121
+\end{lstlisting}
+
+Under the hood, \lstinline|pipe()| is implemented as a native function registered in \filename{src/runtime.c}. The implementation deep-clones the initial value, then iterates through each closure argument, calling it with the current value and replacing the current value with the result. If any argument is not a closure, \lstinline|pipe()| returns \lstinline|nil|.
+
+\begin{lstlisting}[language=Lattice, caption={Combining named functions and closures in pipe}]
+fn normalize(scores: Array) -> Array {
+  let max_score = scores.reduce(0, |a, b| if a > b { a } else { b })
+  if max_score == 0 { return scores }
+  scores.map(|s| s * 100 / max_score)
+}
+
+let raw_scores = [45, 82, 67, 91, 73]
+
+let report = pipe(
+  raw_scores,
+  normalize,
+  |scores| scores.sort_by(|a, b| b - a),
+  |scores| scores.map(|s| "${s}%")
+)
+
+print(report) // Output: ["100%", "90%", "80%", "73%", "49%"]
+\end{lstlisting}
+
+\begin{tipbox}{pipe() vs.\ Method Chaining}
+When working with a single collection type, method chaining (\lstinline|arr.filter(...).map(...)|) is often more concise. Use \lstinline|pipe()| when you're combining transformations from different sources, when intermediate steps involve standalone functions, or when you want to make the data flow unmistakably clear.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:control-flow-together}
+
+Let's combine what we've learned into a more substantial example---a function that analyzes a list of student test scores:
+
+\begin{lstlisting}[language=Lattice, caption={Comprehensive control flow example}]
+fn analyze_scores(scores: Array) -> Map {
+  let results = Map::new()
+
+  flux total = 0
+  flux count = 0
+  flux highest = nil
+  flux lowest = nil
+
+  for score in scores {
+    if score < 0 {
+      continue  // skip invalid scores
+    }
+
+    total = total + score
+    count = count + 1
+    highest = if highest == nil { score }
+              else if score > highest { score }
+              else { highest }
+    lowest = if lowest == nil { score }
+             else if score < lowest { score }
+             else { lowest }
+  }
+
+  results["count"] = count
+  results["total"] = total
+  results["average"] = if count > 0 { total / count } else { 0 }
+  results["highest"] = highest ?? 0
+  results["lowest"] = lowest ?? 0
+
+  // Classify grades
+  flux grade_counts = Map::new()
+  grade_counts["A"] = 0
+  grade_counts["B"] = 0
+  grade_counts["C"] = 0
+  grade_counts["F"] = 0
+
+  for score in scores {
+    if score < 0 { continue }
+
+    let grade = if score >= 90 { "A" }
+                else if score >= 80 { "B" }
+                else if score >= 70 { "C" }
+                else { "F" }
+
+    grade_counts[grade] = grade_counts[grade] + 1
+  }
+
+  results["grades"] = grade_counts
+  results
+}
+
+let scores = [95, 82, 67, 91, -1, 73, 88, 55, 98, 76]
+let analysis = analyze_scores(scores)
+
+print("Students: ${analysis["count"]}")
+print("Average: ${analysis["average"]}")
+print("Highest: ${analysis["highest"]}")
+print("Lowest: ${analysis["lowest"]}")
+\end{lstlisting}
+
+This example exercises \lstinline|for| loops, \lstinline|continue| to skip invalid data, \lstinline|if/else| as expressions for computing grades and min/max values, and \lstinline|??| for safe defaults. Notice how every \lstinline|if/else| chain produces a value directly---there's no need for temporary variables or mutable accumulators beyond the ones that genuinely need to change.
+
+%% ─────────────────────────────────────────────
+\section{Exercises}\label{sec:control-flow-exercises}
+
+\begin{enumerate}
+  \item \textbf{FizzBuzz with Expressions.} Write a \lstinline|for| loop over \lstinline|1..101| that prints \lstinline|"Fizz"| for multiples of 3, \lstinline|"Buzz"| for multiples of 5, \lstinline|"FizzBuzz"| for multiples of both, and the number itself otherwise. Use \lstinline|if/else| as an expression to determine what to print---your \lstinline|print()| call should appear only once.
+
+  \item \textbf{First Match.} Write a function \lstinline|fn first_match(items: Array, predicate: any) -> any| that returns the first element for which \lstinline|predicate(element)| is truthy, or \lstinline|nil| if no element matches. Use a \lstinline|for| loop and \lstinline|return| in your solution.
+
+  \item \textbf{Config Lookup Chain.} Given three maps representing environment variables, a config file, and hardcoded defaults, write a function \lstinline|fn get_config(key: String, env: Map, config: Map, defaults: Map) -> any| that looks up a key in each source using chained \lstinline|??| operators.
+
+  \item \textbf{Pipeline Processing.} Given an array of strings representing log lines like \lstinline|"2024-01-15 ERROR disk full"|, use \lstinline|pipe()| to: (1) filter only lines containing \lstinline|"ERROR"|, (2) extract the date portion (the first 10 characters of each line), and (3) collect the unique dates into a sorted array.
+
+  \item \textbf{Nested Loop Challenge.} Write a function that takes an integer \lstinline|n| and returns an array of all pairs \lstinline|[i, j]| where \lstinline|0 <= i < j < n| and \lstinline|i + j| is even. Use \lstinline|continue| to skip pairs where the sum is odd, and build the result with a \lstinline|flux| array.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────
+\vspace{1em}
+\noindent\textbf{What's Next?}
+
+We've seen how to steer the flow of a program with conditions, loops, and transformations. But all of our code so far lives at the top level or in small helper functions. In \cref{ch:functions-closures}, we'll dive deep into Lattice's function system---defining functions with type annotations, default parameters, and variadic arguments. We'll also meet closures, one of Lattice's most powerful features, and learn how they capture their surrounding environment to create flexible, reusable abstractions.

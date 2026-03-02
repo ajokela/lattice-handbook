@@ -1,0 +1,730 @@
+\chapter{Functions and Closures}\label{ch:functions-closures}
+
+\index{functions}\index{closures}
+
+A program without functions is a monologue. It says everything once, from top to bottom, and there's no way to reuse a thought. Functions let us name ideas, parameterize them, and compose them into larger ones. Closures go further---they let functions carry context with them, remembering the environment where they were born.
+
+In this chapter, we'll explore how Lattice defines functions, annotates their types, handles default and variadic parameters, creates closures, and even enforces contracts on function behavior. By the end, you'll have the tools to write code that is modular, testable, and expressive.
+
+%% ─────────────────────────────────────────────
+\section{Defining Functions with fn}\label{sec:defining-functions}
+\index{fn keyword}\index{function definition}
+
+Here's the simplest function you can write in Lattice:
+
+\begin{lstlisting}[language=Lattice, caption={A basic function}]
+fn greet(name: String) -> String {
+  "Hello, ${name}!"
+}
+
+print(greet("Lattice")) // Output: Hello, Lattice!
+\end{lstlisting}
+
+The anatomy is straightforward: \lstinline|fn| introduces a function, followed by its name, a parenthesized parameter list with type annotations, an optional return type after \lstinline|->|, and a body in curly braces. The last expression in the body becomes the return value---no explicit \lstinline|return| needed.
+
+\begin{defnbox}{Function Anatomy}
+\begin{lstlisting}[language=Lattice, numbers=none]
+fn name(param1: Type1, param2: Type2) -> ReturnType {
+  // body
+  // last expression is the return value
+}
+\end{lstlisting}
+Every parameter \emph{must} have a type annotation. The return type is optional---if omitted, the function can return any type.
+\end{defnbox}
+
+\subsection{Functions Are Values}\label{sec:functions-are-values}
+\index{first-class functions}
+
+In Lattice, functions are first-class values. You can bind them to variables, store them in arrays, pass them as arguments, and return them from other functions:
+
+\begin{lstlisting}[language=Lattice, caption={Functions as values}]
+fn add(a: Int, b: Int) -> Int { a + b }
+fn multiply(a: Int, b: Int) -> Int { a * b }
+
+let operation = add
+print(operation(3, 4)) // Output: 7
+
+let ops = [add, multiply]
+for op in ops {
+  print(op(5, 3))
+}
+// Output: 8 15
+\end{lstlisting}
+
+When the compiler encounters a function definition, it compiles the body into its own bytecode chunk and wraps it in a closure value (\lstinline|VAL_CLOSURE|). Even named functions are closures under the hood---they just happen to have a name and no captured variables.
+
+\subsection{Function Bodies as Expressions}\label{sec:fn-bodies-expressions}
+
+Because Lattice is expression-oriented (\cref{sec:if-else-expressions}), a function body can be a single expression, an \lstinline|if/else| chain, or a multi-statement block:
+
+\begin{lstlisting}[language=Lattice, caption={Various function body styles}]
+// Single expression
+fn square(x: Int) -> Int { x * x }
+
+// if/else as the body
+fn abs_val(x: Int) -> Int {
+  if x < 0 { -x } else { x }
+}
+
+// Multi-statement with implicit return
+fn hypotenuse(a: Float, b: Float) -> Float {
+  let a_sq = a * a
+  let b_sq = b * b
+  (a_sq + b_sq)
+}
+\end{lstlisting}
+
+In the last example, the variables \lstinline|a_sq| and \lstinline|b_sq| are local to the function body. The final expression \lstinline|(a_sq + b_sq)| becomes the return value. If a function body ends with a statement rather than an expression (for instance, a \lstinline|print()| call), the function returns \lstinline|unit|.
+
+\subsection{Recursive Functions}\label{sec:recursive-functions}
+\index{recursion}
+
+Functions can call themselves. Here's the classic factorial:
+
+\begin{lstlisting}[language=Lattice, caption={Recursive factorial}]
+fn factorial(n: Int) -> Int {
+  if n <= 1 {
+    1
+  } else {
+    n * factorial(n - 1)
+  }
+}
+
+print(factorial(10)) // Output: 3628800
+\end{lstlisting}
+
+The VM has a call frame limit (\texttt{STACKVM\_FRAMES\_MAX}) to prevent runaway recursion from consuming all memory. If you hit it, you'll get a \texttt{"stack overflow"} error---a signal to consider an iterative approach or tail-call optimization patterns.
+
+%% ─────────────────────────────────────────────
+\section{Type Annotations on Parameters and Return Types}\label{sec:type-annotations}
+\index{type annotations}\index{parameter types}\index{return types}
+
+Every parameter in a Lattice function must carry a type annotation:
+
+\begin{lstlisting}[language=Lattice, caption={Type annotations}]
+fn format_price(amount: Float, currency: String) -> String {
+  "${currency} ${amount}"
+}
+
+print(format_price(29.99, "USD")) // Output: USD 29.99
+\end{lstlisting}
+
+These annotations serve two purposes. First, they act as documentation: anyone reading the function signature knows what types to pass. Second, they're \emph{checked at runtime}. When you call \lstinline|format_price|, the VM verifies that the first argument is a \lstinline|Float| and the second is a \lstinline|String|.
+
+\subsection{How Runtime Type Checking Works}\label{sec:runtime-type-checking}
+\index{OP\_CHECK\_TYPE}
+
+At the start of every compiled function, the compiler emits \lstinline|OP_CHECK_TYPE| instructions for each annotated parameter. Each instruction carries three pieces of information: the parameter's stack slot, the expected type name, and an error message template. At runtime, the VM compares the actual value's type against the expected type. If they don't match, you get a clear error:
+
+\begin{lstlisting}[language=Lattice, caption={Type mismatch error}]
+fn double(x: Int) -> Int { x * 2 }
+double("hello")
+// Error: function 'double' parameter 'x' expects type Int, got String
+\end{lstlisting}
+
+\begin{notebox}{The any Type}
+If a parameter can accept any type, annotate it with \lstinline|any| (or \lstinline|Any|). The compiler skips the type check for that parameter entirely:
+\begin{lstlisting}[language=Lattice, numbers=none]
+fn identity(x: any) -> any { x }
+\end{lstlisting}
+\end{notebox}
+
+\subsection{Return Type Checking}\label{sec:return-type-checking}
+\index{OP\_CHECK\_RETURN\_TYPE}
+
+When you specify a return type with \lstinline|->|, the compiler emits an \lstinline|OP_CHECK_RETURN_TYPE| instruction just before the function returns. This catches bugs where a function promises one type but delivers another:
+
+\begin{lstlisting}[language=Lattice, caption={Return type checking}]
+fn get_count(items: Array) -> Int {
+  if items.len() == 0 {
+    "empty"  // Oops! Returning a String
+  } else {
+    items.len()
+  }
+}
+// Error: function 'get_count' return type expects Int, got String
+\end{lstlisting}
+
+The error message even includes a ``did you mean?'' suggestion if the type name looks like a misspelling of a known type---a quality-of-life feature you can see implemented in \filename{src/stackvm.c}.
+
+\subsection{Common Type Names}\label{sec:common-type-names}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Type Annotation} & \textbf{Matches} \\
+\midrule
+\lstinline|Int| & Integer values \\
+\lstinline|Float| & Floating-point values \\
+\lstinline|String| & String values \\
+\lstinline|Bool| & \lstinline|true| or \lstinline|false| \\
+\lstinline|Array| & Array values \\
+\lstinline|Map| & Map values \\
+\lstinline|Set| & Set values \\
+\lstinline|Range| & Range values \\
+\lstinline|Fn| & Closure/function values \\
+\lstinline|any| / \lstinline|Any| & Any type (no check) \\
+\bottomrule
+\end{tabular}
+\caption{Built-in type annotations}\label{tab:type-annotations}
+\end{table}
+
+\begin{tipbox}{Type Annotations Are Not Static Types}
+Lattice's type annotations are checked at \emph{runtime}, not compile time. This gives you safety without the overhead of a full static type system. For stricter checking at compile time, see Strict Mode in \cref{ch:strict-mode}.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────
+\section{Default Parameter Values and Variadic Parameters}\label{sec:defaults-variadics}
+\index{default parameters}\index{variadic parameters}
+
+Real-world functions often need flexibility in how they're called. Lattice provides two mechanisms: default values for optional parameters and variadic parameters for variable-length argument lists.
+
+\subsection{Default Parameter Values}\label{sec:default-values}
+
+A parameter can specify a default value using \lstinline|=|:
+
+\begin{lstlisting}[language=Lattice, caption={Default parameter values}]
+fn connect(host: String, port: Int = 8080, secure: Bool = false) -> String {
+  let protocol = if secure { "https" } else { "http" }
+  "${protocol}://${host}:${port}"
+}
+
+print(connect("example.com"))              // Output: http://example.com:8080
+print(connect("example.com", 443))         // Output: http://example.com:443
+print(connect("example.com", 443, true))   // Output: https://example.com:443
+\end{lstlisting}
+
+When you omit arguments with defaults, the VM fills them in automatically. The defaults are evaluated at \emph{compile time} by the compiler's constant-folding evaluator (\texttt{const\_eval\_expr}) and stored on the function's bytecode chunk. At call time, \texttt{stackvm\_adjust\_call\_args} pushes the default values onto the stack for any missing arguments.
+
+\begin{warnbox}{Default Values Are Computed Once}
+Default values are evaluated when the function is compiled, not each time it's called. This means defaults should be constant expressions---literals, simple arithmetic, or string values. Don't rely on a default value being recomputed on every call.
+\end{warnbox}
+
+Parameters with defaults must come after required parameters:
+
+\begin{lstlisting}[language=Lattice, caption={Required parameters before defaults}]
+fn create_user(name: String, role: String = "viewer", active: Bool = true) -> Map {
+  let user = Map::new()
+  user["name"] = name
+  user["role"] = role
+  user["active"] = active
+  user
+}
+
+let admin = create_user("Alice", "admin")
+let viewer = create_user("Bob")
+
+print(admin["role"])   // Output: admin
+print(viewer["role"])  // Output: viewer
+print(viewer["active"]) // Output: true
+\end{lstlisting}
+
+\subsection{Variadic Parameters}\label{sec:variadic-params}
+\index{variadic!parameters}\index{...@\texttt{...} (spread/variadic)}
+
+A variadic parameter, marked with \lstinline|...|, collects any remaining arguments into an array:
+
+\begin{lstlisting}[language=Lattice, caption={Variadic parameters}]
+fn log_message(level: String, ...messages: any) -> String {
+  let parts = messages.join(", ")
+  "[${level}] ${parts}"
+}
+
+print(log_message("INFO", "Server started"))
+// Output: [INFO] Server started
+
+print(log_message("ERROR", "Connection failed", "retrying", "attempt 3"))
+// Output: [ERROR] Connection failed, retrying, attempt 3
+\end{lstlisting}
+
+The variadic parameter must be the last parameter. When the VM processes the call, \texttt{stackvm\_adjust\_call\_args} gathers all extra arguments beyond the required count, bundles them into an array, and pushes that array as the final argument. Inside the function body, the variadic parameter behaves like a normal \lstinline|Array|.
+
+\begin{lstlisting}[language=Lattice, caption={Variadic math functions}]
+fn sum(...numbers: Int) -> Int {
+  numbers.reduce(0, |acc, n| acc + n)
+}
+
+fn average(...numbers: Float) -> Float {
+  let total = numbers.reduce(0.0, |acc, n| acc + n)
+  total / numbers.len()
+}
+
+print(sum(1, 2, 3, 4, 5))         // Output: 15
+print(average(85.0, 92.0, 78.0))  // Output: 85.0
+\end{lstlisting}
+
+\subsection{Combining Defaults and Variadics}\label{sec:defaults-and-variadics}
+
+You can use both defaults and variadics in the same function, as long as the variadic parameter comes last:
+
+\begin{lstlisting}[language=Lattice, caption={Defaults and variadics together}]
+fn build_query(table: String, limit: Int = 100, ...conditions: String) -> String {
+  flux query = "SELECT * FROM ${table}"
+  if conditions.len() > 0 {
+    let where_clause = conditions.join(" AND ")
+    query = query + " WHERE ${where_clause}"
+  }
+  query + " LIMIT ${limit}"
+}
+
+print(build_query("users"))
+// Output: SELECT * FROM users LIMIT 100
+
+print(build_query("orders", 10, "status = 'active'", "total > 50"))
+// Output: SELECT * FROM orders WHERE status = 'active' AND total > 50 LIMIT 10
+\end{lstlisting}
+
+The VM determines the minimum number of required arguments as: total parameters minus defaults minus the variadic slot. If you provide fewer arguments than this minimum, or more than the non-variadic count when there's no variadic parameter, you'll get a clear error.
+
+%% ─────────────────────────────────────────────
+\section{Closures: \texttt{|x| x * 2}}\label{sec:closures}
+\index{closures}\index{anonymous functions}\index{lambda}
+
+A closure is an anonymous function---a function without a name. In Lattice, closures use the pipe syntax:
+
+\begin{lstlisting}[language=Lattice, caption={Basic closure syntax}]
+let double = |x| x * 2
+let add = |a, b| a + b
+
+print(double(21))  // Output: 42
+print(add(10, 20)) // Output: 30
+\end{lstlisting}
+
+The syntax is compact: parameters between \lstinline{|} pipes, followed by the body. For single-expression closures, no braces are needed. For multi-line bodies, use curly braces:
+
+\begin{lstlisting}[language=Lattice, caption={Multi-line closures}]
+let format_name = |first, last| {
+  let full = "${first} ${last}"
+  full.to_upper()
+}
+
+print(format_name("jane", "doe")) // Output: JANE DOE
+\end{lstlisting}
+
+\begin{defnbox}{Closure Syntax}
+\begin{lstlisting}[language=Lattice, numbers=none]
+// Single expression
+|params| expression
+
+// Multi-statement body
+|params| { statements; last_expression }
+
+// No parameters
+|| { body }
+\end{lstlisting}
+Closures in Lattice do not require type annotations on their parameters, unlike named functions. This keeps them lightweight for use in callbacks, iterators, and higher-order functions.
+\end{defnbox}
+
+\subsection{Closures with Default and Variadic Parameters}\label{sec:closure-defaults}
+
+Closures support the same default and variadic features as named functions:
+
+\begin{lstlisting}[language=Lattice, caption={Closures with defaults and variadics}]
+let greet = |name, greeting = "Hello"| "${greeting}, ${name}!"
+print(greet("World"))             // Output: Hello, World!
+print(greet("World", "Howdy"))    // Output: Howdy, World!
+
+let join_all = |separator, ...parts| parts.join(separator)
+print(join_all("-", "2024", "01", "15")) // Output: 2024-01-15
+\end{lstlisting}
+
+\subsection{Where Closures Shine}\label{sec:closures-usage}
+
+Closures are the workhorses of Lattice's collection methods. You've already seen them with \lstinline|filter|, \lstinline|map|, and \lstinline|reduce| in \cref{ch:control-flow}. They're used anywhere you need a short, inline function:
+
+\begin{lstlisting}[language=Lattice, caption={Closures in collection methods}]
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let evens = numbers.filter(|n| n % 2 == 0)
+print(evens) // Output: [2, 4, 6, 8, 10]
+
+let doubled = numbers.map(|n| n * 2)
+print(doubled) // Output: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+
+let sum = numbers.reduce(0, |acc, n| acc + n)
+print(sum) // Output: 55
+
+let sorted = ["banana", "apple", "cherry"].sort_by(|a, b| {
+  if a < b { -1 } else if a > b { 1 } else { 0 }
+})
+print(sorted) // Output: ["apple", "banana", "cherry"]
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{Closures Capture Their Environment}\label{sec:upvalues}
+\index{upvalues}\index{closure!capture}\index{environment capture}
+
+What makes closures special is not that they're anonymous---it's that they \emph{remember} the environment where they were created. Variables from an enclosing scope that a closure references are called \emph{upvalues}:
+
+\begin{lstlisting}[language=Lattice, caption={Closures capture enclosing variables}]
+fn make_counter() -> Fn {
+  flux count = 0
+  || {
+    count = count + 1
+    count
+  }
+}
+
+let counter = make_counter()
+print(counter()) // Output: 1
+print(counter()) // Output: 2
+print(counter()) // Output: 3
+\end{lstlisting}
+
+The closure created inside \lstinline|make_counter| captures the \lstinline|flux count| variable. Even after \lstinline|make_counter| has returned, the closure retains a reference to \lstinline|count| and can modify it. Each call to \lstinline|make_counter| creates a new, independent counter.
+
+\begin{defnbox}{Upvalue}
+An \emph{upvalue} is a reference to a variable in an enclosing function's scope that a closure captures. When the enclosing function returns, the VM ``closes'' the upvalue---copying the variable's current value to heap storage so the closure can continue to access it.
+\end{defnbox}
+
+\subsection{How Upvalue Capture Works Under the Hood}\label{sec:upvalue-internals}
+
+The implementation involves three stages, visible in \filename{src/stackcompiler.c} and \filename{src/stackvm.c}:
+
+\begin{enumerate}
+  \item \textbf{Compile time:} When the compiler sees a variable reference that doesn't resolve in the current function, it walks up the enclosing compiler chain via \texttt{resolve\_upvalue}. If the variable is a local in the parent function, it marks that local as ``captured'' and records it with \lstinline|is_local = true|. If it's an upvalue of the parent, it chains through with \lstinline|is_local = false|. The upvalue descriptors are emitted after the \lstinline|OP_CLOSURE| instruction.
+
+  \item \textbf{Closure creation (runtime):} When the VM executes \lstinline|OP_CLOSURE|, it reads the upvalue descriptors. For each \lstinline|is_local = true| entry, it calls \texttt{capture\_upvalue} which creates an \lstinline|ObjUpvalue| pointing at the live stack slot. For \lstinline|is_local = false|, it reuses the parent frame's upvalue. The VM maintains a linked list of open upvalues, sorted by stack location, to ensure that multiple closures capturing the same variable share the same \lstinline|ObjUpvalue|.
+
+  \item \textbf{Closing (when the scope exits):} When a function returns or a scope ends, the VM calls \texttt{close\_upvalues}, which walks the open upvalue list. For each upvalue whose location is about to be popped from the stack, it deep-clones the value into the \lstinline|ObjUpvalue|'s \lstinline|closed| field and redirects the pointer. The closure now reads from heap storage instead of the stack.
+\end{enumerate}
+
+This mechanism ensures that closures see the \emph{latest} value of captured variables (not a snapshot from creation time), and that modifications through one closure are visible to others sharing the same upvalue.
+
+\begin{lstlisting}[language=Lattice, caption={Multiple closures sharing an upvalue}]
+fn make_pair() -> Array {
+  flux value = 0
+  let getter = || value
+  let setter = |v| { value = v }
+  [getter, setter]
+}
+
+let pair = make_pair()
+let get = pair[0]
+let set = pair[1]
+
+print(get()) // Output: 0
+set(42)
+print(get()) // Output: 42
+\end{lstlisting}
+
+Both \lstinline|getter| and \lstinline|setter| capture the same \lstinline|flux value| variable. When \lstinline|set(42)| modifies it, the change is visible through \lstinline|get()|.
+
+\subsection{Closures in Loops}\label{sec:closures-in-loops}
+
+A common pitfall in other languages is creating closures inside loops and finding they all share the same variable. Lattice avoids this because \lstinline|for| loop variables are fresh bindings on each iteration:
+
+\begin{lstlisting}[language=Lattice, caption={Closures in loops capture correctly}]
+let multipliers = []
+for i in 1..5 {
+  multipliers.push(|x| x * i)
+}
+
+print(multipliers[0](10)) // Output: 10  (1 * 10)
+print(multipliers[1](10)) // Output: 20  (2 * 10)
+print(multipliers[2](10)) // Output: 30  (3 * 10)
+print(multipliers[3](10)) // Output: 40  (4 * 10)
+\end{lstlisting}
+
+Each closure captures its own \lstinline|i|. The compiler's upvalue handling ensures that when the loop variable is popped at the end of each iteration, any closures that captured it get their own closed-over copy.
+
+\begin{warnbox}{Closures over flux Variables in while Loops}
+In a \lstinline|while| loop, a \lstinline|flux| counter variable is \emph{not} rebound each iteration---it's the same mutable slot throughout. Closures created in such loops will all share the same variable. If you need per-iteration capture in a \lstinline|while| loop, create a \lstinline|let| binding inside the loop body:
+\begin{lstlisting}[language=Lattice, numbers=none]
+flux i = 0
+while i < 5 {
+  let captured_i = i  // fresh binding each iteration
+  callbacks.push(|x| x * captured_i)
+  i = i + 1
+}
+\end{lstlisting}
+\end{warnbox}
+
+%% ─────────────────────────────────────────────
+\section{Higher-Order Functions}\label{sec:higher-order}
+\index{higher-order functions}
+
+A higher-order function is one that takes a function as an argument or returns a function as its result. We've seen the ``takes a function'' pattern extensively with collection methods. Now let's explore the ``returns a function'' pattern.
+
+\subsection{Functions That Return Functions}\label{sec:returning-functions}
+
+\begin{lstlisting}[language=Lattice, caption={A function factory}]
+fn make_multiplier(factor: Int) -> Fn {
+  |x| x * factor
+}
+
+let triple = make_multiplier(3)
+let times_ten = make_multiplier(10)
+
+print(triple(7))      // Output: 21
+print(times_ten(7))   // Output: 70
+\end{lstlisting}
+
+Each call to \lstinline|make_multiplier| produces a new closure that remembers its \lstinline|factor|. This pattern---a function that creates specialized functions---is sometimes called a \emph{function factory}.
+
+\subsection{Callbacks and Event Handlers}\label{sec:callbacks}
+\index{callbacks}
+
+Higher-order functions are natural for callback patterns:
+
+\begin{lstlisting}[language=Lattice, caption={Processing with callbacks}]
+fn process_items(items: Array, on_success: Fn, on_error: Fn) -> Array {
+  flux results = []
+  for item in items {
+    if item > 0 {
+      results.push(on_success(item))
+    } else {
+      results.push(on_error(item))
+    }
+  }
+  results
+}
+
+let data = [10, -3, 25, -7, 42]
+let processed = process_items(
+  data,
+  |x| "OK: ${x}",
+  |x| "ERR: invalid value ${x}"
+)
+
+print(processed)
+// Output: ["OK: 10", "ERR: invalid value -3", "OK: 25",
+//          "ERR: invalid value -7", "OK: 42"]
+\end{lstlisting}
+
+\subsection{Function Composition}\label{sec:function-composition}
+\index{compose()@\texttt{compose()}}
+
+Lattice provides a built-in \lstinline|compose| function for right-to-left composition:
+
+\begin{lstlisting}[language=Lattice, caption={Composing functions}]
+fn add_one(x: Int) -> Int { x + 1 }
+fn double(x: Int) -> Int { x * 2 }
+
+// compose(f, g) returns a function where f(g(x))
+let double_then_add = compose(add_one, double)
+print(double_then_add(5)) // Output: 11 (double(5)=10, add_one(10)=11)
+
+let add_then_double = compose(double, add_one)
+print(add_then_double(5)) // Output: 12 (add_one(5)=6, double(6)=12)
+\end{lstlisting}
+
+For left-to-right composition (which often reads more naturally), use \lstinline|pipe()| from \cref{sec:pipe-operator}:
+
+\begin{lstlisting}[language=Lattice, caption={pipe for left-to-right composition}]
+let result = pipe(5, add_one, double)
+print(result) // Output: 12 (add_one(5)=6, double(6)=12)
+\end{lstlisting}
+
+\subsection{Building Abstractions with Higher-Order Functions}\label{sec:building-abstractions}
+
+Higher-order functions let you abstract over patterns, not just values:
+
+\begin{lstlisting}[language=Lattice, caption={Abstracting the retry pattern}]
+fn with_retry(action: Fn, max_attempts: Int = 3) -> any {
+  flux attempt = 1
+  loop {
+    let result = try {
+      action()
+    } catch err {
+      if attempt >= max_attempts {
+        return "Failed after ${max_attempts} attempts: ${err}"
+      }
+      attempt = attempt + 1
+      continue
+    }
+    return result
+  }
+}
+
+// Use it to wrap any fallible operation
+let data = with_retry(|| {
+  // Some operation that might fail
+  42
+})
+print(data) // Output: 42
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={A memoization wrapper}]
+fn memoize(func: Fn) -> Fn {
+  flux cache = Map::new()
+  |arg| {
+    let key = to_string(arg)
+    if cache.has(key) {
+      cache[key]
+    } else {
+      let result = func(arg)
+      cache[key] = result
+      result
+    }
+  }
+}
+
+fn slow_square(x: Int) -> Int {
+  print("Computing ${x}^2...")
+  x * x
+}
+
+let fast_square = memoize(slow_square)
+print(fast_square(5)) // Output: Computing 5^2... \n 25
+print(fast_square(5)) // Output: 25 (cached, no "Computing" message)
+print(fast_square(3)) // Output: Computing 3^2... \n 9
+\end{lstlisting}
+
+The \lstinline|memoize| function creates a closure that wraps the original function with a cache. The cache is a captured \lstinline|flux| variable shared across all calls to the memoized function.
+
+%% ─────────────────────────────────────────────
+\section{require and ensure --- Contracts on Your Functions}\label{sec:contracts}
+\index{require}\index{ensure}\index{contracts}\index{design by contract}
+
+Lattice supports \emph{design by contract}: you can attach preconditions (\lstinline|require|) and postconditions (\lstinline|ensure|) to functions. These are runtime checks that guard against incorrect usage and document the function's expectations.
+
+\subsection{Preconditions with require}\label{sec:require}
+\index{require}
+
+A \lstinline|require| clause checks a condition at the \emph{start} of the function, before the body executes:
+
+\begin{lstlisting}[language=Lattice, caption={require preconditions}]
+fn withdraw(balance: Float, amount: Float) -> Float
+  require amount > 0, "withdrawal amount must be positive"
+  require amount <= balance, "insufficient funds"
+{
+  balance - amount
+}
+
+print(withdraw(100.0, 30.0)) // Output: 70.0
+withdraw(100.0, -5.0)
+// Error: require failed in 'withdraw': withdrawal amount must be positive
+\end{lstlisting}
+
+The syntax places \lstinline|require| clauses between the function signature and the opening brace. Each clause has a boolean condition and an optional error message string. If the condition is false, the function throws an error immediately.
+
+Under the hood, the compiler translates each \lstinline|require| into a conditional: compile the condition expression, emit \lstinline|OP_JUMP_IF_TRUE| to skip the error path, then emit the error message as an \lstinline|OP_THROW|. This happens \emph{after} parameter type checks but \emph{before} the function body.
+
+\subsection{Postconditions with ensure}\label{sec:ensure}
+\index{ensure}
+
+An \lstinline|ensure| clause checks a condition about the \emph{return value} after the body executes:
+
+\begin{lstlisting}[language=Lattice, caption={ensure postconditions}]
+fn abs_val(x: Float) -> Float
+  ensure |result| result >= 0.0, "absolute value must be non-negative"
+{
+  if x < 0.0 { -x } else { x }
+}
+
+print(abs_val(-42.0)) // Output: 42.0
+print(abs_val(7.0))   // Output: 7.0
+\end{lstlisting}
+
+The \lstinline|ensure| clause takes a \emph{closure} that receives the return value. The closure must return a truthy value for the check to pass. This happens right before the function returns---the compiler emits the ensure check after the body but before \lstinline|OP_RETURN|, so it applies to both implicit and explicit returns.
+
+\begin{lstlisting}[language=Lattice, caption={Multiple contracts on a function}]
+fn divide(numerator: Float, denominator: Float) -> Float
+  require denominator != 0.0, "cannot divide by zero"
+  require numerator >= 0.0, "numerator must be non-negative"
+  ensure |r| r >= 0.0, "result must be non-negative"
+{
+  numerator / denominator
+}
+
+print(divide(10.0, 3.0))  // Output: 3.3333...
+divide(10.0, 0.0)
+// Error: require failed in 'divide': cannot divide by zero
+\end{lstlisting}
+
+\subsection{When to Use Contracts}\label{sec:when-contracts}
+
+Contracts work best as:
+
+\begin{itemize}
+  \item \textbf{Guards on public API boundaries.} Validate inputs at the entry points of modules and libraries.
+  \item \textbf{Invariant documentation.} Make implicit assumptions explicit: ``this function assumes a positive input'' becomes a \lstinline|require| that both documents and enforces the constraint.
+  \item \textbf{Safety nets during development.} Catch logic errors early---if an \lstinline|ensure| fails, you know the function's implementation has a bug.
+\end{itemize}
+
+\begin{tipbox}{Contracts vs.\ Error Handling}
+Contracts check for \emph{programmer errors}---conditions that should never happen if the code is correct. For \emph{expected failures} (file not found, network timeout, invalid user input), use Lattice's error handling mechanisms from \cref{ch:error-handling}.
+\end{tipbox}
+
+The contract system is compiled into the same bytecode as normal error handling: \lstinline|require| compiles to a conditional \lstinline|OP_THROW|, and \lstinline|ensure| compiles to a closure call whose result is checked with \lstinline|OP_JUMP_IF_TRUE|. You can see the detailed logic in \texttt{emit\_ensure\_checks} and \texttt{compile\_function\_body} in \filename{src/stackcompiler.c}. There's no runtime overhead when a contract passes beyond a comparison and a branch.
+
+%% ─────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:functions-together}
+
+Let's build something more substantial: a function pipeline builder that lets you chain operations with validation.
+
+\begin{lstlisting}[language=Lattice, caption={A validated pipeline builder}]
+fn create_pipeline(...transforms: Fn) -> Fn {
+  |input| {
+    flux current = input
+    for transform in transforms {
+      current = transform(current)
+    }
+    current
+  }
+}
+
+fn clamp(min_val: Float, max_val: Float) -> Fn
+  require min_val <= max_val, "min must be <= max"
+{
+  |x| {
+    if x < min_val { min_val }
+    else if x > max_val { max_val }
+    else { x }
+  }
+}
+
+fn scale(factor: Float) -> Fn
+  require factor != 0.0, "scale factor cannot be zero"
+{
+  |x| x * factor
+}
+
+fn offset(amount: Float) -> Fn {
+  |x| x + amount
+}
+
+// Build a temperature converter: Celsius to Fahrenheit, clamped to 32-212
+let celsius_to_fahrenheit = create_pipeline(
+  scale(9.0 / 5.0),
+  offset(32.0),
+  clamp(32.0, 212.0)
+)
+
+let temperatures = [0.0, 25.0, 100.0, 150.0, -40.0]
+for temp in temperatures {
+  let converted = celsius_to_fahrenheit(temp)
+  print("${temp}C = ${converted}F")
+}
+// Output:
+// 0.0C = 32.0F
+// 25.0C = 77.0F
+// 100.0C = 212.0F
+// 150.0C = 212.0F
+// -40.0C = 32.0F
+\end{lstlisting}
+
+This example combines closures (returned by \lstinline|clamp|, \lstinline|scale|, \lstinline|offset|), variadic parameters (in \lstinline|create_pipeline|), upvalue capture (each returned closure remembers its parameters), and contracts (validating inputs to \lstinline|clamp| and \lstinline|scale|).
+
+%% ─────────────────────────────────────────────
+\section{Exercises}\label{sec:functions-exercises}
+
+\begin{enumerate}
+  \item \textbf{once().} Write a function \lstinline|fn once(f: Fn) -> Fn| that returns a wrapper which calls \lstinline|f| on the first invocation and returns the cached result on subsequent calls.
+
+  \item \textbf{Partial Application.} Write a function \lstinline|fn partial(f: Fn, first_arg: any) -> Fn| that returns a new function with the first argument pre-filled. For example, \lstinline|partial(add, 5)(3)| should return \lstinline|8|.
+
+  \item \textbf{Validated List.} Write a function \lstinline|fn make_list(validator: Fn) -> Map| that returns a map with \lstinline|"add"| and \lstinline|"items"| closures. The \lstinline|"add"| closure should only add items that pass the validator. Use upvalue capture to share state between the closures.
+
+  \item \textbf{Function Pipeline with Error Handling.} Extend the pipeline pattern by writing \lstinline|fn safe_pipeline(...transforms: Fn) -> Fn| that wraps each transform in a try/catch. If any transform fails, the pipeline should return the error message instead of crashing.
+
+  \item \textbf{Contract Challenge.} Write a function \lstinline|fn binary_search| that searches a sorted array for a value. Add \lstinline|require| contracts to verify the array is sorted and the target is of the correct type. Add an \lstinline|ensure| contract to verify that if the function returns a non-negative index, the element at that index equals the target.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────
+\vspace{1em}
+\noindent\textbf{What's Next?}
+
+With functions and closures in our toolkit, we're ready to work with Lattice's rich collection types. In \cref{ch:collections}, we'll explore arrays, maps, sets, and tuples in depth---including the closure-based methods like \lstinline|map|, \lstinline|filter|, and \lstinline|reduce| that make collections so powerful, and the spread operator that makes working with them a breeze.

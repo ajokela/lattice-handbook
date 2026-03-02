@@ -1,0 +1,218 @@
+\chapter{Phase Quick Reference}\label{ch:phase-cheatsheet}
+
+Lattice's \emph{phase system} gives every runtime value a mutability state.
+This appendix collects all the rules in one place for quick look-up.
+
+%% ════════════════════════════════════════════════════════════════
+\section{Phase Tags at a Glance}
+
+Every \texttt{LatValue} carries a \texttt{PhaseTag} field:
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lllp{5.8cm}@{}}
+\toprule
+\textbf{Tag} & \textbf{Symbol} & \textbf{Keyword} & \textbf{Meaning} \\
+\midrule
+\textsc{fluid}      & \texttt{\~{}}  & \texttt{flux}  & Mutable. May be reassigned and modified in place. \\
+\textsc{crystal}    & \texttt{*}     & \texttt{fix}   & Immutable. Any mutation attempt is a runtime error. \\
+\textsc{unphased}   & ---            & \texttt{let}   & Default. Treated as fluid in casual mode. \\
+\textsc{sublimated} & ---            & \texttt{sublimate} & Permanently frozen; cannot be thawed. \\
+\bottomrule
+\end{booktabs}
+\caption{Runtime phase tags.}\label{tab:phase-tags}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Binding Keywords}
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}llp{7.5cm}@{}}
+\toprule
+\textbf{Keyword} & \textbf{Phase} & \textbf{Notes} \\
+\midrule
+\texttt{let}  & \textsc{unphased} & Default binding. In casual mode, behaves as fluid. In strict mode, produces a phase-checker error---use \texttt{flux}/\texttt{fix} instead. \\
+\texttt{flux} & \textsc{fluid}    & Explicitly mutable binding. \\
+\texttt{fix}  & \textsc{crystal}  & Explicitly immutable binding. Assignment to a \texttt{fix} binding is a compile-time error in strict mode, runtime error otherwise. \\
+\bottomrule
+\end{booktabs}
+\caption{Variable declaration keywords and their phases.}\label{tab:binding-kw}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Phase Transition Operations}
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lllp{5.2cm}@{}}
+\toprule
+\textbf{Operation} & \textbf{Input} & \textbf{Output} & \textbf{Notes} \\
+\midrule
+\texttt{freeze(x)}       & any         & \textsc{crystal}    & Deep-freezes; returns a crystal clone. \\
+\texttt{freeze(x) where} \textit{fn} & any & \textsc{crystal} & Freeze with contract validation. \\
+\texttt{freeze(x) except} \texttt{[...]} & struct & \textsc{crystal} & Freeze all fields except listed ones. \\
+\texttt{thaw(x)}         & crystal     & \textsc{fluid}      & Returns a mutable clone. Error if already fluid in strict mode. \\
+\texttt{clone(x)}        & any         & same as input       & Deep-clones preserving the current phase. \\
+\texttt{sublimate(x)}    & any         & \textsc{sublimated} & Permanently frozen. Cannot be thawed. \\
+\bottomrule
+\end{booktabs}
+\caption{Phase transition operations.}\label{tab:phase-ops}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Advanced Phase Constructs}
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lp{8.5cm}@{}}
+\toprule
+\textbf{Construct} & \textbf{Description} \\
+\midrule
+\texttt{anneal(x) |v| \{ \ldots \}} & Temporarily thaw a crystal value into \texttt{v}, execute the block, then re-freeze. The result is crystal. \\
+\texttt{forge \{ \ldots \}} & Execute a mutable construction block. All mutations inside are allowed; the final result is frozen upon exit. \\
+\texttt{crystallize(x) \{ \ldots \}} & Deep-freeze \texttt{x}, then execute a block with the frozen value in scope. \\
+\texttt{borrow(x) \{ \ldots \}} & Borrow a crystal value as read-only for the block's duration. No mutations are permitted. \\
+\bottomrule
+\end{booktabs}
+\caption{Compound phase constructs.}\label{tab:phase-compound}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Type Annotations with Phases}
+
+Phase constraints can appear in type positions.
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lp{8.5cm}@{}}
+\toprule
+\textbf{Syntax} & \textbf{Meaning} \\
+\midrule
+\texttt{\~{}T} or \texttt{flux T}          & Parameter must be fluid. \\
+\texttt{*T} or \texttt{fix T}              & Parameter must be crystal. \\
+\texttt{(\~{}|*) T}                        & Accepts fluid or crystal (composite constraint). \\
+\texttt{(\~{}|*|sublimated) T}             & Accepts any explicit phase. \\
+\texttt{T}                                 & No constraint (unspecified). \\
+\bottomrule
+\end{booktabs}
+\caption{Phase-annotated type syntax.}\label{tab:phase-types}
+\end{table}
+
+Composite constraints use a bitmask internally (\texttt{PhaseConstraint}):
+
+\begin{center}
+\texttt{PCON\_FLUID} = 1 \quad
+\texttt{PCON\_CRYSTAL} = 2 \quad
+\texttt{PCON\_SUBLIMATED} = 4
+\end{center}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Reactive Phase System}
+
+Lattice provides a reactive layer on top of the phase system. These
+operations register callbacks and dependencies that fire when a
+variable's phase changes.
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lp{8.5cm}@{}}
+\toprule
+\textbf{Keyword} & \textbf{Description} \\
+\midrule
+\texttt{react(name, callback)}    & Register a reaction callback on the named variable. Fires when the variable is frozen, thawed, or sublimated. \\
+\texttt{unreact(name)}            & Remove a previously registered reaction. \\
+\texttt{bond(target, dep, strategy)} & Create a dependency bond: when \texttt{dep} changes phase, \texttt{target} is updated according to \texttt{strategy} (\texttt{"freeze"}, \texttt{"thaw"}, etc.). \\
+\texttt{unbond(target, dep)}      & Remove a dependency bond. \\
+\texttt{seed(name, contract)}     & Register a seed contract---a predicate that must hold whenever the variable transitions to crystal. \\
+\texttt{unseed(name)}             & Remove a seed contract. \\
+\bottomrule
+\end{booktabs}
+\caption{Reactive phase operations.}\label{tab:phase-reactive}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Phase Queries}
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lp{8cm}@{}}
+\toprule
+\textbf{Expression} & \textbf{Result} \\
+\midrule
+\texttt{typeof(x)}    & Returns a string: \texttt{"Int"}, \texttt{"Float"}, \texttt{"String"}, etc. \\
+\texttt{phase\_of(x)} & Returns a string: \texttt{"fluid"}, \texttt{"crystal"}, \texttt{"unphased"}, or \texttt{"sublimated"}. \\
+\texttt{is\_crystal}  & Opcode-level check; pushes \texttt{true} if \textsc{crystal}. \\
+\texttt{is\_fluid}    & Opcode-level check; pushes \texttt{true} if \textsc{fluid}. \\
+\bottomrule
+\end{booktabs}
+\caption{Phase query operations.}\label{tab:phase-query}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Mode Comparison}
+
+\begin{table}[h]
+\centering
+\begin{booktabs}{@{}lp{5cm}p{5cm}@{}}
+\toprule
+\textbf{Rule} & \textbf{Casual Mode} & \textbf{Strict Mode} \\
+\midrule
+\texttt{let} binding   & Allowed; phase inherited from initializer & Error: must use \texttt{flux} or \texttt{fix} \\
+\texttt{freeze} on crystal & Allowed (no-op) & Error: ``cannot freeze an already crystal value'' \\
+\texttt{thaw} on fluid     & Allowed (no-op) & Error: ``cannot thaw an already fluid value'' \\
+Assignment to \texttt{fix} & Runtime error  & Compile-time error \\
+\texttt{spawn} with fluid  & Allowed        & Error: ``cannot use fluid binding across thread boundary'' \\
+Destructure without phase  & Allowed        & Error: requires explicit \texttt{flux}/\texttt{fix} \\
+Function arg phase mismatch & Allowed       & Error: no matching overload \\
+\bottomrule
+\end{booktabs}
+\caption{Casual vs.\ strict mode phase enforcement.}\label{tab:mode-cmp}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Pattern Matching with Phases}
+
+Match arms can optionally carry a \emph{phase qualifier}:
+
+\begin{lstlisting}[language=Lattice]
+match x {
+    fluid val  => { /* matches only if x is fluid */ }
+    crystal val => { /* matches only if x is crystal */ }
+    val        => { /* matches regardless of phase */ }
+}
+\end{lstlisting}
+
+The qualifier is checked against the scrutinee's runtime phase tag
+\emph{before} the structural pattern is tested.
+
+%% ════════════════════════════════════════════════════════════════
+\section{Per-Field Phase Control}
+
+Struct values support per-field phase tracking. When
+\texttt{field\_phases} is non-\texttt{NULL}, each field can independently
+be fluid or crystal:
+
+\begin{lstlisting}[language=Lattice]
+fix config = freeze(Config { host: "localhost", port: 8080 })
+    except ["port"]   // port stays fluid, everything else frozen
+\end{lstlisting}
+
+The \texttt{OP\_FREEZE\_FIELD} opcode freezes a single field, while
+\texttt{OP\_FREEZE\_EXCEPT} freezes all fields except the listed exceptions.
+
+%% ════════════════════════════════════════════════════════════════
+\section{Phase Dispatch (Overloading)}
+
+Functions with the same name but different phase-annotated parameter types
+form an \emph{overload set}. In strict mode, the phase checker verifies
+that at least one overload matches the caller's argument phases:
+
+\begin{lstlisting}[language=Lattice]
+fn process(data: ~Array) -> String { /* fluid path */ }
+fn process(data: *Array) -> String { /* crystal path */ }
+\end{lstlisting}
+
+The checker walks the overload chain via \texttt{next\_overload} pointers,
+comparing each candidate's parameter phases against the call-site argument
+phases.

@@ -1,0 +1,521 @@
+\chapter{The Formatter and Doc Generator}\label{ch:formatter-docgen}
+
+\index{formatter}\index{clat fmt}\index{doc generator}\index{clat doc}
+
+Every codebase drifts.
+One developer uses tabs, another uses spaces.
+Someone wraps function arguments at 80 columns; someone else at 120.
+Doc comments get written in three different styles.
+A week later, the ``git blame'' for every file reads like a United Nations assembly.
+Lattice solves this with two built-in tools: \lstinline|clat fmt| for formatting source code and \lstinline|clat doc| for generating documentation.
+Both are first-class citizens of the \lstinline|clat| CLI---no third-party installation required.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{clat fmt} --- Formatting Your Code}\label{sec:clat-fmt}
+\index{clat fmt}
+
+Let's start with a messy file.
+Suppose a colleague has handed us \filename{sensor.lat} with inconsistent spacing, missing indentation, and some creative use of whitespace:
+
+\begin{lstlisting}[language=Lattice, caption={Before formatting: messy whitespace and indentation}]
+fn read_temperature(  sensor_id:Int,unit: String   ) -> Float{
+    let raw=sensor_id *   0.48+2.1
+if unit ==  "celsius"{
+return raw
+}else{
+    return raw*9.0/5.0+32.0
+}}
+\end{lstlisting}
+
+One command brings order to the chaos:
+
+\begin{lstlisting}[language=Lattice, caption={Terminal: running clat fmt}]
+// In your terminal:
+// $ clat fmt sensor.lat
+\end{lstlisting}
+
+After formatting, the file is rewritten in place:
+
+\begin{lstlisting}[language=Lattice, caption={After formatting: clean and consistent}]
+fn read_temperature(sensor_id: Int, unit: String) -> Float {
+    let raw = sensor_id * 0.48 + 2.1
+    if unit == "celsius" {
+        return raw
+    } else {
+        return raw * 9.0 / 5.0 + 32.0
+    }
+}
+\end{lstlisting}
+
+Notice what the formatter did:
+
+\begin{itemize}
+  \item Normalized spacing around operators (\lstinline|=|, \lstinline|*|, \lstinline|+|) to exactly one space on each side.
+  \item Enforced the \emph{attached brace style}: the opening \lstinline|\{| appears on the same line as the \lstinline|fn|, \lstinline|if|, and \lstinline|else| keywords, preceded by a single space.
+  \item Inserted a space after the colon in type annotations (\lstinline|sensor_id: Int|) and after commas.
+  \item Applied consistent four-space indentation at each nesting level.
+  \item Placed the \lstinline|else| clause on the same line as the closing brace of the \lstinline|if| block (\lstinline|} else {|).
+  \item Ensured a single trailing newline at the end of the file.
+\end{itemize}
+
+\begin{defnbox}{clat fmt}
+The \lstinline|clat fmt| command reads a Lattice source file, reformats it using the canonical style, and writes the result back. It operates on a character-by-character scan of the source (implemented in \filename{src/formatter.c}), preserving all comments and string contents while normalizing whitespace and indentation. The default indentation width is four spaces, and the default target line width is 100 columns.
+\end{defnbox}
+
+\subsection{Formatting Multiple Files}\label{sec:fmt-multiple-files}
+
+You can format an entire project in one go by passing multiple files:
+
+\begin{lstlisting}[language=Lattice, caption={Formatting several files at once}]
+// $ clat fmt src/main.lat src/utils.lat lib/math.lat
+\end{lstlisting}
+
+\subsection{Check Mode: CI-Friendly Verification}\label{sec:fmt-check}
+\index{clat fmt!check mode}
+
+In a continuous integration pipeline, you don't want to \emph{rewrite} files---you want to \emph{verify} that they're already formatted. The \lstinline|--check| flag does exactly this:
+
+\begin{lstlisting}[language=Lattice, caption={Using {-}{-}check in CI}]
+// $ clat fmt --check src/main.lat
+// If already formatted: exits with code 0
+// If not: exits with code 1 and prints a diff
+\end{lstlisting}
+
+Under the hood, \lstinline|--check| calls the \lstinline|lat_format_check()| function (see \filename{include/formatter.h}), which formats the source and compares the result to the original. If they match, the file is already canonical.
+
+\begin{tipbox}{Add Formatting to Your CI Pipeline}
+A common pattern for Lattice projects:
+\begin{lstlisting}[language=Lattice]
+// In your CI configuration:
+// $ clat fmt --check src/ lib/
+\end{lstlisting}
+This ensures every pull request follows the same style. No more bikeshedding in code reviews about where the braces go.
+\end{tipbox}
+
+\subsection{Reading from Standard Input}\label{sec:fmt-stdin}
+\index{clat fmt!stdin}
+
+The formatter can also read from standard input with the \lstinline|--stdin| flag.
+This is useful for editor integrations and piped workflows:
+
+\begin{lstlisting}[language=Lattice, caption={Formatting via stdin}]
+// $ cat messy.lat | clat fmt --stdin
+// Formatted output goes to stdout
+\end{lstlisting}
+
+The \lstinline|lat_format_stdin()| function in \filename{src/formatter.c} reads all of standard input into a buffer, formats it, and writes the result to standard output.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{--width} for Configurable Line Width}\label{sec:fmt-width}
+\index{clat fmt!width}\index{line width}
+
+The default line width target is 100 columns---a comfortable middle ground for modern screens.
+But preferences vary.
+Some teams work on laptops with split panes and prefer 80 columns.
+Others have ultrawide monitors and 120 feels right.
+
+The \lstinline|--width| flag lets you choose:
+
+\begin{lstlisting}[language=Lattice, caption={Setting line width to 80 columns}]
+// $ clat fmt --width 80 src/main.lat
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Setting line width to 120 columns}]
+// $ clat fmt --width 120 src/main.lat
+\end{lstlisting}
+
+When the formatter encounters a line that exceeds the target width, it makes wrapping decisions---for instance, breaking long function parameter lists across multiple lines.
+Passing zero (or omitting the flag) uses the default of 100, as defined by the \lstinline|DEFAULT_LINE_WIDTH| constant in \filename{src/formatter.c}.
+
+\begin{notebox}{Width is a Target, Not a Hard Limit}
+The \lstinline|--width| value is a \emph{target}, not an absolute ceiling.
+Some constructs---like a long string literal or a deeply nested expression---cannot be broken further without changing program semantics.
+In those cases, the formatter will exceed the target rather than produce incorrect code.
+\end{notebox}
+
+Let's see the width flag in action.
+Consider a function with many parameters:
+
+\begin{lstlisting}[language=Lattice, caption={A function with many parameters}]
+fn create_report(title: String, author: String, created_at: String, tags: Array, body: String, draft: Bool) -> Map {
+    let report = Map::new()
+    report["title"] = title
+    report["author"] = author
+    report["created_at"] = created_at
+    report["tags"] = tags
+    report["body"] = body
+    report["draft"] = draft
+    return report
+}
+\end{lstlisting}
+
+At \lstinline|--width 80|, the formatter may wrap the parameter list to keep lines within bounds.
+At \lstinline|--width 120|, the entire signature might fit on a single line.
+
+\begin{tipbox}{Team Convention}
+Pick a width for your project and stick with it.
+Add it to your project's build script or Makefile:
+\begin{lstlisting}[language=Lattice]
+// Makefile target:
+// fmt:
+//     clat fmt --width 100 src/ lib/
+\end{lstlisting}
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{///} Doc Comments}\label{sec:doc-comments}
+\index{doc comments}\index{triple-slash comments}
+
+Lattice uses triple-slash (\lstinline|///|) comments for documentation.
+Unlike regular \lstinline|//| comments, doc comments are extracted by the documentation generator and attached to the declaration that follows them.
+
+\begin{lstlisting}[language=Lattice, caption={Doc comments on a function}]
+/// Calculate the body mass index for a patient.
+/// Returns the BMI as a Float value.
+fn calculate_bmi(weight_kg: Float, height_m: Float) -> Float {
+    return weight_kg / (height_m * height_m)
+}
+\end{lstlisting}
+
+Doc comments can span multiple consecutive lines.
+The \lstinline|///| prefix and one optional space after it are stripped, and the remaining text becomes the documentation body.
+
+\subsection{Documenting All Declaration Types}\label{sec:doc-comments-types}
+
+Doc comments work on every kind of top-level declaration: functions, structs, enums, traits, impl blocks, and even variables.
+
+\begin{lstlisting}[language=Lattice, caption={Doc comments on structs and enums}]
+/// A patient record in the healthcare system.
+/// Contains demographic and medical information.
+struct Patient {
+    /// The patient's full legal name.
+    name: String,
+    /// Age in years.
+    age: Int,
+    /// Blood type (e.g., "A+", "O-").
+    blood_type: String
+}
+
+/// Possible outcomes of a medical test.
+enum TestResult {
+    /// The test came back normal.
+    Negative,
+    /// The test detected the condition.
+    Positive,
+    /// The sample was insufficient or contaminated.
+    Inconclusive
+}
+\end{lstlisting}
+
+Notice that each struct field and enum variant can have its own doc comment.
+The documentation generator (covered in the next section) extracts these and associates them with the correct field or variant.
+
+\subsection{Module-Level Doc Comments}\label{sec:module-doc}
+\index{doc comments!module-level}
+
+If a \lstinline|///| comment block appears at the very top of a file---before any declaration---it is treated as a \emph{module-level} doc comment.
+This is the place to describe what the file or module does:
+
+\begin{lstlisting}[language=Lattice, caption={Module-level documentation}]
+/// The geometry module provides functions for calculating
+/// areas and perimeters of common shapes.
+///
+/// All functions accept dimensions in the same unit
+/// and return results in squared units where applicable.
+
+fn circle_area(radius: Float) -> Float {
+    return 3.14159265 * radius * radius
+}
+
+fn rectangle_area(width: Float, height: Float) -> Float {
+    return width * height
+}
+\end{lstlisting}
+
+The doc extractor in \filename{src/doc\_gen.c} distinguishes module-level docs from declaration docs by checking whether the doc block is followed by a declaration keyword (\lstinline|fn|, \lstinline|struct|, \lstinline|enum|, \lstinline|trait|, \lstinline|impl|, \lstinline|flux|, \lstinline|fix|, \lstinline|let|, or \lstinline|export|).
+If not, it's treated as the module description.
+
+\subsection{Doc Comment Conventions}\label{sec:doc-conventions}
+
+While Lattice doesn't enforce a specific doc comment format, the community has settled on a few conventions:
+
+\begin{lstlisting}[language=Lattice, caption={Recommended doc comment style}]
+/// Open a database connection to the given host.
+///
+/// The connection uses a pooled TCP socket under the hood.
+/// If the host is unreachable, returns an error after
+/// the specified timeout.
+///
+/// Parameters are validated before connecting. An empty
+/// host string will produce an immediate error.
+fn connect(host: String, port: Int, timeout_ms: Int) -> Map {
+    // ... implementation
+    return Map::new()
+}
+\end{lstlisting}
+
+\begin{itemize}
+  \item First line: a brief one-sentence summary.
+  \item Blank line (an empty \lstinline|///| line) separating the summary from the longer description.
+  \item Additional paragraphs for context, usage notes, or caveats.
+\end{itemize}
+
+\begin{warnbox}{Regular Comments Are Ignored}
+Only \lstinline|///| comments are picked up by \lstinline|clat doc|.
+Regular \lstinline|//| comments and block comments (\lstinline|/* ... */|) are treated as implementation notes and excluded from generated documentation.
+If you write documentation with \lstinline|//| instead of \lstinline|///|, it won't appear in the output.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{clat doc} --- Generating Documentation}\label{sec:clat-doc}
+\index{clat doc}\index{documentation generation}
+
+The \lstinline|clat doc| command extracts doc comments from one or more \lstinline|.lat| files and renders them as human-readable documentation.
+
+\begin{lstlisting}[language=Lattice, caption={Basic usage of clat doc}]
+// $ clat doc geometry.lat
+\end{lstlisting}
+
+By default, this prints Markdown to standard output.
+Let's walk through a complete example.
+Suppose we have \filename{math\_utils.lat}:
+
+\begin{lstlisting}[language=Lattice, caption={A well-documented utility module}]
+/// Utility functions for common mathematical operations.
+
+/// Clamp a value to the range [low, high].
+/// If the value is below low, returns low.
+/// If above high, returns high.
+fn clamp(value: Float, low: Float, high: Float) -> Float {
+    if value < low {
+        return low
+    }
+    if value > high {
+        return high
+    }
+    return value
+}
+
+/// Linear interpolation between two values.
+/// When t is 0.0, returns a. When t is 1.0, returns b.
+fn lerp(a: Float, b: Float, t: Float) -> Float {
+    return a + (b - a) * t
+}
+
+/// A 2D point in Cartesian space.
+struct Point {
+    /// Horizontal coordinate.
+    x: Float,
+    /// Vertical coordinate.
+    y: Float
+}
+
+/// Compute the Euclidean distance between two points.
+fn distance(p1: Point, p2: Point) -> Float {
+    let dx = p2.x - p1.x
+    let dy = p2.y - p1.y
+    return (dx * dx + dy * dy) ** 0.5
+}
+\end{lstlisting}
+
+Running \lstinline|clat doc math_utils.lat| produces:
+
+\begin{lstlisting}[language=Lattice, caption={Generated Markdown output (abbreviated)}]
+// Utility functions for common mathematical operations.
+//
+// ## Functions
+//
+// ### `clamp(value: Float, low: Float, high: Float) -> Float`
+//
+// Clamp a value to the range [low, high].
+// If the value is below low, returns low.
+// If above high, returns high.
+//
+// ### `lerp(a: Float, b: Float, t: Float) -> Float`
+//
+// Linear interpolation between two values.
+// When t is 0.0, returns a. When t is 1.0, returns b.
+//
+// ## Structs
+//
+// ### `struct Point`
+//
+// A 2D point in Cartesian space.
+//
+// | Field | Type    | Description            |
+// |-------|---------|------------------------|
+// | `x`   | `Float` | Horizontal coordinate. |
+// | `y`   | `Float` | Vertical coordinate.   |
+\end{lstlisting}
+
+The documentation generator groups items by kind: functions, structs, enums, traits, implementations, and variables.
+Each section includes the full signature and associated documentation.
+
+\subsection{Documenting a Directory}\label{sec:doc-directory}
+
+Pass a directory to document all \lstinline|.lat| files inside it:
+
+\begin{lstlisting}[language=Lattice, caption={Documenting an entire directory}]
+// $ clat doc src/
+\end{lstlisting}
+
+When processing multiple files, each file gets its own heading in the output. This makes it straightforward to generate documentation for an entire project.
+
+\subsection{Writing Output to Files}\label{sec:doc-output-dir}
+\index{clat doc!output directory}
+
+For larger projects, you'll want to write documentation to files rather than standard output.
+The \lstinline|-o| (or \lstinline|--output|) flag specifies an output directory:
+
+\begin{lstlisting}[language=Lattice, caption={Writing docs to a directory}]
+// $ clat doc -o docs/ src/
+// wrote docs/math_utils.md
+// wrote docs/geometry.md
+// wrote docs/string_helpers.md
+\end{lstlisting}
+
+Each input file produces a corresponding output file.
+The \lstinline|.lat| extension is replaced with the appropriate extension for the chosen format (\lstinline|.md| for Markdown, \lstinline|.json| for JSON, \lstinline|.html| for HTML, or \lstinline|.txt| for plain text).
+The output directory is created automatically if it doesn't exist.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Output Formats: Markdown, JSON, HTML}\label{sec:doc-formats}
+\index{clat doc!output formats}
+
+The documentation generator supports four output formats, each suited to a different use case.
+
+\subsection{Markdown (Default)}\label{sec:doc-markdown}
+\index{clat doc!Markdown}
+
+Markdown is the default because it's the lingua franca of technical documentation---readable as plain text, renderable on GitHub, GitLab, and most wikis.
+
+\begin{lstlisting}[language=Lattice, caption={Generating Markdown output}]
+// $ clat doc --md src/server.lat
+// (or simply: clat doc src/server.lat)
+\end{lstlisting}
+
+The Markdown renderer produces headings, code-formatted signatures, tables for struct fields, and bulleted lists for enum variants.
+
+\subsection{Plain Text}\label{sec:doc-text}
+\index{clat doc!plain text}
+
+For terminal viewing or piping to other tools:
+
+\begin{lstlisting}[language=Lattice, caption={Generating plain text output}]
+// $ clat doc --text src/server.lat
+\end{lstlisting}
+
+The text format uses simple labels like \texttt{FUNCTIONS}, \texttt{STRUCTS}, and \texttt{ENUMS}, with dashed underlines and indented descriptions.
+
+\subsection{JSON}\label{sec:doc-json}
+\index{clat doc!JSON}
+
+The JSON format is designed for machine consumption.
+It's what you'd use to build a custom documentation website, IDE plugin, or search index:
+
+\begin{lstlisting}[language=Lattice, caption={Generating JSON output}]
+// $ clat doc --json src/math_utils.lat
+\end{lstlisting}
+
+The output is a JSON array where each element represents a source file.
+Each file object contains \lstinline|"file"|, an optional \lstinline|"module_doc"|, and an \lstinline|"items"| array.
+Each item has a \lstinline|"kind"| (\lstinline|"function"|, \lstinline|"struct"|, \lstinline|"enum"|, \lstinline|"trait"|, \lstinline|"impl"|, or \lstinline|"variable"|), a \lstinline|"name"|, a \lstinline|"line"| number, and optional \lstinline|"doc"| text, plus kind-specific fields like \lstinline|"params"| for functions or \lstinline|"fields"| for structs.
+
+\begin{lstlisting}[language=Lattice, caption={Example JSON output (abbreviated)}]
+// [
+//   {
+//     "file": "math_utils.lat",
+//     "module_doc": "Utility functions for ...",
+//     "items": [
+//       {
+//         "kind": "function",
+//         "name": "clamp",
+//         "line": 4,
+//         "doc": "Clamp a value to the range ...",
+//         "params": [
+//           {"name": "value", "type": "Float"},
+//           {"name": "low", "type": "Float"},
+//           {"name": "high", "type": "Float"}
+//         ],
+//         "return_type": "Float"
+//       }
+//     ]
+//   }
+// ]
+\end{lstlisting}
+
+\begin{tipbox}{Building a Documentation Website}
+The JSON output pairs well with static site generators.
+Extract docs with \lstinline|clat doc --json src/ > api.json|, then feed \lstinline|api.json| into your favorite template engine to produce a searchable HTML site.
+\end{tipbox}
+
+\subsection{HTML}\label{sec:doc-html}
+\index{clat doc!HTML}
+
+For a self-contained, styled documentation page:
+
+\begin{lstlisting}[language=Lattice, caption={Generating HTML documentation}]
+// $ clat doc --html -o docs/ src/
+\end{lstlisting}
+
+The HTML renderer produces a complete web page with a dark theme, syntax-highlighted signatures, and interactive hover effects.
+Function signatures are color-coded---keywords in purple, types in gold, function names in blue---making it easy to scan a large API surface.
+
+Struct fields render as tables, enum variants as styled lists, and trait methods as indented signatures under their parent trait.
+
+\subsection{The \texttt{--doc-format} Flag}\label{sec:doc-format-flag}
+
+As an alternative to the shorthand flags, you can use \lstinline|--doc-format| with an explicit format name:
+
+\begin{lstlisting}[language=Lattice, caption={Using {-}{-}doc-format}]
+// $ clat doc --doc-format html src/
+// $ clat doc --doc-format json src/
+// $ clat doc --doc-format md src/
+// $ clat doc --doc-format text src/
+\end{lstlisting}
+
+This is useful in scripts where you want to parameterize the format.
+
+\subsection{How Extraction Works Under the Hood}\label{sec:doc-extraction-internals}
+
+The documentation extractor in \filename{src/doc\_gen.c} uses its own lightweight scanner (\lstinline|DocScanner|) rather than the full Lattice lexer.
+This is a deliberate design choice: the scanner needs to preserve doc comments while skipping implementation details, so it only recognizes enough syntax to identify declarations.
+
+The process works as follows:
+
+\begin{enumerate}
+  \item The scanner reads through the source file, skipping whitespace and regular comments.
+  \item When it encounters a \lstinline|///| line, it reads consecutive doc comment lines into a single block, stripping the prefix and one optional leading space.
+  \item After the doc block, the scanner looks for a declaration keyword (\lstinline|fn|, \lstinline|struct|, \lstinline|enum|, \lstinline|trait|, \lstinline|impl|, or a phase keyword).
+  \item For each declaration, the scanner extracts the name and kind-specific details: function parameters and return types, struct fields with their types, enum variants with optional tuple parameters, trait method signatures, and impl block methods.
+  \item The result is a \lstinline|DocFile| structure (defined in \filename{include/doc\_gen.h}) containing a list of \lstinline|DocItem| values that the renderers consume.
+\end{enumerate}
+
+Items that lack doc comments are still extracted for functions, structs, enums, and traits.
+Variables, however, are only included if they have a doc comment, since most local or temporary variables aren't part of a module's public API.
+
+\begin{notebox}{Test Blocks Are Skipped}
+The doc generator recognizes \lstinline|test "name" \{ ... \}| blocks and skips them entirely.
+Tests are implementation details, not part of your public documentation.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{Exercises}\label{sec:formatter-docgen-exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}
+  \item Take one of the Lattice files you've written in earlier chapters and run \lstinline|clat fmt| on it. Compare the before and after. Were there any formatting choices that surprised you? Try running with \lstinline|--width 80| and \lstinline|--width 120| to see how the output changes.
+
+  \item Create a small library module (perhaps a \lstinline|temperature.lat| with conversion functions) and document every function, struct, and constant with \lstinline|///| comments. Then run \lstinline|clat doc --html -o docs/ temperature.lat| and open the resulting HTML in a browser.
+
+  \item Write a shell script (or Makefile target) that runs \lstinline|clat fmt --check| on all \lstinline|.lat| files in a directory tree and exits with a non-zero code if any file needs formatting. This is the skeleton of a CI formatting check.
+
+  \item Generate JSON documentation for a multi-file project and write a small Lattice script that reads the JSON and counts the total number of documented functions, structs, and enums across all files.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:formatter-docgen-next}
+\addcontentsline{toc}{section}{What's Next}
+
+With clean formatting and thorough documentation in hand, the natural next step is to make sure everything actually \emph{works}.
+In \cref{ch:testing}, we'll explore Lattice's built-in testing system---inline \lstinline|test| blocks that live right alongside your code, a rich set of assertion functions, and the \lstinline|clat test| command that discovers and runs your entire test suite.

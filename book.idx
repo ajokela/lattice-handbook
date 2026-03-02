@@ -1,0 +1,1166 @@
+\indexentry{Lattice!introduction|hyperpage}{3}
+\indexentry{phase system|hyperpage}{3}
+\indexentry{Lattice!design philosophy|hyperpage}{3}
+\indexentry{phase system!overview|hyperpage}{4}
+\indexentry{fluid phase|hyperpage}{4}
+\indexentry{freeze|hyperpage}{4}
+\indexentry{crystal phase|hyperpage}{4}
+\indexentry{thaw|hyperpage}{4}
+\indexentry{closures|hyperpage}{4}
+\indexentry{pattern matching|hyperpage}{4}
+\indexentry{string interpolation|hyperpage}{4}
+\indexentry{iterators|hyperpage}{4}
+\indexentry{concurrency|hyperpage}{4}
+\indexentry{built-in functions|hyperpage}{5}
+\indexentry{installation|hyperpage}{5}
+\indexentry{C11 compiler|hyperpage}{5}
+\indexentry{libedit|hyperpage}{5}
+\indexentry{OpenSSL|hyperpage}{5}
+\indexentry{installation!macOS|hyperpage}{5}
+\indexentry{clat|hyperpage}{6}
+\indexentry{installation!Linux|hyperpage}{6}
+\indexentry{installation!Windows|hyperpage}{6}
+\indexentry{installation!WebAssembly|hyperpage}{7}
+\indexentry{WebAssembly|hyperpage}{7}
+\indexentry{Hello, World|hyperpage}{7}
+\indexentry{string interpolation|hyperpage}{8}
+\indexentry{functions!introduction|hyperpage}{8}
+\indexentry{type annotations|hyperpage}{9}
+\indexentry{implicit return|hyperpage}{9}
+\indexentry{examples|hyperpage}{9}
+\indexentry{flux|hyperpage}{10}
+\indexentry{REPL!introduction|hyperpage}{10}
+\indexentry{bytecode compilation|hyperpage}{10}
+\indexentry{=> prefix (REPL)|hyperpage}{11}
+\indexentry{REPL!persistent state|hyperpage}{12}
+\indexentry{command-line arguments|hyperpage}{12}
+\indexentry{args()|hyperpage}{12}
+\indexentry{args()|hyperpage}{12}
+\indexentry{Lattice!unique features|hyperpage}{13}
+\indexentry{phase system!first example|hyperpage}{13}
+\indexentry{forge|hyperpage}{13}
+\indexentry{pattern matching!first example|hyperpage}{14}
+\indexentry{concurrency!first example|hyperpage}{14}
+\indexentry{scope|hyperpage}{14}
+\indexentry{spawn|hyperpage}{14}
+\indexentry{freeze|hyperpage}{15}
+\indexentry{closures!first example|hyperpage}{15}
+\indexentry{pipe operator|hyperpage}{15}
+\indexentry{string interpolation!first example|hyperpage}{16}
+\indexentry{strict mode!introduction|hyperpage}{16}
+\indexentry{\#mode strict|hyperpage}{16}
+\indexentry{REPL|hyperpage}{19}
+\indexentry{REPL!launching|hyperpage}{19}
+\indexentry{REPL!persistent state|hyperpage}{20}
+\indexentry{persistent VM|hyperpage}{20}
+\indexentry{REPL!multi-line input|hyperpage}{20}
+\indexentry{tab completion|hyperpage}{21}
+\indexentry{REPL!tab completion|hyperpage}{21}
+\indexentry{tab completion!keywords|hyperpage}{21}
+\indexentry{tab completion!methods|hyperpage}{22}
+\indexentry{tab completion!method mode|hyperpage}{22}
+\indexentry{tab completion!constructors|hyperpage}{22}
+\indexentry{constructors|hyperpage}{22}
+\indexentry{REPL!defining functions|hyperpage}{23}
+\indexentry{REPL!defining structs|hyperpage}{23}
+\indexentry{REPL!defining enums|hyperpage}{23}
+\indexentry{structs!in REPL|hyperpage}{24}
+\indexentry{enums!in REPL|hyperpage}{24}
+\indexentry{=> prefix (REPL)|hyperpage}{25}
+\indexentry{REPL!output conventions|hyperpage}{25}
+\indexentry{unit|hyperpage}{26}
+\indexentry{repr|hyperpage}{26}
+\indexentry{repr|hyperpage}{26}
+\indexentry{unit|hyperpage}{27}
+\indexentry{nil|hyperpage}{27}
+\indexentry{REPL!tips and tricks|hyperpage}{27}
+\indexentry{typeof()|hyperpage}{28}
+\indexentry{phase\_of()|hyperpage}{28}
+\indexentry{REPL!incremental building|hyperpage}{28}
+\indexentry{REPL!history|hyperpage}{29}
+\indexentry{REPL!exploring built-ins|hyperpage}{30}
+\indexentry{version()|hyperpage}{30}
+\indexentry{REPL!error recovery|hyperpage}{30}
+\indexentry{REPL!debugging|hyperpage}{31}
+\indexentry{breakpoint()|hyperpage}{31}
+\indexentry{breakpoint()|hyperpage}{31}
+\indexentry{REPL!backends|hyperpage}{31}
+\indexentry{types|hyperpage}{35}
+\indexentry{values|hyperpage}{35}
+\indexentry{Int|hyperpage}{35}
+\indexentry{integers|hyperpage}{35}
+\indexentry{Float|hyperpage}{36}
+\indexentry{floats|hyperpage}{36}
+\indexentry{Bool|hyperpage}{37}
+\indexentry{booleans|hyperpage}{37}
+\indexentry{true|hyperpage}{37}
+\indexentry{false|hyperpage}{37}
+\indexentry{truthiness|hyperpage}{37}
+\indexentry{String|hyperpage}{38}
+\indexentry{strings|hyperpage}{38}
+\indexentry{strings!double-quoted|hyperpage}{38}
+\indexentry{string interpolation|hyperpage}{38}
+\indexentry{escape sequences|hyperpage}{39}
+\indexentry{strings!single-quoted|hyperpage}{40}
+\indexentry{string interpolation!disabling|hyperpage}{40}
+\indexentry{strings!triple-quoted|hyperpage}{40}
+\indexentry{multi-line strings|hyperpage}{40}
+\indexentry{strings!methods|hyperpage}{41}
+\indexentry{nil|hyperpage}{42}
+\indexentry{Nil|hyperpage}{42}
+\indexentry{nil coalescing|hyperpage}{42}
+\indexentry{unit|hyperpage}{43}
+\indexentry{Unit|hyperpage}{43}
+\indexentry{typeof()|hyperpage}{43}
+\indexentry{number literals|hyperpage}{45}
+\indexentry{number literals!underscores|hyperpage}{45}
+\indexentry{number literals!hexadecimal|hyperpage}{45}
+\indexentry{operators|hyperpage}{46}
+\indexentry{operators!arithmetic|hyperpage}{46}
+\indexentry{string concatenation|hyperpage}{46}
+\indexentry{operators!comparison|hyperpage}{47}
+\indexentry{operators!logical|hyperpage}{47}
+\indexentry{short-circuit evaluation|hyperpage}{47}
+\indexentry{operators!bitwise|hyperpage}{48}
+\indexentry{operators!compound assignment|hyperpage}{49}
+\indexentry{operators!nil coalescing|hyperpage}{49}
+\indexentry{??|hyperpage}{49}
+\indexentry{operators!optional chaining|hyperpage}{50}
+\indexentry{?.|hyperpage}{50}
+\indexentry{?.|hyperpage}{50}
+\indexentry{operators!range|hyperpage}{51}
+\indexentry{..|hyperpage}{51}
+\indexentry{comments|hyperpage}{51}
+\indexentry{comments!line|hyperpage}{51}
+\indexentry{comments!block|hyperpage}{51}
+\indexentry{comments!nested|hyperpage}{51}
+\indexentry{comments!doc|hyperpage}{52}
+\indexentry{doc comments|hyperpage}{52}
+\indexentry{variables|hyperpage}{55}
+\indexentry{phase system|hyperpage}{55}
+\indexentry{phase system|hyperpage}{55}
+\indexentry{let|hyperpage}{55}
+\indexentry{flux|hyperpage}{56}
+\indexentry{fluid phase|hyperpage}{56}
+\indexentry{fluid phase|hyperpage}{56}
+\indexentry{fluid phase|hyperpage}{57}
+\indexentry{OP\_MARK\_FLUID|hyperpage}{57}
+\indexentry{fix|hyperpage}{57}
+\indexentry{crystal phase|hyperpage}{57}
+\indexentry{crystal phase|hyperpage}{57}
+\indexentry{crystal phase|hyperpage}{58}
+\indexentry{OP\_FREEZE|hyperpage}{58}
+\indexentry{~@\texttt{\~{}} (flux shorthand)|hyperpage}{58}
+\indexentry{*@\texttt{*} (fix shorthand)|hyperpage}{58}
+\indexentry{mutability!as first-class concept|hyperpage}{59}
+\indexentry{freeze|hyperpage}{60}
+\indexentry{thaw|hyperpage}{60}
+\indexentry{freeze!deep|hyperpage}{60}
+\indexentry{thaw!creates copy|hyperpage}{61}
+\indexentry{clone|hyperpage}{61}
+\indexentry{casual mode|hyperpage}{62}
+\indexentry{strict mode|hyperpage}{62}
+\indexentry{\#mode|hyperpage}{62}
+\indexentry{casual mode!rules|hyperpage}{62}
+\indexentry{strict mode!rules|hyperpage}{63}
+\indexentry{strict mode!no let|hyperpage}{63}
+\indexentry{strict mode!consume on freeze|hyperpage}{63}
+\indexentry{strict mode!static checking|hyperpage}{63}
+\indexentry{phase checker|hyperpage}{64}
+\indexentry{phase system!philosophy|hyperpage}{65}
+\indexentry{phase system!chemistry metaphor|hyperpage}{66}
+\indexentry{materials science|hyperpage}{66}
+\indexentry{phase system!concurrency|hyperpage}{67}
+\indexentry{forge|hyperpage}{67}
+\indexentry{patterns!accumulate then freeze|hyperpage}{68}
+\indexentry{patterns!configuration objects|hyperpage}{69}
+\indexentry{patterns!fluid working copy|hyperpage}{70}
+\indexentry{control flow|hyperpage}{75}
+\indexentry{if expression|hyperpage}{75}
+\indexentry{else|hyperpage}{75}
+\indexentry{expression!if/else|hyperpage}{76}
+\indexentry{else if|hyperpage}{78}
+\indexentry{block expression|hyperpage}{78}
+\indexentry{loops|hyperpage}{79}
+\indexentry{while|hyperpage}{79}
+\indexentry{loop|hyperpage}{79}
+\indexentry{for|hyperpage}{79}
+\indexentry{flux|hyperpage}{79}
+\indexentry{loop!infinite|hyperpage}{80}
+\indexentry{for loop|hyperpage}{81}
+\indexentry{iteration|hyperpage}{81}
+\indexentry{break|hyperpage}{83}
+\indexentry{continue|hyperpage}{83}
+\indexentry{return|hyperpage}{83}
+\indexentry{continue!compilation|hyperpage}{85}
+\indexentry{ranges|hyperpage}{87}
+\indexentry{..@\texttt{..} (range operator)|hyperpage}{87}
+\indexentry{slicing|hyperpage}{89}
+\indexentry{nil-coalescing operator|hyperpage}{90}
+\indexentry{??@\texttt{??}|hyperpage}{90}
+\indexentry{short-circuit evaluation|hyperpage}{91}
+\indexentry{pipe operator|hyperpage}{93}
+\indexentry{pipe()@\texttt{pipe()}|hyperpage}{93}
+\indexentry{functions|hyperpage}{101}
+\indexentry{closures|hyperpage}{101}
+\indexentry{fn keyword|hyperpage}{101}
+\indexentry{function definition|hyperpage}{101}
+\indexentry{first-class functions|hyperpage}{102}
+\indexentry{recursion|hyperpage}{103}
+\indexentry{type annotations|hyperpage}{104}
+\indexentry{parameter types|hyperpage}{104}
+\indexentry{return types|hyperpage}{104}
+\indexentry{OP\_CHECK\_TYPE|hyperpage}{104}
+\indexentry{OP\_CHECK\_RETURN\_TYPE|hyperpage}{105}
+\indexentry{default parameters|hyperpage}{106}
+\indexentry{variadic parameters|hyperpage}{106}
+\indexentry{variadic!parameters|hyperpage}{107}
+\indexentry{...@\texttt{...} (spread/variadic)|hyperpage}{107}
+\indexentry{closures|hyperpage}{109}
+\indexentry{anonymous functions|hyperpage}{109}
+\indexentry{lambda|hyperpage}{109}
+\indexentry{upvalues|hyperpage}{111}
+\indexentry{closure!capture|hyperpage}{111}
+\indexentry{environment capture|hyperpage}{111}
+\indexentry{higher-order functions|hyperpage}{114}
+\indexentry{callbacks|hyperpage}{114}
+\indexentry{compose()@\texttt{compose()}|hyperpage}{115}
+\indexentry{require|hyperpage}{117}
+\indexentry{ensure|hyperpage}{117}
+\indexentry{contracts|hyperpage}{117}
+\indexentry{design by contract|hyperpage}{117}
+\indexentry{require|hyperpage}{117}
+\indexentry{ensure|hyperpage}{118}
+\indexentry{collections|hyperpage}{123}
+\indexentry{arrays|hyperpage}{123}
+\indexentry{Array|hyperpage}{123}
+\indexentry{array!indexing|hyperpage}{124}
+\indexentry{array!slicing|hyperpage}{124}
+\indexentry{push()@\texttt{push()}|hyperpage}{124}
+\indexentry{pop()@\texttt{pop()}|hyperpage}{124}
+\indexentry{array!methods|hyperpage}{125}
+\indexentry{array!closure methods|hyperpage}{127}
+\indexentry{map()@\texttt{.map()}|hyperpage}{127}
+\indexentry{filter()@\texttt{.filter()}|hyperpage}{127}
+\indexentry{reduce()@\texttt{.reduce()}|hyperpage}{127}
+\indexentry{sort\_by()@\texttt{.sort\_by()}|hyperpage}{129}
+\indexentry{group\_by()@\texttt{.group\_by()}|hyperpage}{129}
+\indexentry{find()@\texttt{.find()}|hyperpage}{130}
+\indexentry{any()@\texttt{.any()}|hyperpage}{130}
+\indexentry{all()@\texttt{.all()}|hyperpage}{130}
+\indexentry{spread operator|hyperpage}{131}
+\indexentry{...@\texttt{...} (spread)|hyperpage}{131}
+\indexentry{maps|hyperpage}{133}
+\indexentry{Map|hyperpage}{133}
+\indexentry{Map!methods|hyperpage}{134}
+\indexentry{sets|hyperpage}{137}
+\indexentry{Set|hyperpage}{137}
+\indexentry{Set!union|hyperpage}{137}
+\indexentry{Set!intersection|hyperpage}{137}
+\indexentry{Set!difference|hyperpage}{137}
+\indexentry{Set!is\_subset|hyperpage}{139}
+\indexentry{Set!is\_superset|hyperpage}{139}
+\indexentry{tuples|hyperpage}{139}
+\indexentry{Tuple|hyperpage}{139}
+\indexentry{strings|hyperpage}{145}
+\indexentry{string interpolation|hyperpage}{145}
+\indexentry{escape sequences|hyperpage}{145}
+\indexentry{raw strings|hyperpage}{145}
+\indexentry{escape sequences|hyperpage}{146}
+\indexentry{triple-quoted strings|hyperpage}{147}
+\indexentry{multiline strings|hyperpage}{147}
+\indexentry{String!methods|hyperpage}{148}
+\indexentry{split()@\texttt{.split()}|hyperpage}{148}
+\indexentry{trim()@\texttt{.trim()}|hyperpage}{148}
+\indexentry{replace()@\texttt{.replace()}|hyperpage}{148}
+\indexentry{contains()@\texttt{.contains()}|hyperpage}{149}
+\indexentry{starts\_with()@\texttt{.starts\_with()}|hyperpage}{149}
+\indexentry{ends\_with()@\texttt{.ends\_with()}|hyperpage}{149}
+\indexentry{count()@\texttt{.count()}|hyperpage}{149}
+\indexentry{case transformations|hyperpage}{150}
+\indexentry{String!case conversion|hyperpage}{150}
+\indexentry{snake\_case()@\texttt{.snake\_case()}|hyperpage}{150}
+\indexentry{camel\_case()@\texttt{.camel\_case()}|hyperpage}{150}
+\indexentry{kebab\_case()@\texttt{.kebab\_case()}|hyperpage}{150}
+\indexentry{title\_case()@\texttt{.title\_case()}|hyperpage}{150}
+\indexentry{chars()@\texttt{.chars()}|hyperpage}{151}
+\indexentry{bytes()@\texttt{.bytes()}|hyperpage}{151}
+\indexentry{len()@\texttt{.len()}|hyperpage}{152}
+\indexentry{substring()@\texttt{.substring()}|hyperpage}{152}
+\indexentry{index\_of()@\texttt{.index\_of()}|hyperpage}{152}
+\indexentry{Unicode|hyperpage}{153}
+\indexentry{ord()@\texttt{ord()}|hyperpage}{153}
+\indexentry{chr()@\texttt{chr()}|hyperpage}{153}
+\indexentry{regular expressions|hyperpage}{156}
+\indexentry{regex|hyperpage}{156}
+\indexentry{regex\_match()@\texttt{.regex\_match()}|hyperpage}{156}
+\indexentry{regex\_find\_all()@\texttt{.regex\_find\_all()}|hyperpage}{157}
+\indexentry{regex\_replace()@\texttt{.regex\_replace()}|hyperpage}{157}
+\indexentry{regex!flags|hyperpage}{158}
+\indexentry{pattern matching|hyperpage}{163}
+\indexentry{match expression|hyperpage}{163}
+\indexentry{match expression!syntax|hyperpage}{164}
+\indexentry{match expression!arm body|hyperpage}{165}
+\indexentry{match expression!evaluation order|hyperpage}{165}
+\indexentry{pattern matching!literal pattern|hyperpage}{166}
+\indexentry{pattern matching!wildcard|hyperpage}{167}
+\indexentry{\_@\texttt{\_} (wildcard)|hyperpage}{167}
+\indexentry{pattern matching!binding pattern|hyperpage}{167}
+\indexentry{pattern matching!range pattern|hyperpage}{168}
+\indexentry{range!in patterns|hyperpage}{168}
+\indexentry{pattern matching!guard|hyperpage}{170}
+\indexentry{guard (match)|hyperpage}{170}
+\indexentry{pattern matching!array destructuring|hyperpage}{172}
+\indexentry{array!destructuring|hyperpage}{172}
+\indexentry{pattern matching!rest pattern|hyperpage}{173}
+\indexentry{...@\texttt{...} (rest pattern)|hyperpage}{173}
+\indexentry{pattern matching!struct destructuring|hyperpage}{174}
+\indexentry{struct!destructuring|hyperpage}{174}
+\indexentry{pattern matching!enum variant|hyperpage}{176}
+\indexentry{enum!pattern matching|hyperpage}{176}
+\indexentry{enum!unit variant|hyperpage}{177}
+\indexentry{pattern matching!exhaustiveness|hyperpage}{179}
+\indexentry{exhaustiveness checking|hyperpage}{179}
+\indexentry{exhaustiveness checking!enum|hyperpage}{179}
+\indexentry{exhaustiveness checking!boolean|hyperpage}{180}
+\indexentry{pattern matching!phase qualifier|hyperpage}{182}
+\indexentry{phase!in patterns|hyperpage}{182}
+\indexentry{match expression!compilation|hyperpage}{185}
+\indexentry{pattern matching!idioms|hyperpage}{186}
+\indexentry{error handling|hyperpage}{193}
+\indexentry{error()@\texttt{error()}|hyperpage}{194}
+\indexentry{is\_error()@\texttt{is\_error()}|hyperpage}{194}
+\indexentry{Result type|hyperpage}{195}
+\indexentry{ok()@\texttt{ok()}|hyperpage}{195}
+\indexentry{err()@\texttt{err()}|hyperpage}{195}
+\indexentry{is\_ok()@\texttt{is\_ok()}|hyperpage}{196}
+\indexentry{is\_err()@\texttt{is\_err()}|hyperpage}{196}
+\indexentry{unwrap()@\texttt{unwrap()}|hyperpage}{196}
+\indexentry{unwrap\_or()@\texttt{unwrap\_or()}|hyperpage}{196}
+\indexentry{try/catch|hyperpage}{197}
+\indexentry{try/catch!as expression|hyperpage}{198}
+\indexentry{error map|hyperpage}{198}
+\indexentry{try/catch!catchable errors|hyperpage}{199}
+\indexentry{?@\texttt{?} operator|hyperpage}{200}
+\indexentry{error propagation|hyperpage}{200}
+\indexentry{?@\texttt{?} operator!mechanics|hyperpage}{201}
+\indexentry{OP\_TRY\_UNWRAP|hyperpage}{201}
+\indexentry{panic()@\texttt{panic()}|hyperpage}{202}
+\indexentry{defer|hyperpage}{203}
+\indexentry{defer!execution order|hyperpage}{203}
+\indexentry{defer!scope|hyperpage}{204}
+\indexentry{defer!with errors|hyperpage}{204}
+\indexentry{defer!return value preservation|hyperpage}{205}
+\indexentry{defer!compilation|hyperpage}{206}
+\indexentry{require contract|hyperpage}{206}
+\indexentry{ensure contract|hyperpage}{206}
+\indexentry{contracts|hyperpage}{206}
+\indexentry{assert()@\texttt{assert()}|hyperpage}{208}
+\indexentry{assert\_eq()@\texttt{assert\_eq()}|hyperpage}{208}
+\indexentry{try\_fn()@\texttt{try\_fn()}|hyperpage}{209}
+\indexentry{phase system|(hyperpage}{217}
+\indexentry{mutability|hyperpage}{217}
+\indexentry{phase!definition|hyperpage}{218}
+\indexentry{flux@\texttt{flux}|(hyperpage}{218}
+\indexentry{fluid phase|hyperpage}{218}
+\indexentry{flux@\texttt{flux}|)hyperpage}{220}
+\indexentry{fix@\texttt{fix}|(hyperpage}{220}
+\indexentry{crystal phase|hyperpage}{220}
+\indexentry{fix@\texttt{fix}|)hyperpage}{222}
+\indexentry{let@\texttt{let}|(hyperpage}{222}
+\indexentry{phase inference|hyperpage}{222}
+\indexentry{unphased|hyperpage}{222}
+\indexentry{let@\texttt{let}|)hyperpage}{223}
+\indexentry{freeze@\texttt{freeze()}|(hyperpage}{223}
+\indexentry{thaw@\texttt{thaw()}|(hyperpage}{223}
+\indexentry{clone@\texttt{clone()}|(hyperpage}{223}
+\indexentry{freeze@\texttt{freeze()}|)hyperpage}{227}
+\indexentry{thaw@\texttt{thaw()}|)hyperpage}{227}
+\indexentry{clone@\texttt{clone()}|)hyperpage}{227}
+\indexentry{forge@\texttt{forge}|(hyperpage}{227}
+\indexentry{forge@\texttt{forge}|)hyperpage}{228}
+\indexentry{anneal@\texttt{anneal}|(hyperpage}{228}
+\indexentry{anneal@\texttt{anneal}|)hyperpage}{229}
+\indexentry{crystallize@\texttt{crystallize}|(hyperpage}{229}
+\indexentry{borrow@\texttt{borrow}|(hyperpage}{229}
+\indexentry{crystallize@\texttt{crystallize}|)hyperpage}{230}
+\indexentry{borrow@\texttt{borrow}|)hyperpage}{230}
+\indexentry{sublimate@\texttt{sublimate}|(hyperpage}{230}
+\indexentry{sublimated phase|hyperpage}{230}
+\indexentry{sublimate@\texttt{sublimate}|)hyperpage}{231}
+\indexentry{freeze@\texttt{freeze()}!when to use|hyperpage}{231}
+\indexentry{phase errors|(hyperpage}{233}
+\indexentry{phase errors|)hyperpage}{237}
+\indexentry{phase\_of@\texttt{phase\_of()}|hyperpage}{237}
+\indexentry{phase system|)hyperpage}{240}
+\indexentry{memory architecture|(hyperpage}{241}
+\indexentry{dual-heap architecture|hyperpage}{241}
+\indexentry{FluidHeap|(hyperpage}{241}
+\indexentry{garbage collection!mark-sweep|hyperpage}{241}
+\indexentry{garbage collection!mark phase|hyperpage}{242}
+\indexentry{garbage collection!sweep phase|hyperpage}{242}
+\indexentry{FluidHeap|)hyperpage}{243}
+\indexentry{CrystalRegion|(hyperpage}{243}
+\indexentry{arena allocation|hyperpage}{243}
+\indexentry{arena allocation!definition|hyperpage}{244}
+\indexentry{region collection|hyperpage}{245}
+\indexentry{RegionManager|hyperpage}{246}
+\indexentry{CrystalRegion|)hyperpage}{246}
+\indexentry{BumpArena|(hyperpage}{246}
+\indexentry{ephemeral allocation|hyperpage}{246}
+\indexentry{BumpArena|)hyperpage}{248}
+\indexentry{freeze@\texttt{freeze()}!memory mechanics|hyperpage}{248}
+\indexentry{string interning|(hyperpage}{249}
+\indexentry{string interning|)hyperpage}{250}
+\indexentry{DualHeap|hyperpage}{250}
+\indexentry{garbage collection!flags|(hyperpage}{251}
+\indexentry{garbage collection!--gc flag@\texttt{--gc} flag|hyperpage}{251}
+\indexentry{garbage collection!stress mode|hyperpage}{252}
+\indexentry{garbage collection!incremental mode|hyperpage}{252}
+\indexentry{garbage collection!flags|)hyperpage}{253}
+\indexentry{region\_id@\texttt{region\_id}|hyperpage}{253}
+\indexentry{memory architecture|)hyperpage}{256}
+\indexentry{alloys|(hyperpage}{257}
+\indexentry{reactive bonds|(hyperpage}{257}
+\indexentry{alloys!struct declarations|hyperpage}{257}
+\indexentry{alloys!definition|hyperpage}{258}
+\indexentry{freeze@\texttt{freeze()}!partial freeze|hyperpage}{259}
+\indexentry{alloys!design patterns|hyperpage}{260}
+\indexentry{bond@\texttt{bond()}|(hyperpage}{263}
+\indexentry{react@\texttt{react()}|(hyperpage}{263}
+\indexentry{bond@\texttt{bond()}!dependency|hyperpage}{265}
+\indexentry{bond@\texttt{bond()}|)hyperpage}{267}
+\indexentry{react@\texttt{react()}|)hyperpage}{267}
+\indexentry{bond strategies|(hyperpage}{267}
+\indexentry{bond strategies!mirror|hyperpage}{267}
+\indexentry{bond strategies|)hyperpage}{269}
+\indexentry{pressure|(hyperpage}{269}
+\indexentry{pressurize@\texttt{pressurize()}|(hyperpage}{269}
+\indexentry{pressurize@\texttt{pressurize()}|)hyperpage}{271}
+\indexentry{pressure|)hyperpage}{271}
+\indexentry{seed@\texttt{seed()}|(hyperpage}{271}
+\indexentry{seed@\texttt{seed()}!definition|hyperpage}{272}
+\indexentry{grow@\texttt{grow()}|hyperpage}{273}
+\indexentry{reactive data flows|hyperpage}{275}
+\indexentry{alloys|)hyperpage}{279}
+\indexentry{reactive bonds|)hyperpage}{279}
+\indexentry{strict mode|(hyperpage}{281}
+\indexentry{static phase checking|(hyperpage}{281}
+\indexentry{strict mode!enabling|hyperpage}{281}
+\indexentry{\#mode strict@\texttt{\#mode strict}|hyperpage}{281}
+\indexentry{phase checker|hyperpage}{283}
+\indexentry{strict mode!spawn checking|hyperpage}{284}
+\indexentry{phase annotations|(hyperpage}{285}
+\indexentry{@fluid@\texttt{@fluid}|hyperpage}{285}
+\indexentry{@crystal@\texttt{@crystal}|hyperpage}{285}
+\indexentry{phase annotations|)hyperpage}{287}
+\indexentry{phase constraints|(hyperpage}{287}
+\indexentry{PhaseConstraint|hyperpage}{287}
+\indexentry{phase constraints!definition|hyperpage}{290}
+\indexentry{phase constraints|)hyperpage}{290}
+\indexentry{function overloading!phase-dependent|(hyperpage}{290}
+\indexentry{function overloading!phase-dependent|)hyperpage}{292}
+\indexentry{phase-aware API design|hyperpage}{292}
+\indexentry{strict mode|)hyperpage}{297}
+\indexentry{static phase checking|)hyperpage}{297}
+\indexentry{struct|hyperpage}{301}
+\indexentry{struct!definition|hyperpage}{301}
+\indexentry{struct!field access|hyperpage}{304}
+\indexentry{struct!mutation|hyperpage}{304}
+\indexentry{struct!methods|hyperpage}{307}
+\indexentry{impl|hyperpage}{307}
+\indexentry{struct!callable fields|hyperpage}{310}
+\indexentry{closure!as struct field|hyperpage}{310}
+\indexentry{struct!equality|hyperpage}{313}
+\indexentry{eq (custom equality)|hyperpage}{313}
+\indexentry{struct!reflection|hyperpage}{316}
+\indexentry{struct\_name|hyperpage}{316}
+\indexentry{struct\_fields|hyperpage}{316}
+\indexentry{struct\_to\_map|hyperpage}{316}
+\indexentry{struct\_from\_map|hyperpage}{316}
+\indexentry{struct!destructuring|hyperpage}{319}
+\indexentry{struct!pass-by-value|hyperpage}{320}
+\indexentry{pass-by-value|hyperpage}{320}
+\indexentry{ECS|hyperpage}{323}
+\indexentry{enum|hyperpage}{327}
+\indexentry{enum!definition|hyperpage}{327}
+\indexentry{enum!variant|hyperpage}{327}
+\indexentry{enum!construction|hyperpage}{329}
+\indexentry{enum!tag|hyperpage}{332}
+\indexentry{enum!payload|hyperpage}{332}
+\indexentry{enum!matching|hyperpage}{333}
+\indexentry{match!enum patterns|hyperpage}{333}
+\indexentry{pattern matching!enum|hyperpage}{333}
+\indexentry{enum!state machine|hyperpage}{337}
+\indexentry{state machine|hyperpage}{337}
+\indexentry{Option|hyperpage}{340}
+\indexentry{Result|hyperpage}{340}
+\indexentry{enum!Option pattern|hyperpage}{340}
+\indexentry{enum!Result pattern|hyperpage}{340}
+\indexentry{enum!exhaustiveness|hyperpage}{344}
+\indexentry{match!exhaustiveness|hyperpage}{344}
+\indexentry{enum!recursive|hyperpage}{347}
+\indexentry{OP\_BUILD\_ENUM|hyperpage}{351}
+\indexentry{trait|hyperpage}{353}
+\indexentry{impl|hyperpage}{353}
+\indexentry{trait!declaration|hyperpage}{353}
+\indexentry{impl!block|hyperpage}{355}
+\indexentry{trait!implementation|hyperpage}{355}
+\indexentry{impl!multiple blocks|hyperpage}{359}
+\indexentry{trait!design patterns|hyperpage}{361}
+\indexentry{interface|hyperpage}{361}
+\indexentry{polymorphism|hyperpage}{364}
+\indexentry{trait!polymorphism|hyperpage}{364}
+\indexentry{trait!internals|hyperpage}{370}
+\indexentry{generics|hyperpage}{373}
+\indexentry{generics!functions|hyperpage}{373}
+\indexentry{function!generic|hyperpage}{373}
+\indexentry{generics!structs|hyperpage}{376}
+\indexentry{struct!generic|hyperpage}{376}
+\indexentry{generics!enums|hyperpage}{379}
+\indexentry{enum!generic|hyperpage}{379}
+\indexentry{type expression|hyperpage}{381}
+\indexentry{type annotation|hyperpage}{381}
+\indexentry{function type|hyperpage}{383}
+\indexentry{generics!patterns|hyperpage}{385}
+\indexentry{generics!roadmap|hyperpage}{390}
+\indexentry{structured concurrency|hyperpage}{395}
+\indexentry{scope@\texttt{scope}|hyperpage}{395}
+\indexentry{spawn@\texttt{spawn}|hyperpage}{395}
+\indexentry{scope@\texttt{scope}!basic usage|hyperpage}{395}
+\indexentry{structured concurrency!definition|hyperpage}{396}
+\indexentry{scope@\texttt{scope}!as expression|hyperpage}{397}
+\indexentry{structured concurrency!motivation|hyperpage}{398}
+\indexentry{spawn@\texttt{spawn}!error handling|hyperpage}{399}
+\indexentry{structured concurrency!joining|hyperpage}{400}
+\indexentry{joining semantics|hyperpage}{400}
+\indexentry{scope@\texttt{scope}!nesting|hyperpage}{401}
+\indexentry{scope@\texttt{scope}!in loops|hyperpage}{401}
+\indexentry{spawn@\texttt{spawn}!data sharing|hyperpage}{402}
+\indexentry{data sharing!between spawns|hyperpage}{402}
+\indexentry{deep cloning!in spawns|hyperpage}{403}
+\indexentry{Ref@\texttt{Ref}!with spawns|hyperpage}{404}
+\indexentry{Ref@\texttt{Ref}!race conditions|hyperpage}{404}
+\indexentry{sublimate@\texttt{sublimate}|hyperpage}{404}
+\indexentry{phase!sublimated|hyperpage}{404}
+\indexentry{sublimated phase|hyperpage}{404}
+\indexentry{sublimate@\texttt{sublimate}!definition|hyperpage}{405}
+\indexentry{fan-out/fan-in|hyperpage}{407}
+\indexentry{concurrency patterns!fan-out/fan-in|hyperpage}{407}
+\indexentry{cancellation!with Ref|hyperpage}{410}
+\indexentry{scope@\texttt{scope}!implementation|hyperpage}{412}
+\indexentry{OP\_SCOPE@\texttt{OP\_SCOPE}|hyperpage}{412}
+\indexentry{DualHeap@\texttt{DualHeap}!per-thread|hyperpage}{413}
+\indexentry{Channel@\texttt{Channel}|hyperpage}{415}
+\indexentry{channels|hyperpage}{415}
+\indexentry{Channel@\texttt{Channel}!creation|hyperpage}{415}
+\indexentry{Channel::new@\texttt{Channel::new()}|hyperpage}{415}
+\indexentry{Channel@\texttt{Channel}!definition|hyperpage}{416}
+\indexentry{Channel@\texttt{Channel}!send|hyperpage}{416}
+\indexentry{send@\texttt{send()}|hyperpage}{416}
+\indexentry{Channel@\texttt{Channel}!closed|hyperpage}{416}
+\indexentry{Channel@\texttt{Channel}!recv|hyperpage}{416}
+\indexentry{recv@\texttt{recv()}|hyperpage}{416}
+\indexentry{Channel@\texttt{Channel}!close|hyperpage}{418}
+\indexentry{close@\texttt{close()}|hyperpage}{418}
+\indexentry{Channel@\texttt{Channel}!closing best practice|hyperpage}{419}
+\indexentry{producer-consumer|hyperpage}{420}
+\indexentry{concurrency patterns!producer-consumer|hyperpage}{420}
+\indexentry{select@\texttt{select}|hyperpage}{422}
+\indexentry{channel multiplexing|hyperpage}{422}
+\indexentry{select@\texttt{select}!definition|hyperpage}{423}
+\indexentry{select@\texttt{select}!fairness|hyperpage}{424}
+\indexentry{select@\texttt{select}!default arm|hyperpage}{425}
+\indexentry{select@\texttt{select}!timeout arm|hyperpage}{425}
+\indexentry{timeout@\texttt{timeout}!in select|hyperpage}{427}
+\indexentry{pipeline pattern|hyperpage}{430}
+\indexentry{concurrency patterns!pipeline|hyperpage}{430}
+\indexentry{async\_iter@\texttt{async\_iter}|hyperpage}{433}
+\indexentry{async\_map@\texttt{async\_map}|hyperpage}{433}
+\indexentry{async\_filter@\texttt{async\_filter}|hyperpage}{433}
+\indexentry{iterators!async|hyperpage}{433}
+\indexentry{async\_iter@\texttt{async\_iter}!definition|hyperpage}{434}
+\indexentry{async iterators!vs channels|hyperpage}{436}
+\indexentry{select@\texttt{select}!implementation|hyperpage}{436}
+\indexentry{OP\_SELECT@\texttt{OP\_SELECT}|hyperpage}{436}
+\indexentry{concurrency patterns|hyperpage}{439}
+\indexentry{Ref@\texttt{Ref}|hyperpage}{439}
+\indexentry{Ref@\texttt{Ref}!API|hyperpage}{439}
+\indexentry{Ref::new@\texttt{Ref::new()}|hyperpage}{439}
+\indexentry{Ref@\texttt{Ref}!get|hyperpage}{439}
+\indexentry{Ref@\texttt{Ref}!set|hyperpage}{439}
+\indexentry{Ref@\texttt{Ref}!proxying|hyperpage}{440}
+\indexentry{Ref@\texttt{Ref}!freezing|hyperpage}{441}
+\indexentry{channels!vs Ref|hyperpage}{441}
+\indexentry{Ref@\texttt{Ref}!vs channels|hyperpage}{441}
+\indexentry{deadlock|hyperpage}{442}
+\indexentry{deadlock!avoidance|hyperpage}{442}
+\indexentry{worker pool|hyperpage}{444}
+\indexentry{concurrency patterns!worker pool|hyperpage}{444}
+\indexentry{broadcast pattern|hyperpage}{446}
+\indexentry{concurrency patterns!broadcast|hyperpage}{446}
+\indexentry{request-reply pattern|hyperpage}{447}
+\indexentry{concurrency patterns!request-reply|hyperpage}{447}
+\indexentry{testing!concurrent code|hyperpage}{449}
+\indexentry{concurrency!testing|hyperpage}{449}
+\indexentry{garbage collection!concurrent|hyperpage}{453}
+\indexentry{filesystem|hyperpage}{457}
+\indexentry{file I/O|hyperpage}{457}
+\indexentry{read\_file|hyperpage}{457}
+\indexentry{write\_file|hyperpage}{457}
+\indexentry{append\_file|hyperpage}{457}
+\indexentry{file\_exists|hyperpage}{459}
+\indexentry{list\_dir|hyperpage}{459}
+\indexentry{mkdir|hyperpage}{459}
+\indexentry{glob|hyperpage}{459}
+\indexentry{stat|hyperpage}{459}
+\indexentry{is\_dir|hyperpage}{459}
+\indexentry{is\_file|hyperpage}{459}
+\indexentry{delete\_file|hyperpage}{459}
+\indexentry{copy\_file|hyperpage}{459}
+\indexentry{rename|hyperpage}{459}
+\indexentry{rmdir|hyperpage}{459}
+\indexentry{chmod|hyperpage}{459}
+\indexentry{realpath|hyperpage}{459}
+\indexentry{file\_size|hyperpage}{459}
+\indexentry{glob|hyperpage}{461}
+\indexentry{stat|hyperpage}{462}
+\indexentry{file\_size|hyperpage}{462}
+\indexentry{copy\_file|hyperpage}{463}
+\indexentry{rename|hyperpage}{463}
+\indexentry{delete\_file|hyperpage}{463}
+\indexentry{chmod|hyperpage}{464}
+\indexentry{realpath|hyperpage}{464}
+\indexentry{path\_join|hyperpage}{464}
+\indexentry{path\_dir|hyperpage}{464}
+\indexentry{path\_base|hyperpage}{464}
+\indexentry{path\_ext|hyperpage}{464}
+\indexentry{tempfile|hyperpage}{467}
+\indexentry{tempdir|hyperpage}{467}
+\indexentry{Buffer|hyperpage}{470}
+\indexentry{binary data|hyperpage}{470}
+\indexentry{read\_file\_bytes|hyperpage}{470}
+\indexentry{write\_file\_bytes|hyperpage}{470}
+\indexentry{Buffer!indexing|hyperpage}{471}
+\indexentry{Buffer!push|hyperpage}{472}
+\indexentry{Buffer!read\_u8|hyperpage}{472}
+\indexentry{Buffer!write\_u8|hyperpage}{472}
+\indexentry{Buffer!read\_u16|hyperpage}{472}
+\indexentry{Buffer!read\_u32|hyperpage}{472}
+\indexentry{Buffer!read\_u64|hyperpage}{472}
+\indexentry{Buffer!read\_i8|hyperpage}{472}
+\indexentry{Buffer!read\_i16|hyperpage}{472}
+\indexentry{Buffer!read\_i32|hyperpage}{472}
+\indexentry{Buffer!read\_i64|hyperpage}{472}
+\indexentry{Buffer!read\_f32|hyperpage}{472}
+\indexentry{Buffer!read\_f64|hyperpage}{472}
+\indexentry{Buffer!slice|hyperpage}{473}
+\indexentry{Buffer!fill|hyperpage}{473}
+\indexentry{Buffer!clear|hyperpage}{473}
+\indexentry{Buffer!resize|hyperpage}{473}
+\indexentry{Buffer!to\_string|hyperpage}{473}
+\indexentry{Buffer!to\_array|hyperpage}{473}
+\indexentry{Buffer!to\_hex|hyperpage}{473}
+\indexentry{JSON|hyperpage}{477}
+\indexentry{TOML|hyperpage}{477}
+\indexentry{YAML|hyperpage}{477}
+\indexentry{CSV|hyperpage}{477}
+\indexentry{data formats|hyperpage}{477}
+\indexentry{json\_parse|hyperpage}{477}
+\indexentry{json\_stringify|hyperpage}{477}
+\indexentry{toml\_parse|hyperpage}{480}
+\indexentry{toml\_stringify|hyperpage}{480}
+\indexentry{yaml\_parse|hyperpage}{483}
+\indexentry{yaml\_stringify|hyperpage}{483}
+\indexentry{csv\_parse|hyperpage}{486}
+\indexentry{csv\_stringify|hyperpage}{486}
+\indexentry{round-tripping|hyperpage}{490}
+\indexentry{configuration|hyperpage}{492}
+\indexentry{dotenv|hyperpage}{495}
+\indexentry{networking|hyperpage}{497}
+\indexentry{HTTP|hyperpage}{497}
+\indexentry{TCP|hyperpage}{497}
+\indexentry{TLS|hyperpage}{497}
+\indexentry{http\_get|hyperpage}{497}
+\indexentry{http\_post|hyperpage}{497}
+\indexentry{http\_request|hyperpage}{497}
+\indexentry{tcp\_listen|hyperpage}{501}
+\indexentry{tcp\_accept|hyperpage}{501}
+\indexentry{tcp\_connect|hyperpage}{501}
+\indexentry{tcp\_read|hyperpage}{501}
+\indexentry{tcp\_write|hyperpage}{501}
+\indexentry{tcp\_close|hyperpage}{501}
+\indexentry{tcp\_peer\_addr|hyperpage}{501}
+\indexentry{tcp\_set\_timeout|hyperpage}{501}
+\indexentry{tls\_connect|hyperpage}{504}
+\indexentry{tls\_read|hyperpage}{504}
+\indexentry{tls\_write|hyperpage}{504}
+\indexentry{tls\_close|hyperpage}{504}
+\indexentry{tls\_available|hyperpage}{504}
+\indexentry{http\_server|hyperpage}{506}
+\indexentry{web server|hyperpage}{506}
+\indexentry{http\_server library|hyperpage}{508}
+\indexentry{url\_encode|hyperpage}{512}
+\indexentry{url\_decode|hyperpage}{512}
+\indexentry{time module|hyperpage}{515}
+\indexentry{crypto module|hyperpage}{515}
+\indexentry{os module|hyperpage}{515}
+\indexentry{math module|hyperpage}{515}
+\indexentry{regex module|hyperpage}{515}
+\indexentry{time|hyperpage}{515}
+\indexentry{sleep|hyperpage}{515}
+\indexentry{time\_format|hyperpage}{515}
+\indexentry{time\_parse|hyperpage}{515}
+\indexentry{datetime|hyperpage}{515}
+\indexentry{time\_year|hyperpage}{517}
+\indexentry{time\_month|hyperpage}{517}
+\indexentry{time\_day|hyperpage}{517}
+\indexentry{time\_hour|hyperpage}{517}
+\indexentry{time\_minute|hyperpage}{517}
+\indexentry{time\_second|hyperpage}{517}
+\indexentry{time\_weekday|hyperpage}{517}
+\indexentry{time\_add|hyperpage}{518}
+\indexentry{datetime\_now|hyperpage}{519}
+\indexentry{datetime\_from\_iso|hyperpage}{519}
+\indexentry{datetime\_to\_iso|hyperpage}{519}
+\indexentry{datetime\_from\_epoch|hyperpage}{519}
+\indexentry{datetime\_to\_epoch|hyperpage}{519}
+\indexentry{datetime\_format|hyperpage}{519}
+\indexentry{datetime\_add\_duration|hyperpage}{519}
+\indexentry{datetime\_sub|hyperpage}{519}
+\indexentry{datetime\_to\_utc|hyperpage}{519}
+\indexentry{datetime\_to\_local|hyperpage}{519}
+\indexentry{timezone\_offset|hyperpage}{519}
+\indexentry{sha256|hyperpage}{520}
+\indexentry{sha512|hyperpage}{520}
+\indexentry{md5|hyperpage}{520}
+\indexentry{hmac\_sha256|hyperpage}{520}
+\indexentry{base64\_encode|hyperpage}{520}
+\indexentry{base64\_decode|hyperpage}{520}
+\indexentry{random\_bytes|hyperpage}{520}
+\indexentry{hmac\_sha256|hyperpage}{521}
+\indexentry{base64\_encode|hyperpage}{521}
+\indexentry{base64\_decode|hyperpage}{521}
+\indexentry{random\_bytes|hyperpage}{522}
+\indexentry{uuid|hyperpage}{523}
+\indexentry{env|hyperpage}{524}
+\indexentry{env\_set|hyperpage}{524}
+\indexentry{env\_keys|hyperpage}{524}
+\indexentry{args|hyperpage}{524}
+\indexentry{platform|hyperpage}{524}
+\indexentry{cwd|hyperpage}{524}
+\indexentry{hostname|hyperpage}{524}
+\indexentry{pid|hyperpage}{524}
+\indexentry{exec|hyperpage}{524}
+\indexentry{shell|hyperpage}{524}
+\indexentry{math module|hyperpage}{528}
+\indexentry{abs|hyperpage}{528}
+\indexentry{floor|hyperpage}{528}
+\indexentry{ceil|hyperpage}{528}
+\indexentry{round|hyperpage}{528}
+\indexentry{sqrt|hyperpage}{528}
+\indexentry{pow|hyperpage}{528}
+\indexentry{min|hyperpage}{528}
+\indexentry{max|hyperpage}{528}
+\indexentry{clamp|hyperpage}{528}
+\indexentry{lerp|hyperpage}{528}
+\indexentry{sin|hyperpage}{528}
+\indexentry{cos|hyperpage}{528}
+\indexentry{tan|hyperpage}{528}
+\indexentry{log|hyperpage}{528}
+\indexentry{random|hyperpage}{528}
+\indexentry{random\_int|hyperpage}{528}
+\indexentry{sign|hyperpage}{533}
+\indexentry{gcd|hyperpage}{533}
+\indexentry{lcm|hyperpage}{533}
+\indexentry{is\_nan|hyperpage}{533}
+\indexentry{is\_inf|hyperpage}{533}
+\indexentry{regex|hyperpage}{533}
+\indexentry{regex\_match|hyperpage}{533}
+\indexentry{regex\_find\_all|hyperpage}{533}
+\indexentry{regex\_replace|hyperpage}{533}
+\indexentry{iterators|hyperpage}{541}
+\indexentry{lazy evaluation|hyperpage}{541}
+\indexentry{Iterator type|hyperpage}{541}
+\indexentry{iterators!protocol|hyperpage}{541}
+\indexentry{iter()|hyperpage}{541}
+\indexentry{iter\_next()|hyperpage}{541}
+\indexentry{iter()!supported types|hyperpage}{542}
+\indexentry{iterators!for loops|hyperpage}{543}
+\indexentry{iterators!sources|hyperpage}{543}
+\indexentry{range\_iter()|hyperpage}{543}
+\indexentry{iterators!range|hyperpage}{543}
+\indexentry{repeat\_iter()|hyperpage}{544}
+\indexentry{iterators!repeat|hyperpage}{544}
+\indexentry{iterators!transformers|hyperpage}{545}
+\indexentry{iterators!map|hyperpage}{545}
+\indexentry{iterators!filter|hyperpage}{545}
+\indexentry{iterators!take|hyperpage}{546}
+\indexentry{iterators!skip|hyperpage}{546}
+\indexentry{iterators!enumerate|hyperpage}{547}
+\indexentry{iterators!zip|hyperpage}{547}
+\indexentry{iterators!chaining|hyperpage}{548}
+\indexentry{iterators!consumers|hyperpage}{549}
+\indexentry{iterators!collect|hyperpage}{549}
+\indexentry{iterators!reduce|hyperpage}{550}
+\indexentry{iterators!fold|hyperpage}{550}
+\indexentry{iterators!any|hyperpage}{551}
+\indexentry{iterators!all|hyperpage}{551}
+\indexentry{iterators!count|hyperpage}{551}
+\indexentry{iterators!custom|hyperpage}{552}
+\indexentry{fn standard library|hyperpage}{552}
+\indexentry{lazy sequences|hyperpage}{552}
+\indexentry{fn standard library!sequences|hyperpage}{552}
+\indexentry{lazy evaluation!benefits|hyperpage}{556}
+\indexentry{iterators!performance|hyperpage}{556}
+\indexentry{iterators!internals|hyperpage}{558}
+\indexentry{functional programming|hyperpage}{561}
+\indexentry{pipe()|hyperpage}{561}
+\indexentry{compose()|hyperpage}{561}
+\indexentry{identity()|hyperpage}{561}
+\indexentry{pipe()|hyperpage}{561}
+\indexentry{compose()|hyperpage}{561}
+\indexentry{identity()|hyperpage}{561}
+\indexentry{pipe()!usage|hyperpage}{561}
+\indexentry{compose()!usage|hyperpage}{563}
+\indexentry{identity()!usage|hyperpage}{564}
+\indexentry{fn standard library|hyperpage}{565}
+\indexentry{standard library!fn|hyperpage}{565}
+\indexentry{fn standard library!comp|hyperpage}{566}
+\indexentry{fn standard library!flip|hyperpage}{566}
+\indexentry{fn standard library!constant|hyperpage}{566}
+\indexentry{fn standard library!apply\_n|hyperpage}{566}
+\indexentry{fn standard library!thread|hyperpage}{567}
+\indexentry{fn standard library!group\_by|hyperpage}{567}
+\indexentry{fn standard library!partition|hyperpage}{567}
+\indexentry{fn standard library!frequencies|hyperpage}{567}
+\indexentry{fn standard library!group\_by|hyperpage}{567}
+\indexentry{fn standard library!partition|hyperpage}{568}
+\indexentry{fn standard library!frequencies|hyperpage}{568}
+\indexentry{fn standard library!uniq\_by|hyperpage}{568}
+\indexentry{fn standard library!Result type|hyperpage}{569}
+\indexentry{Result type (fn module)|hyperpage}{569}
+\indexentry{currying|hyperpage}{570}
+\indexentry{partial application|hyperpage}{570}
+\indexentry{fn standard library!curry|hyperpage}{570}
+\indexentry{fn standard library!partial|hyperpage}{571}
+\indexentry{functional programming!best practices|hyperpage}{572}
+\indexentry{modules|hyperpage}{581}
+\indexentry{imports|hyperpage}{581}
+\indexentry{import!basic|hyperpage}{581}
+\indexentry{import!styles|hyperpage}{582}
+\indexentry{import!aliased|hyperpage}{582}
+\indexentry{import!selective|hyperpage}{583}
+\indexentry{from|hyperpage}{583}
+\indexentry{import!bare|hyperpage}{583}
+\indexentry{module!definition|hyperpage}{584}
+\indexentry{export|hyperpage}{584}
+\indexentry{export!keyword|hyperpage}{584}
+\indexentry{export!legacy mode|hyperpage}{584}
+\indexentry{export!explicit|hyperpage}{584}
+\indexentry{export!modes|hyperpage}{585}
+\indexentry{export!structs|hyperpage}{585}
+\indexentry{export!enums|hyperpage}{585}
+\indexentry{export!filtering|hyperpage}{586}
+\indexentry{export!re-exporting|hyperpage}{586}
+\indexentry{modules!built-in|hyperpage}{587}
+\indexentry{standard library modules|hyperpage}{587}
+\indexentry{module resolution|hyperpage}{588}
+\indexentry{module resolution!order|hyperpage}{588}
+\indexentry{module resolution!built-in|hyperpage}{588}
+\indexentry{module resolution!packages|hyperpage}{588}
+\indexentry{lat\_modules|hyperpage}{588}
+\indexentry{module resolution!relative|hyperpage}{588}
+\indexentry{module resolution!lat\_modules|hyperpage}{589}
+\indexentry{import!relative paths|hyperpage}{589}
+\indexentry{module caching|hyperpage}{590}
+\indexentry{import!caching|hyperpage}{590}
+\indexentry{project structure|hyperpage}{591}
+\indexentry{multi-file projects|hyperpage}{591}
+\indexentry{lattice.toml|hyperpage}{591}
+\indexentry{main.lat|hyperpage}{591}
+\indexentry{facade module|hyperpage}{593}
+\indexentry{namespacing|hyperpage}{594}
+\indexentry{import!avoiding collisions|hyperpage}{594}
+\indexentry{import!scoped|hyperpage}{594}
+\indexentry{import!internals|hyperpage}{595}
+\indexentry{OP\_IMPORT|hyperpage}{595}
+\indexentry{STMT\_IMPORT|hyperpage}{595}
+\indexentry{package manager|hyperpage}{599}
+\indexentry{clat!package manager|hyperpage}{599}
+\indexentry{clat|hyperpage}{599}
+\indexentry{lat\_modules|hyperpage}{599}
+\indexentry{clat init|hyperpage}{599}
+\indexentry{lattice.toml!creating|hyperpage}{599}
+\indexentry{lattice.toml|hyperpage}{599}
+\indexentry{lattice.toml|hyperpage}{600}
+\indexentry{manifest|hyperpage}{600}
+\indexentry{TOML|hyperpage}{600}
+\indexentry{lattice.toml!package section|hyperpage}{601}
+\indexentry{lattice.toml!dependencies|hyperpage}{601}
+\indexentry{dependencies|hyperpage}{601}
+\indexentry{clat add|hyperpage}{602}
+\indexentry{clat remove|hyperpage}{602}
+\indexentry{clat install|hyperpage}{602}
+\indexentry{clat add|hyperpage}{602}
+\indexentry{clat install|hyperpage}{603}
+\indexentry{lat\_modules|hyperpage}{603}
+\indexentry{lattice.lock|hyperpage}{603}
+\indexentry{LATTICE\_REGISTRY|hyperpage}{603}
+\indexentry{registry|hyperpage}{603}
+\indexentry{dependency graph|hyperpage}{603}
+\indexentry{circular dependencies|hyperpage}{603}
+\indexentry{clat remove|hyperpage}{603}
+\indexentry{semantic versioning|hyperpage}{604}
+\indexentry{semver|hyperpage}{604}
+\indexentry{semver!definition|hyperpage}{604}
+\indexentry{semver!constraints|hyperpage}{604}
+\indexentry{version constraints|hyperpage}{604}
+\indexentry{semver!caret|hyperpage}{604}
+\indexentry{semver!tilde|hyperpage}{604}
+\indexentry{dependency resolution|hyperpage}{605}
+\indexentry{registry|hyperpage}{605}
+\indexentry{lattice.lock|hyperpage}{606}
+\indexentry{lock file|hyperpage}{606}
+\indexentry{reproducible builds|hyperpage}{606}
+\indexentry{lattice.lock!format|hyperpage}{606}
+\indexentry{lattice.lock!package entry|hyperpage}{606}
+\indexentry{registry|hyperpage}{607}
+\indexentry{package cache|hyperpage}{607}
+\indexentry{registry!HTTP|hyperpage}{607}
+\indexentry{registry!default|hyperpage}{607}
+\indexentry{LATTICE\_REGISTRY|hyperpage}{608}
+\indexentry{registry!override|hyperpage}{608}
+\indexentry{package cache!global|hyperpage}{608}
+\indexentry{\textasciitilde/.lattice/packages|hyperpage}{608}
+\indexentry{lat\_modules!structure|hyperpage}{609}
+\indexentry{dependency graph|hyperpage}{610}
+\indexentry{circular dependencies|hyperpage}{610}
+\indexentry{breadth-first search|hyperpage}{610}
+\indexentry{circular dependencies!detection|hyperpage}{611}
+\indexentry{depth-first search|hyperpage}{611}
+\indexentry{clat install!internals|hyperpage}{612}
+\indexentry{flat installation|hyperpage}{612}
+\indexentry{formatter|hyperpage}{619}
+\indexentry{clat fmt|hyperpage}{619}
+\indexentry{doc generator|hyperpage}{619}
+\indexentry{clat doc|hyperpage}{619}
+\indexentry{clat fmt|hyperpage}{619}
+\indexentry{clat fmt!check mode|hyperpage}{621}
+\indexentry{clat fmt!stdin|hyperpage}{621}
+\indexentry{clat fmt!width|hyperpage}{622}
+\indexentry{line width|hyperpage}{622}
+\indexentry{doc comments|hyperpage}{623}
+\indexentry{triple-slash comments|hyperpage}{623}
+\indexentry{doc comments!module-level|hyperpage}{624}
+\indexentry{clat doc|hyperpage}{626}
+\indexentry{documentation generation|hyperpage}{626}
+\indexentry{clat doc!output directory|hyperpage}{629}
+\indexentry{clat doc!output formats|hyperpage}{629}
+\indexentry{clat doc!Markdown|hyperpage}{629}
+\indexentry{clat doc!plain text|hyperpage}{629}
+\indexentry{clat doc!JSON|hyperpage}{630}
+\indexentry{clat doc!HTML|hyperpage}{631}
+\indexentry{testing|hyperpage}{635}
+\indexentry{clat test|hyperpage}{635}
+\indexentry{test blocks|hyperpage}{635}
+\indexentry{test blocks!syntax|hyperpage}{635}
+\indexentry{clat test|hyperpage}{639}
+\indexentry{clat test!discovery|hyperpage}{639}
+\indexentry{clat test!filter|hyperpage}{640}
+\indexentry{clat test!verbose|hyperpage}{641}
+\indexentry{assert|hyperpage}{641}
+\indexentry{assert\_eq|hyperpage}{641}
+\indexentry{assert\_type|hyperpage}{641}
+\indexentry{assertions|hyperpage}{641}
+\indexentry{assert|hyperpage}{642}
+\indexentry{assert\_eq|hyperpage}{642}
+\indexentry{assert\_ne|hyperpage}{643}
+\indexentry{assert\_true|hyperpage}{643}
+\indexentry{assert\_false|hyperpage}{643}
+\indexentry{assert\_type|hyperpage}{644}
+\indexentry{assert\_contains|hyperpage}{645}
+\indexentry{assert\_throws|hyperpage}{645}
+\indexentry{test standard library|hyperpage}{646}
+\indexentry{lib/test.lat|hyperpage}{646}
+\indexentry{describe|hyperpage}{646}
+\indexentry{it|hyperpage}{646}
+\indexentry{assert\_gt|hyperpage}{648}
+\indexentry{assert\_lt|hyperpage}{648}
+\indexentry{assert\_near|hyperpage}{648}
+\indexentry{assert\_nil|hyperpage}{648}
+\indexentry{testing strategies|hyperpage}{650}
+\indexentry{gc-stress|hyperpage}{656}
+\indexentry{testing!GC stress|hyperpage}{656}
+\indexentry{debugging|hyperpage}{659}
+\indexentry{debugger|hyperpage}{659}
+\indexentry{clat run --debug|hyperpage}{659}
+\indexentry{--debug flag|hyperpage}{659}
+\indexentry{CLI debugger|hyperpage}{659}
+\indexentry{--break flag|hyperpage}{660}
+\indexentry{debugger!list command|hyperpage}{661}
+\indexentry{debugger!variable inspection|hyperpage}{661}
+\indexentry{debugger!expression evaluation|hyperpage}{662}
+\indexentry{debugger!backtrace|hyperpage}{663}
+\indexentry{debugger!call stack|hyperpage}{663}
+\indexentry{breakpoints|hyperpage}{663}
+\indexentry{breakpoints!line|hyperpage}{663}
+\indexentry{breakpoints!function|hyperpage}{664}
+\indexentry{breakpoints!conditional|hyperpage}{664}
+\indexentry{breakpoints!management|hyperpage}{665}
+\indexentry{stepping|hyperpage}{666}
+\indexentry{step-into|hyperpage}{666}
+\indexentry{step-over|hyperpage}{666}
+\indexentry{step-out|hyperpage}{666}
+\indexentry{debugger!continue|hyperpage}{668}
+\indexentry{watch expressions|hyperpage}{669}
+\indexentry{debugger!watch|hyperpage}{669}
+\indexentry{breakpoint() function|hyperpage}{670}
+\indexentry{DAP|hyperpage}{671}
+\indexentry{Debug Adapter Protocol|hyperpage}{671}
+\indexentry{VS Code|hyperpage}{671}
+\indexentry{debugger!VS Code|hyperpage}{671}
+\indexentry{track()|hyperpage}{674}
+\indexentry{history()|hyperpage}{674}
+\indexentry{rewind()|hyperpage}{674}
+\indexentry{value history|hyperpage}{674}
+\indexentry{time travel debugging|hyperpage}{674}
+\indexentry{track()|hyperpage}{674}
+\indexentry{history()|hyperpage}{674}
+\indexentry{rewind()|hyperpage}{675}
+\indexentry{backends|hyperpage}{683}
+\indexentry{execution backends|hyperpage}{683}
+\indexentry{tree-walk interpreter|hyperpage}{683}
+\indexentry{evaluator|hyperpage}{683}
+\indexentry{stack VM|hyperpage}{686}
+\indexentry{bytecode|hyperpage}{686}
+\indexentry{stack compiler|hyperpage}{686}
+\indexentry{opcodes!stack VM|hyperpage}{687}
+\indexentry{value stack|hyperpage}{688}
+\indexentry{dispatch loop!stack VM|hyperpage}{689}
+\indexentry{computed goto|hyperpage}{689}
+\indexentry{exception handling!stack VM|hyperpage}{689}
+\indexentry{defer!stack VM|hyperpage}{689}
+\indexentry{upvalues|hyperpage}{690}
+\indexentry{closures!stack VM implementation|hyperpage}{690}
+\indexentry{register VM|hyperpage}{691}
+\indexentry{register-based bytecode|hyperpage}{691}
+\indexentry{instruction encoding!register VM|hyperpage}{691}
+\indexentry{register windows|hyperpage}{691}
+\indexentry{register compiler|hyperpage}{692}
+\indexentry{inline cache|hyperpage}{693}
+\indexentry{polymorphic inline cache|hyperpage}{693}
+\indexentry{RegChunk|hyperpage}{694}
+\indexentry{choosing a backend|hyperpage}{694}
+\indexentry{performance!backends|hyperpage}{696}
+\indexentry{bytecode serialization|hyperpage}{699}
+\indexentry{.latc files|hyperpage}{699}
+\indexentry{.rlat files|hyperpage}{699}
+\indexentry{.latc file format|hyperpage}{699}
+\indexentry{.rlat file format|hyperpage}{699}
+\indexentry{bytecode!file format|hyperpage}{699}
+\indexentry{pre-compilation|hyperpage}{702}
+\indexentry{clat compile|hyperpage}{702}
+\indexentry{self-hosted compiler|hyperpage}{704}
+\indexentry{compiler/latc.lat|hyperpage}{704}
+\indexentry{bootstrapping|hyperpage}{707}
+\indexentry{self-hosting|hyperpage}{707}
+\indexentry{native extensions|hyperpage}{711}
+\indexentry{extensions|hyperpage}{711}
+\indexentry{.dylib|hyperpage}{711}
+\indexentry{.so|hyperpage}{711}
+\indexentry{extension API|hyperpage}{711}
+\indexentry{lattice\_ext.h|hyperpage}{711}
+\indexentry{lat\_ext\_init|hyperpage}{711}
+\indexentry{lat\_ext\_register|hyperpage}{711}
+\indexentry{LatExtValue|hyperpage}{713}
+\indexentry{extension!value constructors|hyperpage}{713}
+\indexentry{extension!value accessors|hyperpage}{713}
+\indexentry{extension!building|hyperpage}{714}
+\indexentry{Makefile!extension|hyperpage}{714}
+\indexentry{extensions!available|hyperpage}{717}
+\indexentry{ffi extension|hyperpage}{717}
+\indexentry{sqlite extension|hyperpage}{718}
+\indexentry{pg extension|hyperpage}{719}
+\indexentry{redis extension|hyperpage}{719}
+\indexentry{image extension|hyperpage}{720}
+\indexentry{websocket extension|hyperpage}{720}
+\indexentry{extension!search paths|hyperpage}{720}
+\indexentry{LATTICE\_EXT\_PATH|hyperpage}{720}
+\indexentry{extension!security|hyperpage}{721}
+\indexentry{metaprogramming|(hyperpage}{723}
+\indexentry{reflection|(hyperpage}{723}
+\indexentry{typeof@\lstinline|hyperindexformat{\typeof}}{723}
+\indexentry{phase\_of@\lstinline|hyperindexformat{\phase_of}}{723}
+\indexentry{to\_string@\lstinline|hyperindexformat{\to_string}}{723}
+\indexentry{repr@\lstinline|hyperindexformat{\repr}}{723}
+\indexentry{typeof@\lstinline|hyperindexformat{\typeof}}{724}
+\indexentry{phase\_of@\lstinline|hyperindexformat{\phase_of}}{725}
+\indexentry{lat\_eval@\lstinline|hyperindexformat{\lat_eval}}{727}
+\indexentry{is\_complete@\lstinline|hyperindexformat{\is_complete}}{727}
+\indexentry{tokenize@\lstinline|hyperindexformat{\tokenize}}{728}
+\indexentry{lexer!from Lattice code|hyperpage}{728}
+\indexentry{struct reflection|(hyperpage}{730}
+\indexentry{struct\_name@\lstinline|hyperindexformat{\struct_name}}{730}
+\indexentry{struct\_fields@\lstinline|hyperindexformat{\struct_fields}}{730}
+\indexentry{struct\_to\_map@\lstinline|hyperindexformat{\struct_to_map}}{730}
+\indexentry{struct\_from\_map@\lstinline|hyperindexformat{\struct_from_map}}{730}
+\indexentry{struct\_to\_map@\lstinline|hyperindexformat{\struct_to_map}}{732}
+\indexentry{struct\_from\_map@\lstinline|hyperindexformat{\struct_from_map}}{733}
+\indexentry{struct reflection|)hyperpage}{736}
+\indexentry{format@\lstinline|hyperindexformat{\format}}{736}
+\indexentry{string formatting|hyperpage}{736}
+\indexentry{lat\_eval@\lstinline|hyperindexformat{\lat_eval}}{738}
+\indexentry{metaprogramming!best practices|hyperpage}{738}
+\indexentry{metaprogramming|)hyperpage}{742}
+\indexentry{reflection|)hyperpage}{742}
+\indexentry{CLI tool|hyperpage}{745}
+\indexentry{command-line application|hyperpage}{745}
+\indexentry{cli library|hyperpage}{745}
+\indexentry{argument parsing|hyperpage}{745}
+\indexentry{flags!CLI|hyperpage}{746}
+\indexentry{options!CLI|hyperpage}{746}
+\indexentry{positional arguments|hyperpage}{746}
+\indexentry{help flag|hyperpage}{748}
+\indexentry{combined flags|hyperpage}{748}
+\indexentry{dotenv library|hyperpage}{749}
+\indexentry{environment variables|hyperpage}{749}
+\indexentry{.env file|hyperpage}{749}
+\indexentry{dotenv!load\_file|hyperpage}{750}
+\indexentry{dotenv!load\_opts|hyperpage}{750}
+\indexentry{dotenv!parsing rules|hyperpage}{751}
+\indexentry{log library|hyperpage}{752}
+\indexentry{logging|hyperpage}{752}
+\indexentry{structured logging|hyperpage}{752}
+\indexentry{log levels|hyperpage}{752}
+\indexentry{log!new|hyperpage}{753}
+\indexentry{log!context|hyperpage}{754}
+\indexentry{findi@\texttt{findi} (example application)|hyperpage}{755}
+\indexentry{web service|hyperpage}{761}
+\indexentry{HTTP server|hyperpage}{761}
+\indexentry{http\_server library|hyperpage}{761}
+\indexentry{routing!HTTP|hyperpage}{761}
+\indexentry{request Map|hyperpage}{762}
+\indexentry{http\_server!response helpers|hyperpage}{762}
+\indexentry{routing!route registration|hyperpage}{763}
+\indexentry{query parameters|hyperpage}{764}
+\indexentry{middleware|hyperpage}{765}
+\indexentry{middleware!signature|hyperpage}{766}
+\indexentry{cookies|hyperpage}{766}
+\indexentry{template library|hyperpage}{767}
+\indexentry{HTML templating|hyperpage}{767}
+\indexentry{template!variables|hyperpage}{768}
+\indexentry{template!filters|hyperpage}{769}
+\indexentry{template!conditionals|hyperpage}{770}
+\indexentry{template!loops|hyperpage}{771}
+\indexentry{template!includes|hyperpage}{772}
+\indexentry{template!inheritance|hyperpage}{772}
+\indexentry{orm library|hyperpage}{774}
+\indexentry{SQLite|hyperpage}{774}
+\indexentry{database|hyperpage}{774}
+\indexentry{CRUD operations|hyperpage}{774}
+\indexentry{JSON|hyperpage}{776}
+\indexentry{json\_parse|hyperpage}{776}
+\indexentry{json\_stringify|hyperpage}{776}
+\indexentry{API!JSON|hyperpage}{776}
+\indexentry{web application!complete example|hyperpage}{779}

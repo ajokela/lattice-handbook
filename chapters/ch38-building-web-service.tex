@@ -1,0 +1,1060 @@
+\chapter{Building a Web Service}\label{ch:building-web-service}
+
+\index{web service}
+\index{HTTP server}
+
+In the previous chapter we built a command-line tool.
+Now we are going to build something that talks to the world: a web service.
+By the end of this chapter we will have a running application with HTML pages, a JSON API, database persistence, and middleware---all written in Lattice.
+
+We will use four pieces of the Lattice ecosystem:
+the \lstinline|http_server| library for routing and request handling,
+the \lstinline|template| library for rendering HTML,
+the \lstinline|orm| library for SQLite persistence,
+and the built-in \lstinline|json_parse|/\lstinline|json_stringify| functions for JSON APIs.
+Let us start at the front door.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The \texttt{http\_server} Library}\label{sec:http-server-library}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{http\_server library}
+\index{routing!HTTP}
+
+The \lstinline|http_server| library (in \filename{lib/http\_server.lat}) builds on Lattice's raw TCP networking primitives---\lstinline|tcp_listen|, \lstinline|tcp_accept|, \lstinline|tcp_read|, \lstinline|tcp_write|, and \lstinline|tcp_close|---to provide a high-level, Express-style API for building HTTP applications.
+
+\subsection{Hello, Web}\label{sec:http-hello-web}
+
+The smallest possible web server fits in a handful of lines:
+
+\begin{lstlisting}[language=Lattice, caption={A minimal Lattice web server}]
+import "lib/http_server" as http
+
+let app = http.new()
+
+app.get("/", |req, res| {
+    return http.response(200, "Hello from Lattice!")
+})
+
+app.listen(8080)
+\end{lstlisting}
+
+Run this, open a browser to \texttt{http://localhost:8080}, and you will see the greeting.
+Let us break down what happens:
+
+\begin{enumerate}
+  \item \lstinline|http.new()| creates an application Map containing route tables and a middleware stack.
+  \item \lstinline|app.get("/", handler)| registers a handler for GET requests to \texttt{/}.
+  \item The handler receives a request Map (\lstinline|req|) and a response context Map (\lstinline|res|), and returns a response Map built by \lstinline|http.response|.
+  \item \lstinline|app.listen(8080)| opens a TCP socket and enters a loop that accepts connections, parses HTTP requests, runs the middleware pipeline, dispatches to the matching handler, and sends back the formatted response.
+\end{enumerate}
+
+\begin{defnbox}{The Request Map}
+\index{request Map}
+Every handler receives a \lstinline|req| Map with these keys:
+\begin{itemize}
+  \item \lstinline|"method"| --- the HTTP method (\lstinline|"GET"|, \lstinline|"POST"|, etc.)
+  \item \lstinline|"path"| --- the URL path without query string
+  \item \lstinline|"raw_path"| --- the full URL including query string
+  \item \lstinline|"query"| --- a Map of parsed query parameters
+  \item \lstinline|"headers"| --- a Map of HTTP headers
+  \item \lstinline|"body"| --- the raw request body as a string
+  \item \lstinline|"cookies"| --- a Map of parsed cookie name-value pairs
+  \item \lstinline|"peer"| --- the client's address
+\end{itemize}
+\end{defnbox}
+
+\subsection{Response Helpers}\label{sec:http-response-helpers}
+
+\index{http\_server!response helpers}
+
+The library provides several functions for building response Maps:
+
+\begin{lstlisting}[language=Lattice, caption={Response helper functions}]
+import "lib/http_server" as http
+
+// Plain text (Content-Type: text/plain)
+let text_res = http.response(200, "OK")
+
+// JSON (Content-Type: application/json)
+let data = Map::new()
+data.set("status", "healthy")
+data.set("uptime", 3600)
+let json_res = http.json(200, data)
+
+// HTML (Content-Type: text/html)
+let html_res = http.html(200, "<h1>Welcome</h1>")
+
+// Redirect (302 by default)
+let redir = http.redirect("/dashboard")
+
+// Redirect with custom status
+let perm_redir = http.redirect("/new-path", 301)
+\end{lstlisting}
+
+Each helper returns a Map with \lstinline|"status"|, \lstinline|"body"|, \lstinline|"headers"|, and \lstinline|"_cookies"| keys.
+The server serializes this into a proper HTTP response before sending it over the wire.
+
+\subsection{Route Registration}\label{sec:http-routes}
+
+\index{routing!route registration}
+
+The application object provides registration closures for all standard HTTP methods:
+
+\begin{lstlisting}[language=Lattice, caption={Registering routes for different HTTP methods}]
+import "lib/http_server" as http
+
+let app = http.new()
+
+app.get("/items", |req, res| {
+    return http.json(200, get_all_items())
+})
+
+app.post("/items", |req, res| {
+    let body = req.get("body")
+    let item = json_parse(body)
+    return http.json(201, create_item(item))
+})
+
+app.put("/items/update", |req, res| {
+    let body = req.get("body")
+    let item = json_parse(body)
+    return http.json(200, update_item(item))
+})
+
+app.delete("/items/remove", |req, res| {
+    return http.json(200, remove_item(req))
+})
+
+// Register for ALL methods at once
+app.all("/health", |req, res| {
+    return http.response(200, "OK")
+})
+\end{lstlisting}
+
+The available methods are \lstinline|app.get|, \lstinline|app.post|, \lstinline|app.put|, \lstinline|app.delete|, \lstinline|app.patch|, \lstinline|app.options|, and \lstinline|app.all|.
+If a request arrives for a registered path but an unregistered method, the server returns 405 Method Not Allowed.
+If the path itself is not found, it returns 404 Not Found.
+
+\subsection{Query Parameters}\label{sec:http-query-params}
+
+\index{query parameters}
+
+Query strings are automatically parsed into the \lstinline|"query"| Map on the request:
+
+\begin{lstlisting}[language=Lattice, caption={Reading query parameters}]
+// Request: GET /search?q=lattice&page=2
+app.get("/search", |req, res| {
+    let query = req.get("query")
+    let search_term = query.get("q")      // "lattice"
+    let page = to_int(query.get("page"))   // 2
+    // ... perform search ...
+    return http.json(200, results)
+})
+\end{lstlisting}
+
+\subsection{Middleware}\label{sec:http-middleware}
+
+\index{middleware}
+
+Middleware functions run before your route handlers, forming a pipeline that can inspect requests, modify responses, or short-circuit the chain entirely.
+Register middleware with \lstinline|app.use|:
+
+\begin{lstlisting}[language=Lattice, caption={Using middleware}]
+import "lib/http_server" as http
+
+let app = http.new()
+
+// Built-in request logger
+app.use(http.logger())
+
+// Built-in CORS middleware
+app.use(http.cors())
+
+// Built-in JSON body parser
+app.use(http.body_parser())
+
+// Built-in security headers
+app.use(http.security_headers())
+
+app.get("/", |req, res| {
+    return http.response(200, "Hello!")
+})
+
+app.listen(3000)
+\end{lstlisting}
+
+\begin{defnbox}{Middleware Signature}
+\index{middleware!signature}
+A middleware is a function with the signature \lstinline{|req, res, next|}.
+To continue the pipeline, call \lstinline|next(req, res)| and return its result.
+To short-circuit (for example, to reject an unauthenticated request), return a response directly without calling \lstinline|next|.
+\end{defnbox}
+
+Here is a custom middleware that checks for an API key:
+
+\begin{lstlisting}[language=Lattice, caption={Writing custom middleware}]
+fn require_api_key() -> Fn {
+    return |req, res, next| {
+        let headers = req.get("headers")
+        flux api_key = ""
+        if headers.has("X-API-Key") {
+            api_key = headers.get("X-API-Key")
+        }
+        if api_key != "secret-key-123" {
+            return http.json(401, "Unauthorized")
+        }
+        return next(req, res)
+    }
+}
+
+app.use(require_api_key())
+\end{lstlisting}
+
+The built-in middleware that ships with the library includes:
+
+\begin{itemize}
+  \item \lstinline|http.logger()| --- logs method, path, status, and response time.
+  \item \lstinline|http.cors()| --- handles CORS preflight requests and adds appropriate headers. Accepts optional configuration via \lstinline|http.cors_opts()|.
+  \item \lstinline|http.body_parser()| --- automatically parses JSON request bodies when the \lstinline|Content-Type| is \lstinline|application/json|, storing the result in \lstinline|req.get("parsed_body")|.
+  \item \lstinline|http.security_headers()| --- adds \lstinline|X-Content-Type-Options|, \lstinline|X-Frame-Options|, and other security headers.
+  \item \lstinline|http.compression()| --- sets \lstinline|Vary: Accept-Encoding| for correct proxy caching.
+\end{itemize}
+
+\subsection{Cookies}\label{sec:http-cookies}
+
+\index{cookies}
+
+The library provides helpers for reading and setting cookies:
+
+\begin{lstlisting}[language=Lattice, caption={Cookie handling}]
+app.get("/profile", |req, res| {
+    // Read cookies from the request
+    let cookies = req.get("cookies")
+    flux username = "Guest"
+    if cookies.has("username") {
+        username = cookies.get("username")
+    }
+
+    let r = http.html(200, "<h1>Hello, " + username + "</h1>")
+
+    // Set a cookie on the response
+    let opts = http.cookie_opts()  // sensible defaults
+    opts.set("max_age", 86400)     // 1 day
+    return http.set_cookie(r, "visited", "true", opts)
+})
+
+app.get("/logout", |req, res| {
+    let r = http.redirect("/")
+    let opts = http.cookie_opts()
+    return http.clear_cookie(r, "username", opts)
+})
+\end{lstlisting}
+
+The \lstinline|http.cookie_opts()| function returns a Map with sensible defaults: \lstinline|Path=/|, \lstinline|HttpOnly=true|, \lstinline|SameSite=Lax|.
+You can override any of these before passing the Map to \lstinline|set_cookie|.
+
+\begin{warnbox}{Maps Are Pass-by-Value}
+Since Lattice Maps are pass-by-value, \lstinline|http.set_cookie| returns a \emph{new} response Map.
+Always use the return value: \lstinline|let r = http.set_cookie(r, ...)|.
+Forgetting this is a common source of ``my cookies are not being set'' bugs.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The \texttt{template} Library for HTML Templating}\label{sec:template-library}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{template library}
+\index{HTML templating}
+
+Building HTML strings by hand is tedious and error-prone.
+The \lstinline|template| library (in \filename{lib/template.lat}) provides a Mustache/Jinja2-inspired template engine with variable interpolation, conditionals, loops, filters, includes, and template inheritance.
+
+\subsection{Variables and Escaping}\label{sec:template-variables}
+
+\index{template!variables}
+
+The core operation is variable interpolation with double-braces:
+
+\begin{lstlisting}[language=Lattice, caption={Template variable interpolation}]
+import "lib/template" as tmpl
+
+let t = tmpl.compile("Hello, {{name}}!")
+
+let data = Map::new()
+data.set("name", "World")
+
+let result = tmpl.render(t, data)
+// result: "Hello, World!"
+\end{lstlisting}
+
+By default, \lstinline|{{name}}| HTML-escapes the output---so if \lstinline|name| is \lstinline|"<script>alert('xss')</script>"|, it becomes \lstinline|"&lt;script&gt;..."|.
+When you need raw, unescaped output (for example, pre-rendered HTML), use triple-braces:
+
+\begin{lstlisting}[language=Lattice, caption={Raw vs.\ escaped output}]
+let t = tmpl.compile("{{{html_content}}}")
+
+let data = Map::new()
+data.set("html_content", "<b>Bold</b>")
+
+let result = tmpl.render(t, data)
+// result: "<b>Bold</b>"  (not escaped)
+\end{lstlisting}
+
+Nested map access uses dot notation:
+
+\begin{lstlisting}[language=Lattice, caption={Dot notation for nested values}]
+let t = tmpl.compile("{{user.name}} ({{user.email}})")
+
+let user = Map::new()
+user.set("name", "Alice")
+user.set("email", "alice@example.com")
+
+let data = Map::new()
+data.set("user", user)
+
+let result = tmpl.render(t, data)
+// result: "Alice (alice@example.com)"
+\end{lstlisting}
+
+\subsection{Filters}\label{sec:template-filters}
+
+\index{template!filters}
+
+Filters transform a value inline using the pipe syntax:
+
+\begin{lstlisting}[language=Lattice, caption={Using template filters}]
+let t = tmpl.compile("""
+  Name: {{name | upper}}
+  Bio: {{bio | truncate(50)}}
+  Tags: {{tags | join(", ")}}
+  Role: {{role | default("member")}}
+""")
+\end{lstlisting}
+
+The available filters are:
+
+\begin{center}
+\begin{tabular}{lp{7.5cm}}
+\toprule
+\textbf{Filter} & \textbf{Description} \\
+\midrule
+\lstinline|upper|           & Converts to uppercase \\
+\lstinline|lower|           & Converts to lowercase \\
+\lstinline|capitalize|      & Capitalizes the first letter \\
+\lstinline|title|           & Title-cases each word \\
+\lstinline|trim|            & Strips leading/trailing whitespace \\
+\lstinline|escape_html|     & HTML-escapes the value \\
+\lstinline|length|          & Returns the length \\
+\lstinline|string|          & Converts to a string \\
+\lstinline|reverse|         & Reverses the string \\
+\lstinline|default("val")|  & Uses \texttt{val} if the variable is nil or empty \\
+\lstinline|truncate(n)|     & Truncates to \texttt{n} characters, adding \texttt{...} \\
+\lstinline|replace("a","b")| & Replaces occurrences of \texttt{a} with \texttt{b} \\
+\lstinline|join(", ")|      & Joins array elements with the given separator \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Filters can be chained: \lstinline|{{name | trim | upper}}| first trims, then uppercases.
+
+\subsection{Conditionals}\label{sec:template-conditionals}
+
+\index{template!conditionals}
+
+The library supports both Mustache-style and Jinja2-style conditionals:
+
+\begin{lstlisting}[language=Lattice, caption={Mustache-style conditionals}]
+let t = tmpl.compile("""
+  {{#if logged_in}}
+    Welcome back, {{username}}!
+  {{else}}
+    Please log in.
+  {{/if}}
+""")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Jinja2-style conditionals with elif}]
+let t = tmpl.compile("""
+  {% if role %}
+    {% if is_admin %}
+      <span class="badge">Admin</span>
+    {% else %}
+      <span class="badge">User</span>
+    {% endif %}
+  {% endif %}
+""")
+\end{lstlisting}
+
+Truthiness follows Lattice conventions: \lstinline|nil|, \lstinline|false|, \lstinline|0|, \lstinline|0.0|, and \lstinline|""| are all falsy.
+Everything else is truthy.
+
+The negated conditional \lstinline|{{#unless ...}}| works like \lstinline|{{#if ...}}| with inverted logic:
+
+\begin{lstlisting}[language=Lattice, caption={Using unless}]
+let t = tmpl.compile("""
+  {{#unless errors}}
+    <p>No errors found.</p>
+  {{/unless}}
+""")
+\end{lstlisting}
+
+\subsection{Loops}\label{sec:template-loops}
+
+\index{template!loops}
+
+Iteration comes in two flavors.
+Mustache-style \lstinline|each| works well for arrays of maps:
+
+\begin{lstlisting}[language=Lattice, caption={Mustache-style each loop}]
+let t = tmpl.compile("""
+  <ul>
+  {{#each items}}
+    <li>{{name}} - {{price}}</li>
+  {{/each}}
+  </ul>
+""")
+\end{lstlisting}
+
+Inside an \lstinline|each| block, the keys of each Map item are promoted into scope.
+The special variables \lstinline|{{@index}}|, \lstinline|{{@first}}|, and \lstinline|{{@last}}| are also available.
+
+Jinja2-style \lstinline|for| loops give you a named loop variable:
+
+\begin{lstlisting}[language=Lattice, caption={Jinja2-style for loop}]
+let t = tmpl.compile("""
+  <table>
+  {% for user in users %}
+    <tr class="{% if loop.first %}first{% endif %}">
+      <td>{{loop.index1}}</td>
+      <td>{{user.name}}</td>
+    </tr>
+  {% endfor %}
+  </table>
+""")
+\end{lstlisting}
+
+The \lstinline|loop| variable inside a Jinja2 for-loop provides:
+\lstinline|loop.index| (0-based),
+\lstinline|loop.index1| (1-based),
+\lstinline|loop.first|,
+\lstinline|loop.last|, and
+\lstinline|loop.length|.
+
+\subsection{Includes and Template Inheritance}\label{sec:template-includes}
+
+\index{template!includes}
+\index{template!inheritance}
+
+For larger applications, you can split templates into partials and base layouts:
+
+\begin{lstlisting}[language=Lattice, caption={Including a partial}]
+// In your template:
+// {% include "templates/header.html" %}
+// ... page content ...
+// {% include "templates/footer.html" %}
+\end{lstlisting}
+
+Template inheritance lets child templates override blocks defined in a parent:
+
+\begin{lstlisting}[language={}, caption={base.html --- a base layout}]
+<html>
+<head><title>{% block title %}My App{% endblock %}</title></head>
+<body>
+  <nav>...</nav>
+  <main>{% block content %}{% endblock %}</main>
+  <footer>...</footer>
+</body>
+</html>
+\end{lstlisting}
+
+\begin{lstlisting}[language={}, caption={page.html --- a child template}]
+{% extends "templates/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+  <h1>Dashboard</h1>
+  <p>Welcome back!</p>
+{% endblock %}
+\end{lstlisting}
+
+When you compile and render \texttt{page.html}, the engine loads \texttt{base.html}, finds the block definitions in the child, and substitutes them.
+The result is a complete HTML page with ``Dashboard'' as the title and the dashboard content in the \lstinline|<main>| element.
+
+\begin{lstlisting}[language=Lattice, caption={Rendering an inherited template}]
+import "lib/template" as tmpl
+
+let page = tmpl.from_file("templates/page.html")
+let output = tmpl.render(page, Map::new())
+\end{lstlisting}
+
+\begin{tipbox}{Compile Once, Render Many}
+The \lstinline|tmpl.compile| function parses a template string into a segment tree.
+If you are rendering the same template with different data (as you would in a web server), compile once at startup and call \lstinline|tmpl.render| on each request.
+This avoids re-parsing the template on every request.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The \texttt{orm} Library for SQLite Persistence}\label{sec:orm-library}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{orm library}
+\index{SQLite}
+\index{database}
+
+Most web services need to persist data.
+The \lstinline|orm| library (in \filename{lib/orm.lat}) provides a lightweight ORM layer over Lattice's SQLite native extension.
+It loads the extension via \lstinline|require_ext("sqlite")| and wraps the raw SQL operations in a model-based API.
+
+\subsection{Connecting and Defining Models}\label{sec:orm-connect}
+
+\begin{lstlisting}[language=Lattice, caption={Setting up a database and model}]
+import "lib/orm" as orm
+
+// Connect to a file-based database (or ":memory:" for tests)
+let db = orm.connect("app.db")
+
+// Define the schema as a Map of column -> SQL type
+let schema = Map::new()
+schema.set("id", "INTEGER PRIMARY KEY AUTOINCREMENT")
+schema.set("title", "TEXT NOT NULL")
+schema.set("body", "TEXT")
+schema.set("created_at", "TEXT")
+
+// Create a model bound to the "posts" table
+let Post = orm.model(db, "posts", schema)
+
+// Create the table (safe to call multiple times)
+let create_table = Post.get("create_table")
+create_table(0)
+\end{lstlisting}
+
+\begin{notebox}{The Dummy Argument}
+You may notice that \lstinline|create_table(0)| passes a dummy argument.
+This is because the ORM's closure signatures in \filename{lib/orm.lat} accept a parameter (e.g., \lstinline{|_x|}) even when one is not semantically needed.
+Simply pass any value---\lstinline|0|, \lstinline|nil|, or \lstinline|""|---to satisfy the call.
+\end{notebox}
+
+\subsection{CRUD Operations}\label{sec:orm-crud}
+
+\index{CRUD operations}
+
+The model Map provides closures for all the standard operations:
+
+\begin{lstlisting}[language=Lattice, caption={Creating records}]
+let create = Post.get("create")
+
+let post_data = Map::new()
+post_data.set("title", "Hello World")
+post_data.set("body", "This is my first post.")
+post_data.set("created_at", time_format(time(), "%Y-%m-%d %H:%M:%S"))
+
+let post_id = create(post_data)
+print("Created post with id: " + to_string(post_id))
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Reading records}]
+// Find by id
+let find = Post.get("find")
+let post = find(post_id)
+print(post.get("title"))  // "Hello World"
+
+// Get all records
+let all = Post.get("all")
+let posts = all(0)
+for p in posts {
+    print(p.get("title"))
+}
+
+// Query with a WHERE clause
+let where_fn = Post.get("where")
+let recent = where_fn("created_at > ?", ["2025-01-01"])
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Updating and deleting records}]
+// Update
+let update = Post.get("update")
+let changes = Map::new()
+changes.set("title", "Hello World (Updated)")
+update(post_id, changes)
+
+// Delete
+let delete_fn = Post.get("delete")
+delete_fn(post_id)
+
+// Count
+let count = Post.get("count")
+print("Total posts: " + to_string(count(0)))
+\end{lstlisting}
+
+The \lstinline|where| closure accepts a SQL condition string with \lstinline|?| placeholders and an array of parameter values.
+The parameters are safely bound by the SQLite extension, so you get protection against SQL injection for free.
+
+\begin{lstlisting}[language=Lattice, caption={Closing the database}]
+// Always close when done
+orm.close(db)
+\end{lstlisting}
+
+\begin{warnbox}{Always Close Your Database}
+SQLite databases should be closed when your application shuts down to ensure all writes are flushed.
+In a long-running web server you typically keep the connection open for the lifetime of the process, but make sure to call \lstinline|orm.close(db)| if you ever exit gracefully.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{JSON APIs with \texttt{json\_parse} and \texttt{json\_stringify}}\label{sec:json-apis}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{JSON}
+\index{json\_parse}
+\index{json\_stringify}
+\index{API!JSON}
+
+Lattice's JSON support is implemented as built-in functions backed by a C parser and serializer (in \filename{src/json.c}).
+The recursive-descent parser handles the full JSON specification, including Unicode escapes, nested structures, and all JSON types.
+
+\subsection{Parsing JSON}\label{sec:json-parsing}
+
+\lstinline|json_parse| takes a JSON string and returns the corresponding Lattice value---a Map for objects, an Array for arrays, and the appropriate scalar types for strings, numbers, booleans, and null:
+
+\begin{lstlisting}[language=Lattice, caption={Parsing JSON strings}]
+let data = json_parse("{\"name\":\"Alice\",\"age\":30}")
+// data is a Map
+print(data.get("name"))  // "Alice"
+print(data.get("age"))   // 30
+
+let items = json_parse("[1, 2, 3]")
+// items is an Array
+print(items[0])  // 1
+
+let nested = json_parse("""
+    {
+        "users": [
+            {"name": "Alice", "active": true},
+            {"name": "Bob", "active": false}
+        ],
+        "total": 2
+    }
+""")
+let users = nested.get("users")
+print(users[0].get("name"))  // "Alice"
+\end{lstlisting}
+
+JSON null maps to Lattice \lstinline|nil|.
+JSON booleans map to Lattice \lstinline|true| and \lstinline|false|.
+JSON integers stay as \lstinline|Int|, and numbers with decimal points or exponents become \lstinline|Float|.
+
+\subsection{Serializing to JSON}\label{sec:json-stringify}
+
+\lstinline|json_stringify| converts a Lattice value to a JSON string:
+
+\begin{lstlisting}[language=Lattice, caption={Serializing Lattice values to JSON}]
+let data = Map::new()
+data.set("name", "Alice")
+data.set("scores", [95, 87, 92])
+data.set("active", true)
+
+let json_text = json_stringify(data)
+print(json_text)
+// {"name":"Alice","scores":[95,87,92],"active":true}
+\end{lstlisting}
+
+The serializer handles Maps, Arrays, Tuples, Buffers, strings, numbers, booleans, nil, and Refs (which are dereferenced automatically).
+Types that have no JSON representation---closures, channels, ranges, structs---will cause an error.
+
+\begin{tipbox}{Round-Tripping}
+\lstinline|json_parse(json_stringify(value))| will faithfully round-trip any value composed of Maps, Arrays, strings, numbers, booleans, and nil.
+This makes JSON a convenient serialization format for inter-process communication, configuration files, and API payloads.
+\end{tipbox}
+
+\subsection{JSON in HTTP Handlers}\label{sec:json-http-handlers}
+
+Combining JSON with the HTTP server is where things get practical.
+Here is a pattern you will use constantly:
+
+\begin{lstlisting}[language=Lattice, caption={A JSON API endpoint}]
+import "lib/http_server" as http
+
+let app = http.new()
+app.use(http.body_parser())
+
+app.post("/api/echo", |req, res| {
+    let parsed = req.get("parsed_body")
+    if parsed == nil {
+        return http.json(400, "Invalid JSON")
+    }
+    // Echo back the parsed data with a timestamp
+    parsed.set("received_at", time_format(time(), "%Y-%m-%dT%H:%M:%S"))
+    return http.json(200, parsed)
+})
+\end{lstlisting}
+
+The \lstinline|http.body_parser()| middleware automatically parses JSON request bodies and stores the result in \lstinline|req.get("parsed_body")|, saving you from calling \lstinline|json_parse| manually on every handler.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{A Complete Web Application from Scratch}\label{sec:complete-web-app}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{web application!complete example}
+
+Let us bring everything together and build \textbf{Lattice Notes}---a note-taking web application with HTML pages for humans and a JSON API for machines.
+
+\subsection{Architecture}\label{sec:webapp-architecture}
+
+\begin{lstlisting}[language={}, caption={Project structure}]
+lattice-notes/
+  app.lat                 # main entry point
+  templates/
+    base.html             # base layout
+    index.html            # note listing page
+    note.html             # single note page
+\end{lstlisting}
+
+The application will have these routes:
+
+\begin{center}
+\begin{tabular}{llp{6cm}}
+\toprule
+\textbf{Method} & \textbf{Path} & \textbf{Description} \\
+\midrule
+GET  & \texttt{/}               & List all notes (HTML) \\
+GET  & \texttt{/notes/view}     & View a single note (HTML, \texttt{?id=N}) \\
+POST & \texttt{/notes/create}   & Create a note from form data \\
+GET  & \texttt{/api/notes}      & List all notes (JSON) \\
+POST & \texttt{/api/notes}      & Create a note (JSON) \\
+GET  & \texttt{/api/notes/one}  & Get a note by id (JSON, \texttt{?id=N}) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Templates}\label{sec:webapp-templates}
+
+First, our base layout:
+
+\begin{lstlisting}[language={}, caption={templates/base.html}]
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Lattice Notes{% endblock %}</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px;
+           margin: 0 auto; padding: 20px; }
+    .note { border: 1px solid #ddd; padding: 12px;
+            margin: 8px 0; border-radius: 4px; }
+    .note h3 { margin: 0 0 8px 0; }
+    form input, form textarea { display: block;
+            width: 100%; margin: 8px 0; padding: 8px; }
+    form button { padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1><a href="/">Lattice Notes</a></h1>
+  {% block content %}{% endblock %}
+</body>
+</html>
+\end{lstlisting}
+
+The index page lists all notes and includes a creation form:
+
+\begin{lstlisting}[language={}, caption={templates/index.html}]
+{% extends "templates/base.html" %}
+{% block title %}All Notes{% endblock %}
+{% block content %}
+  <h2>All Notes ({{note_count}})</h2>
+
+  {{#each notes}}
+    <div class="note">
+      <h3><a href="/notes/view?id={{id}}">{{title}}</a></h3>
+      <p>{{body | truncate(120)}}</p>
+      <small>{{created_at}}</small>
+    </div>
+  {{/each}}
+
+  {{#unless notes}}
+    <p>No notes yet. Create one below!</p>
+  {{/unless}}
+
+  <hr>
+  <h2>New Note</h2>
+  <form method="POST" action="/notes/create">
+    <input name="title" placeholder="Title" required>
+    <textarea name="body" placeholder="Body" rows="4"></textarea>
+    <button type="submit">Create Note</button>
+  </form>
+{% endblock %}
+\end{lstlisting}
+
+And the single-note view:
+
+\begin{lstlisting}[language={}, caption={templates/note.html}]
+{% extends "templates/base.html" %}
+{% block title %}{{title}}{% endblock %}
+{% block content %}
+  <h2>{{title}}</h2>
+  <p>{{body}}</p>
+  <small>Created: {{created_at}}</small>
+  <p><a href="/">Back to all notes</a></p>
+{% endblock %}
+\end{lstlisting}
+
+\subsection{The Application Source}\label{sec:webapp-source}
+
+\begin{lstlisting}[language=Lattice, caption={app.lat --- Lattice Notes web application}]
+import "lib/http_server" as http
+import "lib/template" as tmpl
+import "lib/orm" as orm
+import "lib/dotenv" as dotenv
+import "lib/log" as log
+
+// ── Configuration ───────────────────────────────────────
+dotenv.load()
+
+let log_cfg = Map::new()
+log_cfg.set("level", "info")
+let logger = log.new(log_cfg)
+
+// ── Database setup ──────────────────────────────────────
+let db = orm.connect("notes.db")
+
+let schema = Map::new()
+schema.set("id", "INTEGER PRIMARY KEY AUTOINCREMENT")
+schema.set("title", "TEXT NOT NULL")
+schema.set("body", "TEXT")
+schema.set("created_at", "TEXT")
+
+let Note = orm.model(db, "notes", schema)
+let create_table = Note.get("create_table")
+create_table(0)
+
+logger.info("Database initialized")
+
+// ── Pre-compile templates ───────────────────────────────
+let index_tmpl = tmpl.from_file("templates/index.html")
+let note_tmpl = tmpl.from_file("templates/note.html")
+
+// ── Helper: parse form body ─────────────────────────────
+fn parse_form(body: String) -> Map {
+    let result = Map::new()
+    let pairs = body.split("&")
+    for pair in pairs {
+        let eq = pair.index_of("=")
+        if eq > 0 {
+            let key = pair.substring(0, eq)
+            let val = pair.substring(eq + 1, len(pair))
+            // Basic URL decoding: + -> space
+            let decoded = val.replace("+", " ")
+            result.set(key, decoded)
+        }
+    }
+    return result
+}
+
+// ── Application ─────────────────────────────────────────
+let app = http.new()
+
+// Middleware
+app.use(http.logger())
+app.use(http.body_parser())
+app.use(http.cors())
+
+// ── HTML Routes ─────────────────────────────────────────
+
+// Home page: list all notes
+app.get("/", |req, res| {
+    let all = Note.get("all")
+    let notes = all(0)
+    let count = Note.get("count")
+
+    let data = Map::new()
+    data.set("notes", notes)
+    data.set("note_count", count(0))
+
+    let page = tmpl.render(index_tmpl, data)
+    return http.html(200, page)
+})
+
+// View a single note
+app.get("/notes/view", |req, res| {
+    let query = req.get("query")
+    if !query.has("id") {
+        return http.redirect("/")
+    }
+    let note_id = to_int(query.get("id"))
+    let find = Note.get("find")
+    let note = find(note_id)
+    if note == nil {
+        return http.html(404, "<h1>Note not found</h1>")
+    }
+    let page = tmpl.render(note_tmpl, note)
+    return http.html(200, page)
+})
+
+// Create a note from an HTML form
+app.post("/notes/create", |req, res| {
+    let body = req.get("body")
+    let form = parse_form(body)
+    let create = Note.get("create")
+
+    let note_data = Map::new()
+    note_data.set("title", form.get("title"))
+    note_data.set("body", form.get("body"))
+    note_data.set("created_at",
+        time_format(time(), "%Y-%m-%d %H:%M:%S"))
+
+    create(note_data)
+    logger.info("Note created: " + form.get("title"))
+    return http.redirect("/")
+})
+
+// ── JSON API Routes ─────────────────────────────────────
+
+// List all notes
+app.get("/api/notes", |req, res| {
+    let all = Note.get("all")
+    let notes = all(0)
+    return http.json(200, notes)
+})
+
+// Get a single note by id
+app.get("/api/notes/one", |req, res| {
+    let query = req.get("query")
+    if !query.has("id") {
+        let err = Map::new()
+        err.set("error", "Missing 'id' parameter")
+        return http.json(400, err)
+    }
+    let note_id = to_int(query.get("id"))
+    let find = Note.get("find")
+    let note = find(note_id)
+    if note == nil {
+        let err = Map::new()
+        err.set("error", "Note not found")
+        return http.json(404, err)
+    }
+    return http.json(200, note)
+})
+
+// Create a note via JSON
+app.post("/api/notes", |req, res| {
+    let parsed = req.get("parsed_body")
+    if parsed == nil {
+        let err = Map::new()
+        err.set("error", "Invalid JSON body")
+        return http.json(400, err)
+    }
+    let create = Note.get("create")
+
+    let note_data = Map::new()
+    note_data.set("title", parsed.get("title"))
+    note_data.set("body", parsed.get("body"))
+    note_data.set("created_at",
+        time_format(time(), "%Y-%m-%d %H:%M:%S"))
+
+    let new_id = create(note_data)
+
+    let result = Map::new()
+    result.set("id", new_id)
+    result.set("message", "Note created")
+    logger.info("Note created via API: " + parsed.get("title"))
+    return http.json(201, result)
+})
+
+// ── Start the server ────────────────────────────────────
+logger.info("Starting Lattice Notes")
+app.listen(8080)
+\end{lstlisting}
+
+\subsection{Testing It Out}\label{sec:webapp-testing}
+
+Start the server:
+
+\begin{lstlisting}[language={}, caption={Starting the application}]
+$ lattice app.lat
+Lattice HTTP server listening on http://localhost:8080
+\end{lstlisting}
+
+Open a browser to \texttt{http://localhost:8080} to see the HTML interface.
+Create a few notes using the form, then try the JSON API:
+
+\begin{lstlisting}[language={}, caption={Testing the JSON API with curl}]
+# List all notes
+$ curl http://localhost:8080/api/notes
+[{"id":1,"title":"Hello","body":"First note","created_at":"2025-01-15 10:30:00"}]
+
+# Create a note
+$ curl -X POST http://localhost:8080/api/notes \
+  -H "Content-Type: application/json" \
+  -d '{"title":"From the API","body":"Created via curl"}'
+{"id":2,"message":"Note created"}
+
+# Get a single note
+$ curl http://localhost:8080/api/notes/one?id=1
+{"id":1,"title":"Hello","body":"First note","created_at":"2025-01-15 10:30:00"}
+\end{lstlisting}
+
+\subsection{Design Walkthrough}\label{sec:webapp-design}
+
+Let us highlight some of the patterns at work:
+
+\begin{enumerate}
+  \item \textbf{Templates are compiled once.} We call \lstinline|tmpl.from_file| at startup and reuse the compiled templates on every request.
+  This avoids re-parsing the template strings on each page load.
+
+  \item \textbf{Dual interface.} The same data model serves both HTML pages and a JSON API.
+  The HTML routes render templates; the API routes call \lstinline|http.json|.
+  This dual-interface pattern is common in real applications.
+
+  \item \textbf{Middleware stacking.} The \lstinline|http.logger()| middleware logs every request, \lstinline|http.body_parser()| handles JSON parsing, and \lstinline|http.cors()| adds CORS headers.
+  Adding authentication would be one more \lstinline|app.use| call.
+
+  \item \textbf{The ORM hides SQL.} The route handlers never write SQL directly.
+  They interact with the \lstinline|Note| model through its \lstinline|create|, \lstinline|find|, \lstinline|all|, and \lstinline|where| closures.
+  The \lstinline|where| closure's parameterized queries prevent SQL injection.
+
+  \item \textbf{Error responses are intentional.} Every API endpoint checks for missing parameters and returns structured JSON error objects with appropriate HTTP status codes.
+  This makes the API client-friendly.
+\end{enumerate}
+
+\begin{notebox}{Streaming and SSE}
+The \lstinline|http_server| library also supports chunked transfer encoding via \lstinline|http.stream(status, chunks)| and Server-Sent Events via \lstinline|http.sse_stream(events)|.
+These are useful for long-running responses, real-time updates, and progressive data delivery.
+Explore \filename{lib/http\_server.lat} for the full API.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section*{Exercises}\label{sec:web-exercises}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{enumerate}
+  \item \textbf{Add a DELETE endpoint.}
+  Add \lstinline|DELETE /api/notes?id=N| and \lstinline|POST /notes/delete?id=N| routes to the Lattice Notes application.
+  The HTML route should redirect back to \texttt{/} after deletion.
+
+  \item \textbf{Note editing.}
+  Add a \lstinline|GET /notes/edit?id=N| route that renders an edit form (pre-filled with the existing note data) and a \lstinline|POST /notes/update| route that updates the note and redirects to the view page.
+
+  \item \textbf{Search.}
+  Add a \lstinline|GET /search?q=term| route that uses the ORM's \lstinline|where| closure to find notes whose title or body contains the search term.
+  Render the results using the index template.
+
+  \item \textbf{Authentication middleware.}
+  Write a middleware that checks for a session cookie.
+  If the cookie is missing, redirect HTML requests to a \lstinline|/login| page and return 401 for API requests.
+  Use \lstinline|http.set_cookie| to issue the session cookie after login.
+
+  \item \textbf{Rate limiting.}
+  Build a middleware that tracks the number of requests per client IP address (stored in a Map) and returns \lstinline|429 Too Many Requests| if a client exceeds 60 requests per minute.
+  (Hint: store timestamps and use \lstinline|time()| to calculate the window.)
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:web-whats-next}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+Congratulations---you have built both a CLI tool and a web service in Lattice, using real libraries that handle real-world concerns.
+You have seen how the language's Map-based closure patterns give libraries like \lstinline|http_server|, \lstinline|template|, and \lstinline|orm| a flexible, composable feel without requiring complex type hierarchies.
+
+These two chapters are the capstone of \emph{The Lattice Handbook}.
+Everything we have covered---from the phase system and structured concurrency to modules, testing, and native extensions---comes together when you build real applications.
+The appendices that follow serve as a reference for the language grammar, opcode tables, and built-in functions.
+Keep them close while you build your next project.
+Happy forging.

@@ -1,0 +1,768 @@
+\chapter{Debugging}\label{ch:debugging}
+
+\index{debugging}\index{debugger}\index{clat run --debug}
+
+Tests tell you \emph{that} something broke.
+The debugger tells you \emph{why}.
+Lattice includes a built-in interactive debugger that lets you pause execution, inspect variables, step through code line by line, and evaluate expressions---all without leaving the terminal.
+For developers who prefer a graphical environment, the debugger also speaks the Debug Adapter Protocol (DAP), enabling first-class integration with VS Code and other editors.
+And for the trickiest bugs---the ones where a value changed ``somewhere'' but you don't know where---Lattice's value history functions let you track mutations over time.
+
+%% ─────────────────────────────────────────────────────────────
+\section{The \texttt{--debug} Flag and the CLI Debugger}\label{sec:debug-flag}
+\index{--debug flag}\index{CLI debugger}
+
+To start a program under the debugger, add the \lstinline|--debug| flag:
+
+\begin{lstlisting}[language=Lattice, caption={Launching the debugger}]
+// $ clat run --debug server.lat
+// Lattice debugger attached.
+// Type 'help' for commands.
+//
+// Stopped at line 1 in <script>
+//    1 | let host = "localhost"
+//
+// (dbg)
+\end{lstlisting}
+
+The program pauses at the very first line.
+You're now in the \emph{debug REPL}---an interactive prompt where you can inspect state, set breakpoints, and control execution.
+
+\begin{defnbox}{The Debug REPL}
+The debug REPL is a command loop that activates whenever execution is paused---either at startup in step mode, at a breakpoint, or after a step command completes.
+The prompt \lstinline|(dbg)| indicates that the program is paused and waiting for your instruction.
+All debugger commands are processed by the \lstinline|debugger_check()| function in \filename{src/debugger.c}.
+\end{defnbox}
+
+\subsection{The Help Command}\label{sec:debug-help}
+
+Type \lstinline|help| (or \lstinline|h|) at the debug prompt to see all available commands:
+
+\begin{lstlisting}[language=Lattice, caption={Debugger help output}]
+// (dbg) help
+// Debugger commands:
+//   s, step           Step into (execute one line, enter calls)
+//   n, next           Step over (execute one line, skip calls)
+//   o, out, finish    Step out (run until current function returns)
+//   c, continue       Continue until next breakpoint
+//   l, locals         Show local variables
+//   bt, stack         Show call stack / backtrace
+//   list              Show source context around current line
+//   b <line|func>     Set breakpoint at line or function
+//   b <N> if <expr>   Set conditional breakpoint
+//   d <id>            Delete breakpoint by ID
+//   p <var>           Print variable value
+//   eval <expr>       Evaluate expression
+//   watch <expr>      Add watch expression
+//   unwatch <id>      Remove watch expression
+//   info b            List breakpoints
+//   info w            List watch expressions
+//   q, quit           Exit debugger
+//   h, help           Show this help
+\end{lstlisting}
+
+\subsection{Initial Breakpoint with \texttt{--break}}\label{sec:break-line-flag}
+\index{--break flag}
+
+If you know roughly where the bug is, you can jump straight to a specific line instead of stepping from the beginning:
+
+\begin{lstlisting}[language=Lattice, caption={Starting with a breakpoint}]
+// $ clat run --break 42 server.lat
+// Lattice debugger attached.
+// Breakpoints: line 42
+//
+// Breakpoint 1 at line 42
+//    42 | let response = handle_request(request)
+//
+// (dbg)
+\end{lstlisting}
+
+The \lstinline|--break| flag implies \lstinline|--debug|.
+The program runs at full speed until it hits line 42, then pauses.
+
+\subsection{Viewing Source Context}\label{sec:debug-list}
+\index{debugger!list command}
+
+The \lstinline|list| command shows the source code surrounding the current line, with an arrow pointing to where execution is paused:
+
+\begin{lstlisting}[language=Lattice, caption={Viewing source context}]
+// (dbg) list
+//    37 |     let method = request.get("method")
+//    38 |     let path = request.get("path")
+//    39 |
+//    40 |     if method == "GET" {
+//    41 |         return handle_get(path)
+// -->42 |     let response = handle_request(request)
+//    43 |     } else if method == "POST" {
+//    44 |         return handle_post(path, body)
+//    45 |     }
+//    46 |
+//    47 |     return error("unsupported method: " + method)
+\end{lstlisting}
+
+The debugger loads the source file at startup (via \lstinline|debugger_load_source()| in \filename{src/debugger.c}) so it can display context around the current execution point.
+
+\subsection{Inspecting Variables}\label{sec:debug-inspect}
+\index{debugger!variable inspection}
+
+The \lstinline|p| (or \lstinline|print|) command shows the value of a variable:
+
+\begin{lstlisting}[language=Lattice, caption={Printing a variable}]
+// (dbg) p request
+// request = {method: "GET", path: "/api/users", headers: {...}}
+//
+// (dbg) p method
+// method = "GET"
+\end{lstlisting}
+
+The \lstinline|locals| command (or \lstinline|l|) shows \emph{all} local variables in the current scope:
+
+\begin{lstlisting}[language=Lattice, caption={Viewing all local variables}]
+// (dbg) locals
+//   request = {method: "GET", path: "/api/users", ...}
+//   method = "GET"
+//   path = "/api/users"
+\end{lstlisting}
+
+Under the hood, the debugger reads local variable names from the chunk's \lstinline|local_names| array and their values from the VM's stack slots.
+If a variable has no debug name (e.g., a compiler-generated temporary), it won't appear in the listing.
+
+\subsection{Evaluating Expressions}\label{sec:debug-eval}
+\index{debugger!expression evaluation}
+
+The \lstinline|eval| (or \lstinline|e|) command evaluates an arbitrary Lattice expression in the context of the paused program:
+
+\begin{lstlisting}[language=Lattice, caption={Evaluating expressions in the debugger}]
+// (dbg) eval len(path)
+// => 11
+//
+// (dbg) eval method == "GET"
+// => true
+//
+// (dbg) eval path.split("/")
+// => ["", "api", "users"]
+\end{lstlisting}
+
+This is one of the most powerful features of the debugger.
+You can call functions, access fields, perform arithmetic---anything you could write in a normal Lattice expression.
+The evaluator compiles the expression on the fly and executes it on the live VM (see \lstinline|debugger_eval_expr()| in \filename{src/debugger.c}).
+
+\begin{warnbox}{Side Effects in Eval}
+Expressions evaluated with \lstinline|eval| run on the real VM state.
+If you evaluate something with side effects (e.g., \lstinline|eval items.push(99)|), those effects will persist when you continue execution.
+Use \lstinline|eval| for inspection, not mutation---unless you know what you're doing.
+\end{warnbox}
+
+\subsection{The Call Stack}\label{sec:debug-backtrace}
+\index{debugger!backtrace}\index{debugger!call stack}
+
+The \lstinline|bt| (or \lstinline|stack| or \lstinline|backtrace|) command shows the complete call chain:
+
+\begin{lstlisting}[language=Lattice, caption={Viewing the call stack}]
+// (dbg) bt
+// Backtrace:
+//   #0 [line 12] in <script>
+//   #1 [line 25] in process_request()
+//   #2 [line 42] in handle_request()  <-- current
+\end{lstlisting}
+
+Frame \lstinline|#0| is the bottom of the stack (the top-level script), and the frame marked \lstinline|<-- current| is where execution is paused.
+This helps you understand how you got to the current line---especially useful when the same function is called from multiple places.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Breakpoints: Line, Function, Conditional}\label{sec:breakpoints}
+\index{breakpoints}
+
+Breakpoints tell the debugger ``stop here.''
+Lattice supports three kinds: line breakpoints, function breakpoints, and conditional breakpoints.
+
+\subsection{Line Breakpoints}\label{sec:bp-line}
+\index{breakpoints!line}
+
+Set a breakpoint at a specific line number:
+
+\begin{lstlisting}[language=Lattice, caption={Setting a line breakpoint}]
+// (dbg) b 15
+// Breakpoint 1 set at line 15
+//
+// (dbg) c
+// ... program runs ...
+// Breakpoint 1 at line 15
+//    15 | let total = calculate_total(items)
+//
+// (dbg)
+\end{lstlisting}
+
+The debugger assigns each breakpoint an auto-incrementing ID (starting at 1).
+When execution hits the breakpoint, the debugger shows the breakpoint number and line.
+
+\subsection{Function Breakpoints}\label{sec:bp-function}
+\index{breakpoints!function}
+
+If you don't know the line number but know the function name, set a function breakpoint:
+
+\begin{lstlisting}[language=Lattice, caption={Setting a function breakpoint}]
+// (dbg) b calculate_total
+// Breakpoint 2 set on function calculate_total()
+//
+// (dbg) c
+// ... program runs ...
+// Breakpoint 2 at calculate_total(), line 28
+//    28 | fn calculate_total(items: Array) -> Float {
+//
+// (dbg)
+\end{lstlisting}
+
+Function breakpoints trigger whenever the named function is entered, regardless of which line called it.
+The debugger detects function entry by comparing the current frame count against the previous check---if the frame count increased and the new frame's function name matches, the breakpoint fires (see the function breakpoint check in \lstinline|debugger_check()|).
+
+\subsection{Conditional Breakpoints}\label{sec:bp-conditional}
+\index{breakpoints!conditional}
+
+A conditional breakpoint only pauses when a Lattice expression evaluates to a truthy value.
+The syntax is \lstinline|b <line|func> if <expression>|:
+
+\begin{lstlisting}[language=Lattice, caption={Setting conditional breakpoints}]
+// (dbg) b 15 if total > 1000.0
+// Breakpoint 3 set at line 15 if total > 1000.0
+//
+// (dbg) b validate if input == ""
+// Breakpoint 4 set on function validate() if input == ""
+\end{lstlisting}
+
+The condition is evaluated every time the breakpoint location is reached.
+If the condition is falsy, execution continues without pausing.
+If the condition throws an error, the debugger warns you and breaks anyway (so you can fix the condition).
+
+\begin{tipbox}{Use Conditional Breakpoints for Loops}
+If you're debugging a loop that runs thousands of times but only the 500th iteration is wrong, a conditional breakpoint is far more effective than stepping through all 500 iterations:
+\begin{lstlisting}[language=Lattice]
+// (dbg) b 20 if index == 500
+\end{lstlisting}
+\end{tipbox}
+
+\subsection{Managing Breakpoints}\label{sec:bp-manage}
+\index{breakpoints!management}
+
+List all breakpoints with \lstinline|info b| (or \lstinline|info breakpoints|):
+
+\begin{lstlisting}[language=Lattice, caption={Listing breakpoints}]
+// (dbg) info b
+// Num  Type      Enb  What
+// 1    line      y    line 15  (hits: 3)
+// 2    function  y    calculate_total()  (hits: 1)
+// 3    line      y    line 15  if total > 1000.0  (hits: 0)
+\end{lstlisting}
+
+The table shows each breakpoint's ID, type (line or function), whether it's enabled (\lstinline|y|/\lstinline|n|), what it's set on, any condition, and how many times it has been hit.
+
+Remove a breakpoint by its ID:
+
+\begin{lstlisting}[language=Lattice, caption={Deleting a breakpoint}]
+// (dbg) d 2
+// Breakpoint 2 removed
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Step-Into, Step-Over, Step-Out}\label{sec:stepping}
+\index{stepping}\index{step-into}\index{step-over}\index{step-out}
+
+The three stepping commands are the bread and butter of interactive debugging.
+They control how much code executes before the debugger pauses again.
+
+\subsection{Step-Into (\texttt{s})}\label{sec:step-into}
+
+The \lstinline|s| (or \lstinline|step|) command executes one line.
+If that line contains a function call, the debugger enters the function and pauses at its first line:
+
+\begin{lstlisting}[language=Lattice, caption={A simple program to step through}]
+fn add_tax(price: Float, rate: Float) -> Float {
+    let tax = price * rate
+    return price + tax
+}
+
+let total = add_tax(100.0, 0.08)
+print(total)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Stepping into a function call}]
+// Stopped at line 6 in <script>
+//     6 | let total = add_tax(100.0, 0.08)
+//
+// (dbg) s
+// Stopped at line 2 in add_tax()
+//     2 |     let tax = price * rate
+//
+// (dbg) p price
+// price = 100.0
+//
+// (dbg) s
+// Stopped at line 3 in add_tax()
+//     3 |     return price + tax
+//
+// (dbg) p tax
+// tax = 8.0
+\end{lstlisting}
+
+Step-into follows the actual execution path.
+If a line calls multiple functions, stepping enters the first one called.
+
+\subsection{Step-Over (\texttt{n})}\label{sec:step-over}
+
+The \lstinline|n| (or \lstinline|next|) command executes one line but treats function calls as single steps---it doesn't enter them:
+
+\begin{lstlisting}[language=Lattice, caption={Stepping over a function call}]
+// Stopped at line 6 in <script>
+//     6 | let total = add_tax(100.0, 0.08)
+//
+// (dbg) n
+// Stopped at line 7 in <script>
+//     7 | print(total)
+//
+// (dbg) p total
+// total = 108.0
+\end{lstlisting}
+
+The function \lstinline|add_tax| executed fully, but the debugger didn't pause inside it.
+Step-over is the right choice when you trust the called function and want to see its result.
+
+The implementation tracks the call depth: when \lstinline|next| is issued, the debugger records the current frame count and only pauses when the frame count is at or below that level \emph{and} the line has changed (see the \lstinline|next_mode| and \lstinline|next_depth| fields in the \lstinline|Debugger| struct).
+
+\subsection{Step-Out (\texttt{o})}\label{sec:step-out}
+
+The \lstinline|o| (or \lstinline|out| or \lstinline|finish|) command runs until the current function returns, then pauses in the caller:
+
+\begin{lstlisting}[language=Lattice, caption={Stepping out of a function}]
+// Stopped at line 2 in add_tax()
+//     2 |     let tax = price * rate
+//
+// (dbg) o
+// Stopped at line 7 in <script>
+//     7 | print(total)
+//
+// (dbg) p total
+// total = 108.0
+\end{lstlisting}
+
+Step-out is perfect when you've accidentally stepped into a function you don't care about.
+Rather than stepping through every line, \lstinline|o| runs the rest of the function at full speed and returns you to the caller.
+
+\subsection{Continue (\texttt{c})}\label{sec:continue}
+\index{debugger!continue}
+
+The \lstinline|c| (or \lstinline|continue|) command resumes execution at full speed until the next breakpoint is hit (or the program ends):
+
+\begin{lstlisting}[language=Lattice, caption={Continuing execution}]
+// (dbg) b 25
+// Breakpoint 1 set at line 25
+//
+// (dbg) c
+// ... program runs at full speed ...
+// Breakpoint 1 at line 25
+//    25 | let result = process(data)
+//
+// (dbg)
+\end{lstlisting}
+
+\begin{notebox}{Choosing the Right Step Command}
+\begin{itemize}
+  \item \textbf{Step-into (s)}: Use when you want to see what happens \emph{inside} a function call.
+  \item \textbf{Step-over (n)}: Use when you trust the called function and want to move to the next line.
+  \item \textbf{Step-out (o)}: Use when you're inside a function you don't care about and want to return to the caller.
+  \item \textbf{Continue (c)}: Use when you've set breakpoints and want to skip ahead.
+\end{itemize}
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Watch Expressions and \texttt{breakpoint()}}\label{sec:watches}
+\index{watch expressions}\index{debugger!watch}
+
+\subsection{Watch Expressions}\label{sec:watch-expr}
+
+A watch expression is monitored automatically every time the debugger pauses.
+Instead of typing \lstinline|p total| at every stop, add a watch:
+
+\begin{lstlisting}[language=Lattice, caption={Adding watch expressions}]
+// (dbg) watch total
+// Watch 1: total
+//
+// (dbg) watch len(items)
+// Watch 2: len(items)
+\end{lstlisting}
+
+Now every time the debugger pauses, it prints the current value of each watch expression:
+
+\begin{lstlisting}[language=Lattice, caption={Watch expressions displayed at each stop}]
+// (dbg) s
+// Stopped at line 18 in process()
+//    18 |     total = total + item.price
+//
+// Watch expressions:
+//   [1] total = 342.50
+//   [2] len(items) = 15
+//
+// (dbg)
+\end{lstlisting}
+
+Watch expressions can be any valid Lattice expression---not just variable names.
+You can watch \lstinline|items[0].name|, \lstinline|total / len(items)|, or even a function call.
+
+Manage watches with:
+
+\begin{lstlisting}[language=Lattice, caption={Managing watch expressions}]
+// (dbg) info w
+//   [1] total = 342.50
+//   [2] len(items) = 15
+//
+// (dbg) unwatch 2
+// Watch 2 removed
+\end{lstlisting}
+
+\subsection{The \texttt{breakpoint()} Built-in}\label{sec:breakpoint-fn}
+\index{breakpoint() function}
+
+Sometimes the condition for pausing is too complex to express in a breakpoint condition string.
+For these cases, Lattice provides the \lstinline|breakpoint()| built-in function.
+Call it anywhere in your code, and the debugger pauses at that point if the program is running under \lstinline|--debug|:
+
+\begin{lstlisting}[language=Lattice, caption={Using breakpoint() in code}]
+fn process_order(order: Map) -> Map {
+    let items = order.get("items")
+    let total = 0.0
+
+    for item in items {
+        total = total + item.get("price")
+
+        // Pause if we encounter a suspiciously high price
+        if item.get("price") > 10000.0 {
+            breakpoint()
+        }
+    }
+
+    return order
+}
+\end{lstlisting}
+
+When the debugger is not attached (normal \lstinline|clat run|), \lstinline|breakpoint()| is a no-op.
+This means you can leave \lstinline|breakpoint()| calls in your code without affecting production behavior.
+
+\begin{tipbox}{Programmatic Breakpoints}
+\lstinline|breakpoint()| is especially useful for catching rare conditions that are hard to reproduce.
+Rather than guessing which line to break on, embed the breakpoint directly in the condition logic:
+\begin{lstlisting}[language=Lattice]
+if is_error(result) {
+    breakpoint()  // pause only when something went wrong
+}
+\end{lstlisting}
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{DAP and VS Code Integration}\label{sec:dap}
+\index{DAP}\index{Debug Adapter Protocol}\index{VS Code}\index{debugger!VS Code}
+
+The CLI debugger is powerful, but sometimes you want a graphical view: variable panes, inline source highlighting, and click-to-set breakpoints.
+Lattice supports the Debug Adapter Protocol (DAP), the industry standard used by VS Code, Neovim (via nvim-dap), Emacs (via dap-mode), and other editors.
+
+\subsection{What Is DAP?}\label{sec:what-is-dap}
+
+The Debug Adapter Protocol, developed by Microsoft for VS Code, defines a JSON-based message protocol between an editor (the ``client'') and a debugger (the ``adapter'').
+Instead of every editor implementing custom support for every language's debugger, DAP provides a common interface.
+Lattice's DAP implementation lives in \filename{src/dap.c} and speaks DAP over stdin/stdout using Content-Length framed JSON messages.
+
+\subsection{Starting DAP Mode}\label{sec:dap-start}
+
+To launch the debugger in DAP mode:
+
+\begin{lstlisting}[language=Lattice, caption={Launching DAP mode}]
+// $ clat run --dap server.lat
+\end{lstlisting}
+
+In DAP mode, the debugger communicates via the Content-Length framed JSON protocol on stdin/stdout instead of the interactive REPL.
+The handshake follows the DAP specification: the client sends \lstinline|initialize|, \lstinline|launch|, optionally \lstinline|setBreakpoints| and \lstinline|setFunctionBreakpoints|, and finally \lstinline|configurationDone|.
+
+\subsection{VS Code Configuration}\label{sec:vscode-config}
+
+To debug Lattice programs in VS Code, create a \filename{.vscode/launch.json} file in your project:
+
+\begin{lstlisting}[language=Lattice, caption={VS Code launch.json for Lattice debugging}]
+// {
+//     "version": "0.2.0",
+//     "configurations": [
+//         {
+//             "name": "Debug Lattice",
+//             "type": "lattice",
+//             "request": "launch",
+//             "program": "server.lat",
+//             "stopOnEntry": true
+//         }
+//     ]
+// }
+\end{lstlisting}
+
+The \lstinline|"stopOnEntry": true| option tells the debugger to pause at the first line (equivalent to \lstinline|--debug| in CLI mode).
+If you set it to \lstinline|false|, the program runs until it hits a breakpoint.
+
+\subsection{DAP Capabilities}\label{sec:dap-capabilities}
+
+Lattice's DAP adapter advertises the following capabilities during the initialize handshake (see \lstinline|dap_handshake()| in \filename{src/dap.c}):
+
+\begin{longtable}{@{}lp{8cm}@{}}
+\toprule
+\textbf{Capability} & \textbf{Description} \\
+\midrule
+\endhead
+Configuration Done & Supports the \lstinline|configurationDone| request \\
+Function Breakpoints & Supports breakpoints on function names \\
+Conditional Breakpoints & Supports breakpoint conditions \\
+Evaluate for Hovers & Evaluates expressions when you hover in the editor \\
+\bottomrule
+\end{longtable}
+
+\subsection{Features in the VS Code Debug View}\label{sec:vscode-features}
+
+Once connected, you get the full VS Code debugging experience:
+
+\begin{itemize}
+  \item \textbf{Variables pane}: Shows all local variables and their values, organized by scope (Locals and Globals). Compound types (arrays, structs, maps) can be expanded to inspect their contents.
+  \item \textbf{Call stack}: Displays the call chain from the top-level script down to the current function.
+  \item \textbf{Breakpoint gutter}: Click in the gutter to set or remove line breakpoints. Right-click for conditional breakpoints.
+  \item \textbf{Step controls}: The toolbar provides step-into, step-over, step-out, continue, and pause buttons.
+  \item \textbf{Debug console}: Type expressions in the debug console to evaluate them, just like the CLI \lstinline|eval| command.
+  \item \textbf{Output capture}: \lstinline|print()| output from your program appears in the Debug Console via DAP output events.
+\end{itemize}
+
+\begin{notebox}{Compound Variable Expansion}
+When the Variables pane shows a struct, array, or map, VS Code can expand it to show individual fields or elements.
+This works through DAP's variable reference system: each compound value gets a unique reference ID, and when you expand it, VS Code sends a \lstinline|variables| request with that reference.
+The implementation in \filename{src/dap.c} uses a per-stop variable reference table (cleared on each stop event to avoid stale data).
+\end{notebox}
+
+\subsection{Using with Other Editors}\label{sec:dap-other-editors}
+
+Any editor that supports DAP can connect to Lattice's debugger.
+For Neovim with nvim-dap:
+
+\begin{lstlisting}[language=Lattice, caption={Neovim nvim-dap configuration}]
+// In your Neovim config (Lua):
+// local dap = require("dap")
+// dap.adapters.lattice = {
+//     type = "executable",
+//     command = "clat",
+//     args = { "run", "--dap" }
+// }
+// dap.configurations.lattice = {{
+//     name = "Debug Lattice",
+//     type = "lattice",
+//     request = "launch",
+//     program = "${file}",
+//     stopOnEntry = true,
+// }}
+\end{lstlisting}
+
+The DAP protocol is identical regardless of the editor.
+Any tool that implements the DAP client side will work with Lattice's adapter.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Value History: \texttt{track()}, \texttt{history()}, \texttt{rewind()}}\label{sec:value-history}
+\index{track()}\index{history()}\index{rewind()}\index{value history}\index{time travel debugging}
+
+Some bugs aren't about the current state---they're about how the state got there.
+A variable has the wrong value, but when did it change?
+What was it before?
+Lattice's value history functions let you answer these questions without setting breakpoints on every assignment.
+
+\subsection{\texttt{track(variable)} --- Start Recording}\label{sec:track}
+\index{track()}
+
+The \lstinline|track()| function tells the runtime to record every value change for a named variable:
+
+\begin{lstlisting}[language=Lattice, caption={Tracking a variable}]
+flux counter = 0
+track(counter)
+
+counter = 10
+counter = 20
+counter = 30
+\end{lstlisting}
+
+After calling \lstinline|track(counter)|, every subsequent assignment to \lstinline|counter| is recorded as a snapshot.
+The snapshot includes the value, its phase, the source line number, and the enclosing function name.
+
+\begin{defnbox}{track(variable)}
+\lstinline|track(variable)| enables value history tracking for the specified variable.
+The argument is a variable name (not a string---the compiler automatically converts it to a string behind the scenes).
+Tracking begins with an initial snapshot of the variable's current value.
+Subsequent mutations are recorded as they happen.
+\end{defnbox}
+
+\subsection{\texttt{history(variable)} --- View the Timeline}\label{sec:history}
+\index{history()}
+
+Once you're tracking a variable, call \lstinline|history()| to retrieve its full timeline:
+
+\begin{lstlisting}[language=Lattice, caption={Viewing variable history}]
+flux temperature = 20.0
+track(temperature)
+
+temperature = 22.5
+temperature = 25.0
+temperature = 18.3
+
+let timeline = history(temperature)
+for entry in timeline {
+    print(entry)
+}
+// Output:
+// {phase: "flux", value: 20.0, line: 2, fn: nil}
+// {phase: "flux", value: 22.5, line: 4, fn: nil}
+// {phase: "flux", value: 25.0, line: 5, fn: nil}
+// {phase: "flux", value: 18.3, line: 6, fn: nil}
+\end{lstlisting}
+
+Each entry in the timeline is a \lstinline|Map| with four keys:
+
+\begin{longtable}{@{}lp{9cm}@{}}
+\toprule
+\textbf{Key} & \textbf{Description} \\
+\midrule
+\endhead
+\lstinline|phase| & The phase of the variable at the time of recording (e.g., \lstinline|"flux"|, \lstinline|"fix"|, \lstinline|"let"|) \\
+\lstinline|value| & A deep copy of the variable's value at that moment \\
+\lstinline|line| & The source line number where the assignment occurred \\
+\lstinline|fn| & The name of the enclosing function, or \lstinline|nil| for top-level code \\
+\bottomrule
+\end{longtable}
+
+The \lstinline|phases()| function is a synonym for \lstinline|history()| that returns the same data. Use whichever name feels more natural.
+
+\subsection{\texttt{rewind(variable, n)} --- Look Back in Time}\label{sec:rewind}
+\index{rewind()}
+
+The \lstinline|rewind()| function retrieves the value of a variable from \lstinline|n| steps ago:
+
+\begin{lstlisting}[language=Lattice, caption={Rewinding variable state}]
+flux score = 0
+track(score)
+
+score = 10
+score = 25
+score = 50
+score = 100
+
+print(rewind(score, 0))  // Output: 100 (current)
+print(rewind(score, 1))  // Output: 50  (one step back)
+print(rewind(score, 2))  // Output: 25  (two steps back)
+print(rewind(score, 3))  // Output: 10  (three steps back)
+print(rewind(score, 4))  // Output: 0   (initial value)
+\end{lstlisting}
+
+The parameter \lstinline|n| counts backward from the most recent snapshot.
+\lstinline|rewind(score, 0)| returns the current value; \lstinline|rewind(score, 1)| returns the previous value, and so on.
+If \lstinline|n| exceeds the number of recorded snapshots, \lstinline|rewind()| returns \lstinline|nil|.
+
+The returned value is a \emph{deep copy}---modifying it won't affect the original variable or the history.
+
+\subsection{Practical Example: Debugging a Running Total}\label{sec:history-example}
+
+Let's use value history to find where a running total goes wrong:
+
+\begin{lstlisting}[language=Lattice, caption={Debugging with value history}]
+fn process_transactions(transactions: Array) -> Float {
+    flux total = 0.0
+    track(total)
+
+    for tx in transactions {
+        let amount = tx.get("amount")
+        if tx.get("type") == "credit" {
+            total = total + amount
+        } else {
+            total = total - amount
+        }
+    }
+
+    // Something's wrong with the total.
+    // Let's inspect the history:
+    let timeline = history(total)
+    for entry in timeline {
+        print(format("Line {}: total = {} ({})",
+            entry.get("line"),
+            entry.get("value"),
+            entry.get("phase")))
+    }
+
+    return total
+}
+
+let transactions = [
+    {"type": "credit", "amount": 100.0},
+    {"type": "credit", "amount": 50.0},
+    {"type": "debit", "amount": 30.0},
+    {"type": "credit", "amount": -20.0}
+]
+
+let result = process_transactions(transactions)
+print("Final total: " + to_string(result))
+// The history output shows exactly when the negative credit
+// caused the unexpected subtraction.
+\end{lstlisting}
+
+By scanning the timeline, you can see exactly which transaction caused the total to deviate from expectations---and on which line.
+
+\subsection{Combining Tracking with the Debugger}\label{sec:track-with-debug}
+
+Value history and the interactive debugger complement each other.
+You can set a breakpoint, then inspect the history at that point:
+
+\begin{lstlisting}[language=Lattice, caption={Using track() with the CLI debugger}]
+// $ clat run --debug analytics.lat
+//
+// (dbg) b 45
+// Breakpoint 1 set at line 45
+//
+// (dbg) c
+// Breakpoint 1 at line 45
+//    45 |     return average
+//
+// (dbg) eval history(running_sum)
+// => [{phase: "flux", value: 0, line: 12, fn: "compute_average"},
+//     {phase: "flux", value: 42, line: 18, fn: "compute_average"},
+//     {phase: "flux", value: 85, line: 18, fn: "compute_average"},
+//     ...]
+//
+// (dbg) eval rewind(running_sum, 3)
+// => 42
+\end{lstlisting}
+
+This is the closest thing to time-travel debugging: you can inspect what a variable's value was at any prior point in the program, without having to re-run it.
+
+\begin{warnbox}{Memory Cost of Tracking}
+Each tracked assignment creates a deep copy of the variable's value.
+For large data structures in tight loops, this can consume significant memory.
+Use \lstinline|track()| judiciously---enable it for the specific variables you need to debug, and remove it when you're done.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{Exercises}\label{sec:debugging-exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}
+  \item Write a program that computes the factorial of a number using recursion. Run it under \lstinline|--debug| and step through the recursive calls using \lstinline|s|. Use \lstinline|bt| at the deepest recursion level to see the full call stack. Then use \lstinline|o| to step out one frame at a time.
+
+  \item Create a program with a loop that processes an array of numbers. Set a conditional breakpoint that only triggers when the current number is negative. Use \lstinline|eval| to inspect the loop state when the breakpoint fires.
+
+  \item Add \lstinline|track()| to a variable inside a sorting algorithm (e.g., insertion sort). After the sort completes, print the full \lstinline|history()| and use \lstinline|rewind()| to inspect the variable's value at three different points during execution.
+
+  \item Set up a VS Code \filename{launch.json} for a Lattice project. Set breakpoints by clicking in the gutter, then step through the program using the toolbar controls. Expand a struct and an array in the Variables pane to see their fields.
+
+  \item Write a program that uses \lstinline|breakpoint()| inside an error-handling path. Run it normally (without \lstinline|--debug|) to verify that \lstinline|breakpoint()| has no effect, then run it under the debugger to confirm it pauses at the right moment.
+
+  \item Combine \lstinline|watch| expressions with \lstinline|track()| to debug a program that accumulates values in a loop. Set two watch expressions (one for the running total, one for the loop counter) and step through five iterations. Then use \lstinline|rewind()| to verify the total at each step.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:debugging-next}
+\addcontentsline{toc}{section}{What's Next}
+
+You now have a complete toolkit for developing Lattice programs: formatting (\lstinline|clat fmt|), documentation (\lstinline|clat doc|), testing (\lstinline|clat test|), and debugging (\lstinline|--debug| and DAP).
+In Part~X, we'll go under the hood and explore the internals of the Lattice runtime itself.
+\Cref{ch:three-backends} starts with the three compilation backends---tree-walk interpreter, stack VM, and register VM---and explains how your Lattice code is transformed from source text into executable instructions.

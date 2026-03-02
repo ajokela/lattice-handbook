@@ -1,0 +1,644 @@
+\chapter{Strings in Depth}\label{ch:strings}
+
+\index{strings}
+
+Strings are the workhorses of most programs. They carry user messages, encode configuration, represent file paths, and compose network protocols. Lattice treats strings as first-class values with a rich set of built-in methods---over two dozen, from basic splitting and trimming to case transformations, character inspection, and regular expression matching.
+
+In this chapter, we'll go beyond the basics of string creation (covered in \cref{ch:values-types}) and explore the full breadth of what Lattice strings can do.
+
+%% ─────────────────────────────────────────────
+\section{Interpolation, Escaping, and Raw Strings}\label{sec:string-interpolation}
+\index{string interpolation}\index{escape sequences}\index{raw strings}
+
+\subsection{String Interpolation}\label{sec:interpolation}
+
+Lattice strings support interpolation with the \lstinline|$\{expr\}| syntax. Any expression can appear inside the braces:
+
+\begin{lstlisting}[language=Lattice, caption={String interpolation}]
+let name = "Lattice"
+let version = 1.0
+
+print("Welcome to ${name}!")           // Output: Welcome to Lattice!
+print("Version: ${version}")           // Output: Version: 1.0
+print("1 + 2 = ${1 + 2}")             // Output: 1 + 2 = 3
+print("Name length: ${name.len()}")    // Output: Name length: 7
+\end{lstlisting}
+
+Interpolation works in double-quoted strings and triple-quoted strings. The expression is evaluated, converted to a string, and spliced into the surrounding text. You can nest function calls, method chains, and even conditionals inside the braces:
+
+\begin{lstlisting}[language=Lattice, caption={Complex interpolation expressions}]
+let scores = [85, 92, 78, 91]
+let avg = scores.reduce(0, |a, b| a + b) / scores.len()
+
+print("Average: ${avg} (${if avg >= 90 { "A" } else { "B" }})")
+// Output: Average: 86 (B)
+\end{lstlisting}
+
+\subsection{Escape Sequences}\label{sec:escape-sequences}
+\index{escape sequences}
+
+Double-quoted strings support the standard escape sequences:
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Escape} & \textbf{Character} \\
+\midrule
+\lstinline|\\n| & Newline \\
+\lstinline|\\t| & Tab \\
+\lstinline|\\r| & Carriage return \\
+\lstinline|\\\\| & Literal backslash \\
+\lstinline|\\"| & Double quote \\
+\lstinline|\\'| & Single quote \\
+\lstinline|\\0| & Null byte \\
+\lstinline|\\xHH| & Hex byte (two hex digits) \\
+\bottomrule
+\end{tabular}
+\caption{Escape sequences}\label{tab:escape-sequences}
+\end{table}
+
+\begin{lstlisting}[language=Lattice, caption={Using escape sequences}]
+print("Line 1\nLine 2")
+// Output:
+// Line 1
+// Line 2
+
+print("Tab\there")
+// Output: Tab    here
+
+print("She said \"hello\"")
+// Output: She said "hello"
+
+print("Hex: \x41\x42\x43")
+// Output: Hex: ABC
+\end{lstlisting}
+
+\subsection{Single-Quoted Strings}\label{sec:single-quoted}
+
+Single-quoted strings work identically to double-quoted strings in Lattice---they support the same escape sequences and interpolation. The choice between \lstinline|'...'| and \lstinline|"..."| is purely stylistic.
+
+\subsection{Triple-Quoted Strings}\label{sec:triple-quoted}
+\index{triple-quoted strings}\index{multiline strings}
+
+For multi-line strings, triple quotes preserve whitespace and auto-dedent:
+
+\begin{lstlisting}[language=Lattice, caption={Triple-quoted strings}]
+let poem = """
+    Roses are red,
+    Violets are blue,
+    Lattice is fast,
+    And expressive too.
+    """
+
+print(poem)
+// Output:
+// Roses are red,
+// Violets are blue,
+// Lattice is fast,
+// And expressive too.
+\end{lstlisting}
+
+Triple-quoted strings automatically strip the common leading whitespace from all lines, so you can indent them naturally in your code. They also support interpolation and escape sequences.
+
+%% ─────────────────────────────────────────────
+\section{Core String Methods}\label{sec:core-string-methods}
+\index{String!methods}
+
+\subsection{split --- Break a String Apart}\label{sec:split}
+\index{split()@\texttt{.split()}}
+
+The \lstinline|split| method divides a string by a delimiter:
+
+\begin{lstlisting}[language=Lattice, caption={Splitting strings}]
+let csv_line = "Alice,30,Engineer"
+let fields = csv_line.split(",")
+print(fields) // Output: ["Alice", "30", "Engineer"]
+
+let words = "the quick brown fox".split(" ")
+print(words) // Output: ["the", "quick", "brown", "fox"]
+
+// Empty delimiter splits into individual characters
+let chars = "hello".split("")
+print(chars) // Output: ["h", "e", "l", "l", "o"]
+\end{lstlisting}
+
+\subsection{trim, trim\_start, trim\_end}\label{sec:trim}
+\index{trim()@\texttt{.trim()}}
+
+These methods remove whitespace from string edges:
+
+\begin{lstlisting}[language=Lattice, caption={Trimming whitespace}]
+let messy = "   hello, world!   "
+
+print(messy.trim())       // Output: "hello, world!"
+print(messy.trim_start()) // Output: "hello, world!   "
+print(messy.trim_end())   // Output: "   hello, world!"
+\end{lstlisting}
+
+Whitespace includes spaces, tabs, newlines, and carriage returns.
+
+\subsection{replace}\label{sec:replace}
+\index{replace()@\texttt{.replace()}}
+
+\lstinline|replace| substitutes all occurrences of a substring:
+
+\begin{lstlisting}[language=Lattice, caption={String replacement}]
+let template = "Hello, {name}! Welcome to {place}."
+
+let greeting = template
+  .replace("{name}", "Alice")
+  .replace("{place}", "Lattice")
+
+print(greeting) // Output: Hello, Alice! Welcome to Lattice.
+
+// Replace all occurrences
+let stuttered = "b-b-banana"
+print(stuttered.replace("b-", "")) // Output: banana
+\end{lstlisting}
+
+\subsection{contains, starts\_with, ends\_with}\label{sec:string-search}
+\index{contains()@\texttt{.contains()}}\index{starts\_with()@\texttt{.starts\_with()}}\index{ends\_with()@\texttt{.ends\_with()}}
+
+These methods test whether a string contains, begins with, or ends with a given substring:
+
+\begin{lstlisting}[language=Lattice, caption={String searching}]
+let filename = "report_2024.pdf"
+
+print(filename.contains("2024"))     // Output: true
+print(filename.starts_with("report")) // Output: true
+print(filename.ends_with(".pdf"))    // Output: true
+print(filename.ends_with(".csv"))    // Output: false
+\end{lstlisting}
+
+\subsection{count}\label{sec:string-count}
+\index{count()@\texttt{.count()}}
+
+\lstinline|count| returns the number of non-overlapping occurrences of a substring:
+
+\begin{lstlisting}[language=Lattice, caption={Counting occurrences}]
+let text = "abracadabra"
+
+print(text.count("a"))   // Output: 5
+print(text.count("abra")) // Output: 2
+print(text.count("z"))   // Output: 0
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{Case Transformations}\label{sec:case-transformations}
+\index{case transformations}\index{String!case conversion}
+
+Lattice provides a complete set of case transformation methods, useful for normalizing identifiers, formatting output, and converting between naming conventions.
+
+\begin{lstlisting}[language=Lattice, caption={Basic case conversion}]
+let greeting = "Hello, World!"
+
+print(greeting.to_upper()) // Output: HELLO, WORLD!
+print(greeting.to_lower()) // Output: hello, world!
+\end{lstlisting}
+
+\subsection{Naming Convention Converters}\label{sec:naming-conventions}
+\index{snake\_case()@\texttt{.snake\_case()}}\index{camel\_case()@\texttt{.camel\_case()}}\index{kebab\_case()@\texttt{.kebab\_case()}}\index{title\_case()@\texttt{.title\_case()}}
+
+These methods convert between common programming naming conventions:
+
+\begin{lstlisting}[language=Lattice, caption={Naming convention transformations}]
+let identifier = "getUserName"
+
+print(identifier.snake_case())  // Output: get_user_name
+print(identifier.kebab_case())  // Output: get-user-name
+print(identifier.title_case())  // Output: Get User Name
+\end{lstlisting}
+
+The transformations handle various input formats intelligently:
+
+\begin{lstlisting}[language=Lattice, caption={Cross-format conversion}]
+// From snake_case
+print("user_full_name".camel_case())  // Output: userFullName
+print("user_full_name".kebab_case())  // Output: user-full-name
+print("user_full_name".title_case())  // Output: User Full Name
+
+// From kebab-case
+print("my-component-name".snake_case()) // Output: my_component_name
+print("my-component-name".camel_case()) // Output: myComponentName
+
+// capitalize: first letter uppercase, rest lowercase
+print("hello world".capitalize()) // Output: Hello world
+\end{lstlisting}
+
+The case detection is aware of camelCase boundaries---when a lowercase letter is followed by an uppercase letter, that's treated as a word boundary. This means \lstinline|"XMLParser".snake_case()| produces \lstinline|"x_m_l_parser"| (treating each uppercase letter as a boundary).
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Input} & \textbf{Output} \\
+\midrule
+\lstinline|.to_upper()| & \lstinline|"hello"| & \lstinline|"HELLO"| \\
+\lstinline|.to_lower()| & \lstinline|"HELLO"| & \lstinline|"hello"| \\
+\lstinline|.capitalize()| & \lstinline|"hello world"| & \lstinline|"Hello world"| \\
+\lstinline|.snake_case()| & \lstinline|"getUserName"| & \lstinline|"get_user_name"| \\
+\lstinline|.camel_case()| & \lstinline|"get_user_name"| & \lstinline|"getUserName"| \\
+\lstinline|.kebab_case()| & \lstinline|"getUserName"| & \lstinline|"get-user-name"| \\
+\lstinline|.title_case()| & \lstinline|"hello_world"| & \lstinline|"Hello World"| \\
+\bottomrule
+\end{tabular}
+\caption{Case transformation methods}\label{tab:case-transformations}
+\end{table}
+
+\begin{tipbox}{When to Use Case Transformations}
+Case transformations are especially useful in code generation, template engines, and API adapters. For example, you might convert a database column name like \lstinline|"first_name"| to \lstinline|"firstName"| for a JSON API, or to \lstinline|"First Name"| for a UI label.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────
+\section{Characters, Bytes, and Substrings}\label{sec:chars-bytes}
+\index{chars()@\texttt{.chars()}}\index{bytes()@\texttt{.bytes()}}
+
+\subsection{chars() and bytes()}\label{sec:chars-and-bytes}
+
+The \lstinline|chars| method returns an array of individual characters (each as a one-character string), while \lstinline|bytes| returns an array of byte values:
+
+\begin{lstlisting}[language=Lattice, caption={chars and bytes}]
+let word = "Hello"
+
+print(word.chars()) // Output: ["H", "e", "l", "l", "o"]
+print(word.bytes()) // Output: [72, 101, 108, 108, 111]
+\end{lstlisting}
+
+The \lstinline|chars| method is useful for character-level processing:
+
+\begin{lstlisting}[language=Lattice, caption={Character-level operations}]
+fn is_palindrome(s: String) -> Bool {
+  let chars = s.to_lower().chars()
+  let n = chars.len()
+  for i in 0..(n / 2) {
+    if chars[i] != chars[n - 1 - i] {
+      return false
+    }
+  }
+  true
+}
+
+print(is_palindrome("racecar")) // Output: true
+print(is_palindrome("hello"))   // Output: false
+print(is_palindrome("Madam"))   // Output: true
+\end{lstlisting}
+
+\subsection{len(), substring(), and index\_of()}\label{sec:len-substring}
+\index{len()@\texttt{.len()}}\index{substring()@\texttt{.substring()}}\index{index\_of()@\texttt{.index\_of()}}
+
+\begin{lstlisting}[language=Lattice, caption={String length, substrings, and searching}]
+let message = "Hello, World!"
+
+// Length
+print(message.len()) // Output: 13
+
+// Substring extraction (start inclusive, end exclusive)
+print(message.substring(0, 5))  // Output: Hello
+print(message.substring(7, 12)) // Output: World
+
+// Finding positions
+print(message.index_of("World"))  // Output: 7
+print(message.index_of("world"))  // Output: -1 (case-sensitive)
+
+// Last occurrence
+let repeated = "abcabc"
+print(repeated.last_index_of("abc")) // Output: 3
+print(repeated.index_of("abc"))      // Output: 0
+\end{lstlisting}
+
+The \lstinline|substring| method supports negative indices, which count from the end of the string, and automatically clamps out-of-bounds values:
+
+\begin{lstlisting}[language=Lattice, caption={Negative indices in substring}]
+let text = "Hello, World!"
+
+print(text.substring(-6, -1)) // Output: World
+\end{lstlisting}
+
+\subsection{More String Utilities}\label{sec:string-utilities}
+
+\begin{lstlisting}[language=Lattice, caption={reverse, repeat, and padding}]
+// Reverse
+print("desserts".reverse()) // Output: stressed
+
+// Repeat
+print("ha".repeat(3))   // Output: hahaha
+print("-".repeat(20))    // Output: --------------------
+
+// Padding
+print("42".pad_left(5))       // Output: "   42"
+print("42".pad_left(5, "0"))  // Output: "00042"
+print("hi".pad_right(10, ".")) // Output: "hi........"
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={String validation methods}]
+print("hello".is_alpha())        // Output: true
+print("hello123".is_alpha())     // Output: false
+print("12345".is_digit())        // Output: true
+print("abc123".is_alphanumeric()) // Output: true
+print("".is_empty())             // Output: true
+print("hi".is_empty())           // Output: false
+\end{lstlisting}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|.len()| & \lstinline|Int| & String length in bytes \\
+\lstinline|.chars()| & \lstinline|Array| & Array of characters \\
+\lstinline|.bytes()| & \lstinline|Array| & Array of byte values \\
+\lstinline|.substring(s, e)| & \lstinline|String| & Extract range \lstinline|[s, e)| \\
+\lstinline|.index_of(sub)| & \lstinline|Int| & First position, or \lstinline|-1| \\
+\lstinline|.last_index_of(sub)| & \lstinline|Int| & Last position, or \lstinline|-1| \\
+\lstinline|.reverse()| & \lstinline|String| & Characters in reverse \\
+\lstinline|.repeat(n)| & \lstinline|String| & Repeated \lstinline|n| times \\
+\lstinline|.pad_left(w, ch)| & \lstinline|String| & Left-pad to width \\
+\lstinline|.pad_right(w, ch)| & \lstinline|String| & Right-pad to width \\
+\lstinline|.is_empty()| & \lstinline|Bool| & Is the string empty? \\
+\lstinline|.is_alpha()| & \lstinline|Bool| & All alphabetic? \\
+\lstinline|.is_digit()| & \lstinline|Bool| & All digits? \\
+\lstinline|.is_alphanumeric()| & \lstinline|Bool| & All alphanumeric? \\
+\bottomrule
+\end{tabular}
+\caption{Character and substring methods}\label{tab:char-methods}
+\end{table}
+
+%% ─────────────────────────────────────────────
+\section{Working with Unicode}\label{sec:unicode}
+\index{Unicode}\index{ord()@\texttt{ord()}}\index{chr()@\texttt{chr()}}
+
+Lattice provides two built-in functions for working with character codes: \lstinline|ord()| and \lstinline|chr()|.
+
+\subsection{ord() and chr()}\label{sec:ord-chr}
+
+The \lstinline|ord| function returns the numeric code of a character, and \lstinline|chr| returns the character for a given code:
+
+\begin{lstlisting}[language=Lattice, caption={Converting between characters and codes}]
+print(ord("A"))  // Output: 65
+print(ord("a"))  // Output: 97
+print(ord("0"))  // Output: 48
+print(ord("\n")) // Output: 10
+
+print(chr(65))  // Output: A
+print(chr(97))  // Output: a
+print(chr(48))  // Output: 0
+\end{lstlisting}
+
+\begin{defnbox}{ord() and chr()}
+\lstinline|ord(s)| returns the code point of the first character in string \lstinline|s|. If the string is empty, it returns \lstinline|-1|. \lstinline|chr(n)| returns a one-character string for the code point \lstinline|n| (currently limited to 0--127, the ASCII range).
+\end{defnbox}
+
+These functions are useful for character classification, encoding, and building custom parsers:
+
+\begin{lstlisting}[language=Lattice, caption={Character classification with ord}]
+fn is_uppercase(ch: String) -> Bool {
+  let code = ord(ch)
+  code >= 65 && code <= 90
+}
+
+fn is_lowercase(ch: String) -> Bool {
+  let code = ord(ch)
+  code >= 97 && code <= 122
+}
+
+fn rot13(text: String) -> String {
+  let chars = text.chars()
+  flux result = ""
+  for ch in chars {
+    let code = ord(ch)
+    if is_uppercase(ch) {
+      result = result + chr((code - 65 + 13) % 26 + 65)
+    } else if is_lowercase(ch) {
+      result = result + chr((code - 97 + 13) % 26 + 97)
+    } else {
+      result = result + ch
+    }
+  }
+  result
+}
+
+print(rot13("Hello, World!")) // Output: Uryyb, Jbeyq!
+print(rot13("Uryyb, Jbeyq!")) // Output: Hello, World!
+\end{lstlisting}
+
+\subsection{Building a Caesar Cipher}\label{sec:caesar-cipher}
+
+\begin{lstlisting}[language=Lattice, caption={A simple Caesar cipher}]
+fn caesar_encrypt(text: String, shift: Int) -> String {
+  flux encrypted = ""
+  for ch in text.chars() {
+    let code = ord(ch)
+    if code >= 65 && code <= 90 {
+      // Uppercase letter
+      encrypted = encrypted + chr((code - 65 + shift) % 26 + 65)
+    } else if code >= 97 && code <= 122 {
+      // Lowercase letter
+      encrypted = encrypted + chr((code - 97 + shift) % 26 + 97)
+    } else {
+      encrypted = encrypted + ch
+    }
+  }
+  encrypted
+}
+
+fn caesar_decrypt(text: String, shift: Int) -> String {
+  caesar_encrypt(text, 26 - shift)
+}
+
+let secret = caesar_encrypt("Attack at dawn", 3)
+print(secret)                       // Output: Dwwdfn dw gdzq
+print(caesar_decrypt(secret, 3))    // Output: Attack at dawn
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{Regular Expressions}\label{sec:regex}
+\index{regular expressions}\index{regex}
+
+Lattice includes built-in regular expression support via three string methods: \lstinline|regex_match|, \lstinline|regex_find_all|, and \lstinline|regex_replace|. These use POSIX extended regular expressions under the hood (implemented in \filename{src/regex\_ops.c}).
+
+\subsection{regex\_match --- Test a Pattern}\label{sec:regex-match}
+\index{regex\_match()@\texttt{.regex\_match()}}
+
+\lstinline|regex_match| tests whether a string matches a regular expression pattern:
+
+\begin{lstlisting}[language=Lattice, caption={Pattern matching with regex}]
+let email = "alice@example.com"
+
+print(email.regex_match("[a-zA-Z]+@[a-zA-Z]+\\.[a-zA-Z]+"))
+// Output: true
+
+print("not-an-email".regex_match("[a-zA-Z]+@[a-zA-Z]+\\.[a-zA-Z]+"))
+// Output: false
+
+// Validate a phone number format
+let phone = "555-123-4567"
+print(phone.regex_match("[0-9]{3}-[0-9]{3}-[0-9]{4}"))
+// Output: true
+\end{lstlisting}
+
+\subsection{regex\_find\_all --- Extract All Matches}\label{sec:regex-find-all}
+\index{regex\_find\_all()@\texttt{.regex\_find\_all()}}
+
+\lstinline|regex_find_all| returns an array of all substrings matching the pattern:
+
+\begin{lstlisting}[language=Lattice, caption={Finding all regex matches}]
+let text = "Call 555-1234 or 555-5678 for info"
+
+let phone_numbers = text.regex_find_all("[0-9]{3}-[0-9]{4}")
+print(phone_numbers) // Output: ["555-1234", "555-5678"]
+
+// Extract all words
+let words = "Hello, World! How are you?".regex_find_all("[a-zA-Z]+")
+print(words) // Output: ["Hello", "World", "How", "are", "you"]
+
+// Find all numbers (including decimals)
+let data = "Price: $12.50, Tax: $1.00, Total: $13.50"
+let amounts = data.regex_find_all("[0-9]+\\.[0-9]+")
+print(amounts) // Output: ["12.50", "1.00", "13.50"]
+\end{lstlisting}
+
+\subsection{regex\_replace --- Pattern-Based Replacement}\label{sec:regex-replace}
+\index{regex\_replace()@\texttt{.regex\_replace()}}
+
+\lstinline|regex_replace| replaces all matches of a pattern with a replacement string:
+
+\begin{lstlisting}[language=Lattice, caption={Regex replacement}]
+// Normalize whitespace
+let messy = "too   many    spaces   here"
+let clean = messy.regex_replace("[ ]+", " ")
+print(clean) // Output: too many spaces here
+
+// Remove all non-alphanumeric characters
+let raw = "Hello, World! (2024)"
+let cleaned = raw.regex_replace("[^a-zA-Z0-9 ]", "")
+print(cleaned) // Output: Hello World 2024
+
+// Redact phone numbers
+let log = "User called from 555-1234, callback to 555-5678"
+let redacted = log.regex_replace("[0-9]{3}-[0-9]{4}", "XXX-XXXX")
+print(redacted) // Output: User called from XXX-XXXX, callback to XXX-XXXX
+\end{lstlisting}
+
+\subsection{Regex Flags}\label{sec:regex-flags}
+\index{regex!flags}
+
+All three regex methods accept an optional flags string as the last argument:
+
+\begin{lstlisting}[language=Lattice, caption={Case-insensitive regex}]
+let text = "Hello HELLO hello HeLLo"
+
+// Case-insensitive matching
+let matches = text.regex_find_all("hello", "i")
+print(matches) // Output: ["Hello", "HELLO", "hello", "HeLLo"]
+
+// Case-insensitive replacement
+let normalized = text.regex_replace("hello", "hi", "i")
+print(normalized) // Output: hi hi hi hi
+\end{lstlisting}
+
+The available flags are:
+\begin{itemize}
+  \item \lstinline|"i"|: Case-insensitive matching
+  \item \lstinline|"m"|: Multiline mode (newlines treated as line boundaries)
+\end{itemize}
+
+\begin{warnbox}{POSIX Regex Syntax}
+Lattice uses POSIX extended regular expressions, not Perl-compatible (PCRE) syntax. This means some patterns you may be used to from other languages work differently:
+\begin{itemize}
+  \item Use \lstinline|[0-9]| instead of \lstinline|\\d|
+  \item Use \lstinline|[a-zA-Z0-9_]| instead of \lstinline|\\w|
+  \item Lookaheads and lookbehinds are not supported
+\end{itemize}
+\end{warnbox}
+
+%% ─────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:strings-together}
+
+Let's combine these string methods into a practical example---a log file analyzer:
+
+\begin{lstlisting}[language=Lattice, caption={A log file analyzer}]
+fn analyze_log(log_text: String) -> Map {
+  let lines = log_text.split("\n").filter(|l| !l.is_empty())
+  let results = Map::new()
+
+  // Count log levels
+  let levels = Map::new()
+  levels["INFO"] = 0
+  levels["WARN"] = 0
+  levels["ERROR"] = 0
+
+  for line in lines {
+    if line.contains("INFO") {
+      levels["INFO"] = levels["INFO"] + 1
+    } else if line.contains("WARN") {
+      levels["WARN"] = levels["WARN"] + 1
+    } else if line.contains("ERROR") {
+      levels["ERROR"] = levels["ERROR"] + 1
+    }
+  }
+  results["levels"] = levels
+  results["total_lines"] = lines.len()
+
+  // Extract timestamps
+  let timestamps = []
+  for line in lines {
+    let ts_matches = line.regex_find_all("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+    for ts in ts_matches {
+      timestamps.push(ts)
+    }
+  }
+  results["dates"] = timestamps.unique()
+
+  // Extract error messages
+  let errors = lines
+    .filter(|l| l.contains("ERROR"))
+    .map(|l| {
+      let parts = l.split("ERROR")
+      if parts.len() > 1 {
+        parts[1].trim()
+      } else {
+        l
+      }
+    })
+  results["errors"] = errors
+
+  results
+}
+
+let sample_log = """
+    2024-01-15 INFO Server started on port 8080
+    2024-01-15 INFO Request received: GET /api/users
+    2024-01-15 WARN Slow query detected (500ms)
+    2024-01-15 ERROR Connection refused: database unreachable
+    2024-01-16 INFO Request received: POST /api/login
+    2024-01-16 ERROR Timeout waiting for response
+    """
+
+let analysis = analyze_log(sample_log)
+print("Total lines: ${analysis["total_lines"]}")
+print("Dates: ${analysis["dates"]}")
+print("Errors: ${analysis["errors"]}")
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{Exercises}\label{sec:strings-exercises}
+
+\begin{enumerate}
+  \item \textbf{String Compression.} Write a function that performs basic run-length encoding: \lstinline|"aaabbbcc"| becomes \lstinline|"a3b3c2"|. Handle single characters (no count needed for runs of 1).
+
+  \item \textbf{CSV Parser.} Write a function that takes a CSV string (with header row) and returns an array of maps, where each map represents a row with column names as keys. Handle quoted fields if possible.
+
+  \item \textbf{Slug Generator.} Write a function that converts a title like \lstinline|"Hello, World! This is Great"| into a URL slug like \lstinline|"hello-world-this-is-great"|. Use \lstinline|to_lower|, \lstinline|regex_replace|, and \lstinline|trim|.
+
+  \item \textbf{Password Validator.} Write a function that checks if a password meets these criteria: at least 8 characters, contains at least one uppercase letter, one lowercase letter, one digit, and one special character. Use \lstinline|regex_match| or character inspection.
+
+  \item \textbf{Template Engine.} Write a simple template engine where \lstinline|render("Hello \{\{name\}\}, age \{\{age\}\}", context)| replaces \lstinline|\{\{name\}\}| and \lstinline|\{\{age\}\}| with values from a context map. Use \lstinline|regex_find_all| to find placeholders and \lstinline|replace| to fill them in.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────
+\vspace{1em}
+\noindent\textbf{What's Next?}
+
+Strings give us the ability to represent and manipulate text, but programs often need to inspect the \emph{structure} of data---not just its content. In \cref{ch:pattern-matching}, we'll explore Lattice's \lstinline|match| expression, which lets you destructure arrays, structs, and enums, test ranges, and make decisions based on the shape of your data. Pattern matching is one of Lattice's most powerful features, and it builds naturally on everything you've learned so far.

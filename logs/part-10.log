@@ -1,0 +1,7 @@
+[2026-03-02T14:25:06.034Z] Starting — 4 chapters, ~45 pages
+[2026-03-02T14:25:07.243Z] Agent session initialized
+[2026-03-02T14:33:47.940Z] Finished in 8m 41s
+[2026-03-02T14:33:47.941Z]   OK ch33-three-backends.tex (33KB)
+[2026-03-02T14:33:47.941Z]   OK ch34-bytecode-serialization.tex (21KB)
+[2026-03-02T14:33:47.942Z]   OK ch35-native-extensions.tex (20KB)
+[2026-03-02T14:33:47.942Z]   OK ch36-metaprogramming.tex (32KB)

@@ -1,0 +1,662 @@
+\chapter{Building a CLI Tool}\label{ch:building-cli-tool}
+
+\index{CLI tool}
+\index{command-line application}
+
+Every language earns its stripes when you build something real with it.
+So far we have explored Lattice's features one by one---phases, concurrency, pattern matching, modules.
+Now it is time to weave them together into a complete, polished command-line application: a file-search utility called \texttt{find-it} that searches files for a pattern and prints matching lines with context.
+
+Along the way we will use three libraries from the Lattice ecosystem:
+\lstinline|cli| for argument parsing,
+\lstinline|dotenv| for loading configuration from \texttt{.env} files,
+and \lstinline|log| for structured, leveled logging.
+By the end of this chapter you will have a template for every CLI tool you write in Lattice.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The \texttt{cli} Library for Argument Parsing}\label{sec:cli-library}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{cli library}
+\index{argument parsing}
+
+A command-line tool lives or dies by its interface. Users expect \texttt{-{}-help} to work, short flags like \texttt{-v} to combine, and helpful error messages when they get something wrong.
+The \lstinline|cli| library (found in \filename{lib/cli.lat}) gives us all of this through a declarative API.
+
+\subsection{Creating a Parser}\label{sec:cli-creating-parser}
+
+We begin by importing the library and creating a new application definition:
+
+\begin{lstlisting}[language=Lattice, caption={A minimal CLI parser}]
+import "lib/cli" as cli
+
+let app = cli.new("greet", "A friendly greeter")
+app.flag("loud", "l", "Shout the greeting")
+app.option("name", "n", "Who to greet", "World")
+
+let opts = app.parse()
+// opts is a Map with keys: "loud", "name", "_args"
+\end{lstlisting}
+
+The \lstinline|cli.new| function takes two arguments---the program name and a short description---and returns a Map packed with closures for configuring and executing the parser.
+
+\begin{defnbox}{CLI Application Map}
+The value returned by \lstinline|cli.new| is a Map containing closures:
+\lstinline|.flag(name, short, desc)| registers a boolean flag,
+\lstinline|.option(name, short, desc, default)| registers a named option with a default value,
+\lstinline|.arg(name, desc, required)| registers a positional argument,
+\lstinline|.help()| generates help text, and
+\lstinline|.parse()| parses the command-line arguments and returns a result Map.
+\end{defnbox}
+
+\subsection{Flags, Options, and Positional Arguments}\label{sec:cli-flag-option-arg}
+
+\index{flags!CLI}
+\index{options!CLI}
+\index{positional arguments}
+
+The \lstinline|cli| library distinguishes three kinds of command-line input:
+
+\begin{itemize}
+  \item \textbf{Flags} are boolean switches. They default to \lstinline|false| and become \lstinline|true| when present. Think \texttt{-{}-verbose} or \texttt{-v}.
+  \item \textbf{Options} carry a value. They can appear as \texttt{-{}-output file.txt}, \texttt{-{}-output=file.txt}, or \texttt{-o file.txt}. Every option has a default.
+  \item \textbf{Positional arguments} are the bare values that remain after flags and options are consumed. They can be required or optional.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Registering all three kinds of input}]
+import "lib/cli" as cli
+
+let app = cli.new("findi", "Search files for a pattern")
+
+// Flags (boolean)
+app.flag("verbose", "v", "Show extra information")
+app.flag("count", "c", "Print only the count of matches")
+app.flag("ignorecase", "i", "Case-insensitive search")
+
+// Options (with default values)
+app.option("output", "o", "Write results to a file", "")
+app.option("context", "C", "Lines of context to show", "0")
+
+// Positional arguments
+app.arg("pattern", "The search pattern", true)     // required
+app.arg("path", "File or directory to search", false) // optional
+\end{lstlisting}
+
+\subsection{Parsing and the Result Map}\label{sec:cli-parsing}
+
+Calling \lstinline|app.parse()| reads the process arguments (via the built-in \lstinline|args()| function), matches them against the registered flags, options, and positionals, and returns a result Map.
+Flags map to \lstinline|Bool| values, options map to \lstinline|String| values (or their defaults), and positional arguments map to \lstinline|String| values.
+Any extra positional arguments land in the \lstinline|"_args"| key as an array.
+
+\begin{lstlisting}[language=Lattice, caption={Working with parsed results}]
+let opts = app.parse()
+
+// Boolean flags
+let is_verbose = opts.get("verbose")    // true or false
+
+// String options (always strings---convert if needed)
+let ctx_lines = to_int(opts.get("context"))
+
+// Positional arguments
+let pattern = opts.get("pattern")       // guaranteed present (required)
+let path = opts.get("path")             // may be nil if not provided
+\end{lstlisting}
+
+\begin{warnbox}{Options Are Always Strings}
+The \lstinline|cli| library returns all option values as strings, including numeric defaults.
+When you register \lstinline|app.option("port", "p", "Port number", "8080")|, the parsed value will be the string \lstinline|"8080"|, not the integer \lstinline|8080|.
+Use \lstinline|to_int()| or \lstinline|to_float()| to convert.
+\end{warnbox}
+
+\subsection{Automatic Help and Error Handling}\label{sec:cli-help-errors}
+
+\index{help flag}
+
+The parser automatically intercepts \texttt{-{}-help} and \texttt{-h}, printing a nicely formatted help message and exiting.
+You never need to register a help flag yourself.
+
+Running our \texttt{findi} tool with \texttt{-{}-help} produces:
+
+\begin{lstlisting}[language={}, caption={Auto-generated help output}]
+findi - Search files for a pattern
+
+Usage: findi [OPTIONS] <pattern> [path]
+
+Arguments:
+  <pattern>     The search pattern (required)
+  [path]        File or directory to search
+
+Options:
+  -v, --verbose       Show extra information
+  -c, --count         Print only the count of matches
+  -i, --ignorecase    Case-insensitive search
+  -o, --output        Write results to a file [default: ]
+  -C, --context       Lines of context to show [default: 0]
+  -h, --help          Show this help message
+\end{lstlisting}
+
+If a user provides an unknown flag or forgets a required argument, the parser prints an error along with the help text and exits with code 1.
+
+\subsection{Combined Short Flags}\label{sec:cli-combined-flags}
+
+\index{combined flags}
+
+Like many Unix tools, the \lstinline|cli| library supports combining short flags into a single token.
+The invocation \texttt{findi -vic "TODO" src/} is equivalent to \texttt{findi -v -i -c "TODO" src/}.
+When combining, every character except the last must be a flag.
+The last character may be an option, in which case the next argument becomes its value:
+
+\begin{lstlisting}[language={}, caption={Combined flags with a trailing option}]
+# -v and -i are flags; -C is an option consuming "3"
+findi -viC 3 "pattern" src/
+\end{lstlisting}
+
+\begin{tipbox}{Double-Dash Separator}
+The \lstinline|cli| library supports the \texttt{-{}-} separator.
+Everything after \texttt{-{}-} is treated as a positional argument, even if it starts with a dash.
+This is essential for patterns like \texttt{findi -{}- -TODO- file.txt} where the pattern itself looks like a flag.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The \texttt{dotenv} Library for Configuration}\label{sec:dotenv-library}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{dotenv library}
+\index{environment variables}
+\index{.env file}
+
+CLI tools often need configuration that varies between environments---database URLs, API keys, default directories.
+Hardcoding these into source files is fragile.
+The \lstinline|dotenv| library (in \filename{lib/dotenv.lat}) loads key-value pairs from \texttt{.env} files into the process environment, so your code can read them with \lstinline|env()|.
+
+\subsection{The Basics: \texttt{load} and \texttt{env}}\label{sec:dotenv-basics}
+
+Suppose our search tool needs a default search directory.
+We create a \texttt{.env} file alongside our script:
+
+\begin{lstlisting}[language={}, caption={A \texttt{.env} file}]
+# Default configuration for findi
+FINDI_DEFAULT_PATH=./src
+FINDI_MAX_RESULTS=100
+FINDI_LOG_LEVEL=info
+\end{lstlisting}
+
+Then we load it at startup:
+
+\begin{lstlisting}[language=Lattice, caption={Loading a .env file}]
+import "lib/dotenv" as dotenv
+
+dotenv.load()  // loads .env from the current directory
+
+let default_path = env("FINDI_DEFAULT_PATH")  // "./src"
+let max_results = to_int(env("FINDI_MAX_RESULTS"))  // 100
+\end{lstlisting}
+
+The \lstinline|dotenv.load()| function is deliberately forgiving: if no \texttt{.env} file exists, it silently does nothing.
+This is ideal for production, where configuration typically comes from the real environment rather than a file.
+
+\subsection{Loading Specific Files}\label{sec:dotenv-load-file}
+
+\index{dotenv!load\_file}
+
+When you need to load from a particular path---say, a per-environment configuration---use \lstinline|dotenv.load_file|:
+
+\begin{lstlisting}[language=Lattice, caption={Loading a specific .env file}]
+import "lib/dotenv" as dotenv
+
+dotenv.load_file("config/.env.production")
+\end{lstlisting}
+
+Unlike \lstinline|load()|, this function will halt with an error if the file does not exist.
+It is meant for situations where the configuration file is mandatory.
+
+\subsection{Advanced Loading with Options}\label{sec:dotenv-load-opts}
+
+\index{dotenv!load\_opts}
+
+For more control, \lstinline|dotenv.load_opts| accepts a Map of options:
+
+\begin{lstlisting}[language=Lattice, caption={Loading with options}]
+import "lib/dotenv" as dotenv
+
+let opts = Map::new()
+opts.set("path", ".env.local")
+opts.set("override", true)           // overwrite existing env vars
+opts.set("required", ["DATABASE_URL", "SECRET_KEY"])
+
+dotenv.load_opts(opts)
+\end{lstlisting}
+
+\begin{notebox}{Override Behavior}
+By default, \lstinline|dotenv| never overwrites environment variables that are already set.
+This means a real \lstinline|DATABASE_URL| set in your shell takes precedence over whatever is in \texttt{.env}.
+Set \lstinline|"override"| to \lstinline|true| only when you explicitly want the file to win---typically during local development.
+\end{notebox}
+
+The \lstinline|"required"| key is particularly useful for fail-fast behavior.
+If any listed variable is missing after loading, the program halts with a clear error message rather than silently using \lstinline|nil| values.
+
+\subsection{Parsing Rules}\label{sec:dotenv-parsing-rules}
+
+\index{dotenv!parsing rules}
+
+The parser in \filename{lib/dotenv.lat} handles a rich set of \texttt{.env} formats.
+Here is a file that exercises most of them:
+
+\begin{lstlisting}[language={}, caption={A feature-rich .env file}]
+# Comments start with #
+BASIC=value
+
+# Whitespace around = is trimmed
+SPACED = hello
+
+# Double-quoted values support escapes
+GREETING="Hello,\nWorld!"
+
+# Single-quoted values are literal (no escapes)
+RAW='Hello,\nWorld!'
+
+# Inline comments on unquoted values
+PORT=3000 # default port
+
+# export prefix is supported
+export API_KEY=sk-abc123
+
+# Variable expansion in double-quoted values
+BASE_URL="https://api.example.com"
+FULL_URL="${BASE_URL}/v2"
+
+# Multiline double-quoted values
+CERTIFICATE="-----BEGIN CERT-----
+MIIB...
+-----END CERT-----"
+\end{lstlisting}
+
+\begin{tipbox}{Parsing Without Setting}
+Sometimes you want to inspect a \texttt{.env} file without modifying the environment.
+Use \lstinline|dotenv.parse(".env")| to get a Map of key-value pairs, or \lstinline|dotenv.parse_string(content)| to parse an in-memory string.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The \texttt{log} Library for Structured Logging}\label{sec:log-library}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{log library}
+\index{logging}
+\index{structured logging}
+
+A \lstinline|print| statement is fine for quick debugging, but production CLI tools need leveled, timestamped, and optionally structured logging.
+The \lstinline|log| library (in \filename{lib/log.lat}) provides exactly that.
+
+\subsection{Quick Start: Module-Level Functions}\label{sec:log-quick-start}
+
+The fastest way to start logging is with the module-level convenience functions:
+
+\begin{lstlisting}[language=Lattice, caption={Module-level logging}]
+import "lib/log" as log
+
+log.info("Server started on port 8080")
+log.warn("Connection pool running low")
+log.error("Failed to read configuration file")
+log.debug("Cache hit ratio: 0.87")  // suppressed at default level
+\end{lstlisting}
+
+These write to \texttt{stderr} using the default logger, which has a minimum level of \lstinline|info|.
+That means \lstinline|log.debug| messages are silenced unless you create a custom logger.
+
+The output is human-readable, timestamped text:
+
+\begin{lstlisting}[language={}, caption={Default log output format}]
+2025-01-15 10:30:45 [INFO] Server started on port 8080
+2025-01-15 10:30:45 [WARN] Connection pool running low
+2025-01-15 10:30:45 [ERROR] Failed to read configuration file
+\end{lstlisting}
+
+\subsection{Log Levels}\label{sec:log-levels}
+
+\index{log levels}
+
+The library defines four levels in increasing order of severity:
+
+\begin{center}
+\begin{tabular}{llp{7cm}}
+\toprule
+\textbf{Level} & \textbf{Value} & \textbf{Purpose} \\
+\midrule
+\lstinline|debug| & 0 & Detailed diagnostic information for development \\
+\lstinline|info|  & 1 & Normal operational messages \\
+\lstinline|warn|  & 2 & Something unexpected happened, but the tool can continue \\
+\lstinline|error| & 3 & Something failed; the operation cannot proceed normally \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A logger only emits messages at or above its configured minimum level.
+Set the level to \lstinline|"debug"| during development and \lstinline|"warn"| or \lstinline|"error"| in quiet production modes.
+
+\subsection{Creating a Custom Logger}\label{sec:log-custom-logger}
+
+\index{log!new}
+
+For full control, create a logger with \lstinline|log.new|:
+
+\begin{lstlisting}[language=Lattice, caption={Creating a custom logger}]
+import "lib/log" as log
+
+let cfg = Map::new()
+cfg.set("level", "debug")           // show everything
+cfg.set("file", "findi.log")        // also write to a file
+cfg.set("format", "json")           // structured JSON output
+cfg.set("prefix", "[findi]")        // prefix every message
+
+let logger = log.new(cfg)
+
+logger.info("Starting search")
+logger.debug("Scanning directory: ./src")
+\end{lstlisting}
+
+The configuration Map supports four keys:
+
+\begin{itemize}
+  \item \lstinline|"level"| --- minimum level: \lstinline|"debug"|, \lstinline|"info"|, \lstinline|"warn"|, or \lstinline|"error"| (default: \lstinline|"info"|).
+  \item \lstinline|"file"| --- path to a log file. Messages are appended to this file \emph{in addition to} stderr (default: none).
+  \item \lstinline|"format"| --- \lstinline|"text"| for human-readable lines, \lstinline|"json"| for machine-readable JSON (default: \lstinline|"text"|).
+  \item \lstinline|"prefix"| --- a string prepended to every message (default: \lstinline|""|).
+\end{itemize}
+
+\subsection{Structured Context}\label{sec:log-context}
+
+\index{log!context}
+
+Each logging method accepts an optional second argument: a Map of contextual data.
+In text mode, the context is serialized as JSON and appended to the line.
+In JSON mode, the context keys are merged into the top-level log entry:
+
+\begin{lstlisting}[language=Lattice, caption={Logging with context}]
+let ctx = Map::new()
+ctx.set("path", "/api/users")
+ctx.set("status", 404)
+ctx.set("elapsed_ms", 12)
+
+logger.warn("Route not found", ctx)
+\end{lstlisting}
+
+In text format, this produces:
+
+\begin{lstlisting}[language={}, caption={Text log with context}]
+2025-01-15 10:30:47 [WARN] [findi] Route not found {"path":"/api/users","status":404,"elapsed_ms":12}
+\end{lstlisting}
+
+In JSON format:
+
+\begin{lstlisting}[language={}, caption={JSON log with context}]
+{"timestamp":"2025-01-15T10:30:47","level":"WARN","prefix":"[findi]","message":"Route not found","path":"/api/users","status":404,"elapsed_ms":12}
+\end{lstlisting}
+
+\begin{tipbox}{Changing Levels at Runtime}
+Because Lattice closures capture their environment by value, you cannot mutate a logger's level in place.
+Instead, use \lstinline|log.set_level(logger, "error")| to create a \emph{new} logger with the same configuration but a different threshold.
+This is an intentional design choice---loggers are value-like and safe to share.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Putting It All Together: A Complete CLI Application}\label{sec:cli-complete-app}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{findi@\texttt{findi} (example application)}
+
+Now let us build \texttt{findi}, our file-search tool.
+It reads configuration from \texttt{.env}, parses arguments with \lstinline|cli|, and logs its activity with \lstinline|log|.
+The tool searches a directory tree for lines matching a pattern and prints the results.
+
+\subsection{Project Layout}\label{sec:cli-project-layout}
+
+\begin{lstlisting}[language={}, caption={Project structure}]
+findi/
+  findi.lat          # main entry point
+  .env               # default configuration
+\end{lstlisting}
+
+And our \texttt{.env} file:
+
+\begin{lstlisting}[language={}, caption={Default .env configuration}]
+FINDI_DEFAULT_PATH=.
+FINDI_LOG_LEVEL=info
+FINDI_LOG_FORMAT=text
+\end{lstlisting}
+
+\subsection{The Complete Source}\label{sec:cli-complete-source}
+
+\begin{lstlisting}[language=Lattice, caption={findi.lat --- A complete CLI file-search tool}]
+import "lib/cli" as cli
+import "lib/dotenv" as dotenv
+import "lib/log" as log
+
+// ── Load environment configuration ──────────────────────
+dotenv.load()
+
+// ── Set up argument parser ──────────────────────────────
+let app = cli.new("findi", "Search files for a text pattern")
+
+app.flag("verbose", "v", "Show verbose output")
+app.flag("count", "c", "Print only the match count")
+app.flag("ignorecase", "i", "Case-insensitive matching")
+app.option("output", "o", "Write results to a file", "")
+app.option("context", "C", "Lines of context around matches", "0")
+app.arg("pattern", "The text pattern to search for", true)
+app.arg("path", "File or directory to search", false)
+
+let opts = app.parse()
+
+// ── Configure logging ───────────────────────────────────
+let log_cfg = Map::new()
+let env_level = env("FINDI_LOG_LEVEL")
+if typeof(env_level) == "String" {
+    log_cfg.set("level", env_level)
+} else {
+    log_cfg.set("level", "info")
+}
+let env_format = env("FINDI_LOG_FORMAT")
+if typeof(env_format) == "String" {
+    log_cfg.set("format", env_format)
+}
+if opts.get("verbose") {
+    log_cfg.set("level", "debug")
+}
+let logger = log.new(log_cfg)
+
+// ── Extract parsed arguments ────────────────────────────
+let pattern = opts.get("pattern")
+let ignore_case = opts.get("ignorecase")
+let count_only = opts.get("count")
+let ctx_lines = to_int(opts.get("context"))
+let output_file = opts.get("output")
+
+// Determine search path: CLI arg > env default > "."
+flux search_path = "."
+let arg_path = opts.get("path")
+if arg_path != nil {
+    search_path = arg_path
+} else {
+    let env_path = env("FINDI_DEFAULT_PATH")
+    if typeof(env_path) == "String" {
+        search_path = env_path
+    }
+}
+
+logger.debug("Configuration loaded")
+let debug_ctx = Map::new()
+debug_ctx.set("pattern", pattern)
+debug_ctx.set("path", search_path)
+debug_ctx.set("ignore_case", ignore_case)
+logger.debug("Search parameters", debug_ctx)
+
+// ── Search logic ────────────────────────────────────────
+
+fn search_file(file_path: String, search_pattern: String,
+               case_insensitive: Bool) -> Array {
+    let matches = []
+    let content = try {
+        read_file(file_path)
+    } catch e {
+        return []
+    }
+    let lines = content.split("\n")
+    flux line_num = 1
+    for line in lines {
+        flux haystack = line
+        flux needle = search_pattern
+        if case_insensitive {
+            haystack = line.to_lower()
+            needle = search_pattern.to_lower()
+        }
+        if haystack.contains(needle) {
+            let hit = Map::new()
+            hit.set("file", file_path)
+            hit.set("line_num", line_num)
+            hit.set("text", line)
+            matches.push(hit)
+        }
+        line_num = line_num + 1
+    }
+    return matches
+}
+
+fn collect_files(dir_path: String) -> Array {
+    let entries = list_dir(dir_path)
+    flux files = []
+    for entry in entries {
+        let full_path = dir_path + "/" + entry
+        if is_dir(full_path) {
+            let sub_files = collect_files(full_path)
+            for sf in sub_files {
+                files.push(sf)
+            }
+        } else {
+            files.push(full_path)
+        }
+    }
+    return files
+}
+
+// ── Execute the search ──────────────────────────────────
+flux all_matches = []
+
+if is_dir(search_path) {
+    let files = collect_files(search_path)
+    logger.info("Scanning " + to_string(len(files)) + " files")
+    for file_path in files {
+        let hits = search_file(file_path, pattern, ignore_case)
+        for hit in hits {
+            all_matches.push(hit)
+        }
+    }
+} else {
+    logger.info("Searching single file: " + search_path)
+    all_matches = search_file(search_path, pattern, ignore_case)
+}
+
+// ── Format and output results ───────────────────────────
+if count_only {
+    print(to_string(len(all_matches)))
+} else {
+    flux output_text = ""
+    for hit in all_matches {
+        let line = hit.get("file") + ":"
+            + to_string(hit.get("line_num")) + ":"
+            + hit.get("text")
+        output_text = output_text + line + "\n"
+    }
+    if output_file != "" {
+        write_file(output_file, output_text)
+        logger.info("Results written to " + output_file)
+    } else {
+        print(output_text)
+    }
+}
+
+let result_ctx = Map::new()
+result_ctx.set("matches", len(all_matches))
+result_ctx.set("path", search_path)
+logger.info("Search complete", result_ctx)
+\end{lstlisting}
+
+\subsection{Running the Tool}\label{sec:cli-running}
+
+Let us take our tool for a spin:
+
+\begin{lstlisting}[language={}, caption={Running findi}]
+$ lattice findi.lat "import" ./src
+./src/main.lat:1:import "lib/cli" as cli
+./src/main.lat:2:import "lib/dotenv" as dotenv
+./src/utils.lat:1:import "lib/log" as log
+
+$ lattice findi.lat -c "TODO" ./src
+7
+
+$ lattice findi.lat -vi --context=2 "error" ./src
+# verbose logging enabled, case-insensitive,
+# with 2 lines of context around each match
+
+$ lattice findi.lat --help
+findi - Search files for a text pattern
+...
+\end{lstlisting}
+
+\subsection{Design Walkthrough}\label{sec:cli-design-walkthrough}
+
+Let us highlight a few design choices worth remembering:
+
+\begin{enumerate}
+  \item \textbf{Configuration cascade.} The search path has three sources: the CLI argument (highest priority), the \lstinline|FINDI_DEFAULT_PATH| environment variable, and the hardcoded default \lstinline|"."|.
+  This cascade---command line overrides environment overrides defaults---is a pattern you will use in nearly every CLI tool.
+
+  \item \textbf{Verbose flag controls log level.} Rather than building a custom verbosity system, we simply lower the log level to \lstinline|"debug"| when \lstinline|--verbose| is passed.
+  All those \lstinline|logger.debug()| calls are free in normal operation.
+
+  \item \textbf{Fail fast with \lstinline|dotenv.load_opts|.} For a tool that requires certain configuration (like a database URL), swap \lstinline|dotenv.load()| for \lstinline|dotenv.load_opts| with a \lstinline|"required"| list.
+  The tool will refuse to start if anything is missing, with a clear error message.
+
+  \item \textbf{Separate search logic from I/O.} The \lstinline|search_file| function returns data (an array of match Maps), while the output section at the bottom handles formatting and writing.
+  This separation makes it straightforward to add new output formats later.
+\end{enumerate}
+
+\begin{notebox}{Why Not Use \texttt{args()} Directly?}
+You could parse \lstinline|args()| yourself with string manipulation, and for a two-flag script that might be fine.
+But the \lstinline|cli| library handles edge cases you will eventually hit: combined short flags, \texttt{-{}-} separators, missing required arguments, \texttt{-{}-help} generation, and \texttt{-{}-name=value} syntax.
+Writing all of that by hand is error-prone and tedious.
+Let the library do the work.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section*{Exercises}\label{sec:cli-exercises}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{enumerate}
+  \item \textbf{Add a \texttt{-{}-max} option} to \texttt{findi} that limits the number of results printed.
+  Default it to \lstinline|0| (unlimited).
+  Stop searching early once the limit is reached.
+
+  \item \textbf{Build a \texttt{wordcount} CLI tool} that counts words, lines, and characters in a file (like \texttt{wc}).
+  Accept a \texttt{-{}-lines}, \texttt{-{}-words}, and \texttt{-{}-chars} flag to control which counts are shown.
+  Use the \lstinline|cli| library for argument parsing and \lstinline|log| for debug output.
+
+  \item \textbf{Environment file chain.} Modify the \texttt{findi} startup to load \texttt{.env} first, then \texttt{.env.local} with \lstinline|override| set to \lstinline|true|.
+  This lets developers have personal overrides that are not committed to version control.
+
+  \item \textbf{JSON output mode.} Add a \texttt{-{}-json} flag to \texttt{findi} that outputs results as a JSON array of objects, each with \lstinline|"file"|, \lstinline|"line"|, and \lstinline|"text"| keys.
+  Use \lstinline|json_stringify| for the serialization.
+
+  \item \textbf{Custom log format.} Experiment with the \lstinline|log| library's JSON format.
+  Create a logger that writes JSON to a file and text to stderr.
+  (Hint: you will need two loggers.)
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:cli-whats-next}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+We have built a real command-line tool from scratch, using Lattice's \lstinline|cli|, \lstinline|dotenv|, and \lstinline|log| libraries to handle the plumbing that every serious tool needs.
+In the next chapter, we shift from the terminal to the network.
+We will build a complete web service---with HTTP routing, HTML templates, a database, and JSON APIs---using Lattice's \lstinline|http_server|, \lstinline|template|, and \lstinline|orm| libraries.
+If you thought building a CLI was satisfying, wait until you see your first Lattice web page load in a browser.

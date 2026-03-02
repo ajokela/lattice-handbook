@@ -1,0 +1,14 @@
+This is makeindex, version 2.17 [TeX Live 2025] (kpathsea + Thai support).
+Scanning input file book.idx....
+!! Input index error (file = book.idx, line = 454):
+   -- Extra `@' at position 7 of first argument.
+!! Input index error (file = book.idx, line = 455):
+   -- Extra `@' at position 9 of first argument.
+.done (1164 entries accepted, 2 rejected).
+Sorting entries............done (13206 comparisons).
+Generating output file book.ind....
+## Warning (input = book.idx, line = 441; output = book.ind, line = 893):
+   -- Unmatched range opening operator (.
+.done (1143 lines written, 1 warning).
+Output written in book.ind.
+Transcript written in book.ilg.

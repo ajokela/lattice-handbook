@@ -1,0 +1,802 @@
+\chapter{Testing}\label{ch:testing}
+
+\index{testing}\index{clat test}\index{test blocks}
+
+Untested code is code that's waiting to betray you.
+You might trust it today---it ran once, it printed the right number---but refactor a function, add a parameter, swap a data structure, and suddenly the thing that ``worked'' doesn't.
+Lattice takes testing seriously: the language has built-in syntax for tests, a CLI runner that discovers and executes them, and a full suite of assertion functions that produce clear failure messages.
+No external framework to install, no configuration file to wrangle.
+Tests live right next to the code they verify.
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{test "name" \{ body \}} --- Inline Tests}\label{sec:inline-tests}
+\index{test blocks!syntax}
+
+Lattice's \lstinline|test| keyword lets you write tests directly in your source files.
+The syntax is:
+
+\begin{lstlisting}[language=Lattice, caption={Basic test block syntax}]
+test "addition works" {
+    assert(2 + 2 == 4, "basic arithmetic")
+}
+\end{lstlisting}
+
+\begin{defnbox}{Test Block}
+A \emph{test block} is a top-level declaration of the form \lstinline|test "name" \{ body \}|.
+The name is a string literal that describes what the test verifies.
+The body contains any number of statements---typically assertions---that run when the test suite is invoked via \lstinline|clat test|.
+Test blocks are \emph{completely ignored} during normal program execution (\lstinline|clat run|).
+\end{defnbox}
+
+Let's write a more realistic example.
+Suppose we have a temperature conversion module:
+
+\begin{lstlisting}[language=Lattice, caption={Temperature conversion with inline tests}]
+fn celsius_to_fahrenheit(c: Float) -> Float {
+    return c * 9.0 / 5.0 + 32.0
+}
+
+fn fahrenheit_to_celsius(f: Float) -> Float {
+    return (f - 32.0) * 5.0 / 9.0
+}
+
+test "freezing point conversion" {
+    assert_eq(celsius_to_fahrenheit(0.0), 32.0)
+    assert_eq(fahrenheit_to_celsius(32.0), 0.0)
+}
+
+test "boiling point conversion" {
+    assert_eq(celsius_to_fahrenheit(100.0), 212.0)
+    assert_eq(fahrenheit_to_celsius(212.0), 100.0)
+}
+
+test "body temperature" {
+    let body_temp_f = celsius_to_fahrenheit(37.0)
+    // 37.0 C should be approximately 98.6 F
+    assert(body_temp_f > 98.5, "too low")
+    assert(body_temp_f < 98.7, "too high")
+}
+\end{lstlisting}
+
+The tests sit right below the functions they exercise.
+Anyone reading this file immediately understands what the functions are expected to do.
+
+\subsection{Tests Are Top-Level Declarations}\label{sec:tests-top-level}
+
+Test blocks are parsed as top-level items by the Lattice parser (handled in \filename{src/parser.c} as \lstinline|ITEM_TEST|).
+They cannot appear inside functions, loops, or other blocks.
+This keeps them at the module level, visible and discoverable.
+
+\begin{lstlisting}[language=Lattice, caption={Tests belong at the top level}]
+fn compute(x: Int) -> Int {
+    return x * x
+}
+
+// This is correct --- test at the top level:
+test "compute squares" {
+    assert_eq(compute(5), 25)
+    assert_eq(compute(0), 0)
+    assert_eq(compute(-3), 9)
+}
+\end{lstlisting}
+
+\subsection{Tests Can Use Everything in the File}\label{sec:tests-scope}
+
+When \lstinline|clat test| runs, it first executes all non-test top-level code (imports, function definitions, struct declarations, variable bindings) before running any test block.
+This means tests have access to every function, struct, enum, and global defined in the file.
+
+\begin{lstlisting}[language=Lattice, caption={Tests have access to all module-level definitions}]
+struct Color {
+    r: Int,
+    g: Int,
+    b: Int
+}
+
+fn mix(c1: Color, c2: Color) -> Color {
+    return Color {
+        r: (c1.r + c2.r) / 2,
+        g: (c1.g + c2.g) / 2,
+        b: (c1.b + c2.b) / 2
+    }
+}
+
+test "mixing colors" {
+    let red = Color { r: 255, g: 0, b: 0 }
+    let blue = Color { r: 0, g: 0, b: 255 }
+    let purple = mix(red, blue)
+
+    assert_eq(purple.r, 127)
+    assert_eq(purple.g, 0)
+    assert_eq(purple.b, 127)
+}
+\end{lstlisting}
+
+\begin{notebox}{Tests Run in Their Own Scope}
+Each test block runs in a fresh scope.
+Variables defined inside one test are not visible to other tests.
+This prevents accidental coupling between test cases---each test is independent.
+\end{notebox}
+
+\subsection{What Happens During Normal Execution?}\label{sec:tests-normal-exec}
+
+When you run a file with \lstinline|clat run|, test blocks are skipped entirely.
+The compiler (in \filename{src/stackcompiler.c}) treats \lstinline|ITEM_TEST| items as no-ops during normal compilation.
+This means you can sprinkle tests throughout your source code without any runtime cost in production.
+
+\begin{lstlisting}[language=Lattice, caption={Tests are invisible during normal execution}]
+fn greet(name: String) -> String {
+    return "Hello, " + name + "!"
+}
+
+test "greeting includes the name" {
+    assert_contains(greet("Lattice"), "Lattice")
+}
+
+// When running: clat run greeter.lat
+// Only the code below executes:
+print(greet("World"))
+// Output: Hello, World!
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────
+\section{\texttt{clat test} --- Running the Test Suite}\label{sec:clat-test}
+\index{clat test}
+
+The \lstinline|clat test| command discovers and runs tests.
+At its most basic:
+
+\begin{lstlisting}[language=Lattice, caption={Running tests in a single file}]
+// $ clat test temperature.lat
+//   PASS  freezing point conversion
+//   PASS  boiling point conversion
+//   PASS  body temperature
+//
+// Results: 3 passed, 0 failed (3 total)
+\end{lstlisting}
+
+\subsection{Directory Discovery}\label{sec:test-discovery}
+\index{clat test!discovery}
+
+When you pass a directory instead of a file, \lstinline|clat test| recursively searches for test files.
+The naming convention for test files is:
+
+\begin{itemize}
+  \item Files matching \lstinline|test_*.lat| (e.g., \lstinline|test_math.lat|, \lstinline|test_parser.lat|)
+  \item Files matching \lstinline|*_test.lat| (e.g., \lstinline|math_test.lat|, \lstinline|parser_test.lat|)
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Running all tests in a directory}]
+// $ clat test tests/
+//   PASS  addition
+//   PASS  subtraction
+//   PASS  multiplication
+//   FAIL  division by zero -- assertion failed: expected error
+//
+// Results: 3 passed, 1 failed (4 total)
+\end{lstlisting}
+
+The discovery is recursive, so tests nested in subdirectories are found too:
+
+\begin{lstlisting}[language=Lattice, caption={Typical test directory layout}]
+// tests/
+//   test_math.lat
+//   test_strings.lat
+//   integration/
+//     test_server.lat
+//     test_database.lat
+\end{lstlisting}
+
+All four files would be discovered and executed.
+
+\subsection{Filtering Tests by Name}\label{sec:test-filter}
+\index{clat test!filter}
+
+The \lstinline|-f| or \lstinline|--filter| flag runs only tests whose name contains the given substring:
+
+\begin{lstlisting}[language=Lattice, caption={Filtering tests by name}]
+// $ clat test tests/ -f "arithmetic"
+//   PASS  basic arithmetic
+//   PASS  floating-point arithmetic
+//
+// Results: 2 passed, 0 failed, 5 skipped (7 total)
+\end{lstlisting}
+
+The filter applies a simple substring match (using C's \lstinline|strstr|, as seen in the evaluator's \lstinline|evaluator_run_tests()| function in \filename{src/eval.c}).
+If no tests match the filter, the runner reports how many were skipped.
+
+\subsection{Verbose Mode}\label{sec:test-verbose}
+\index{clat test!verbose}
+
+Add \lstinline|-v| or \lstinline|--verbose| for more detailed output, including timing and setup information:
+
+\begin{lstlisting}[language=Lattice, caption={Verbose test output}]
+// $ clat test -v tests/test_math.lat
+\end{lstlisting}
+
+\subsection{Summary Mode}\label{sec:test-summary}
+
+The \lstinline|--summary| flag produces a concise summary after the test run, particularly useful in CI environments where you want a quick overview.
+
+\subsection{Full CLI Reference}\label{sec:test-cli-ref}
+
+Here is the complete set of \lstinline|clat test| flags:
+
+\begin{longtable}{@{}ll@{}}
+\toprule
+\textbf{Flag} & \textbf{Description} \\
+\midrule
+\endhead
+\lstinline|-f, --filter <pattern>| & Only run tests whose name matches pattern \\
+\lstinline|-v, --verbose| & Verbose output \\
+\lstinline|--summary| & Show summary after run \\
+\lstinline|--gc-stress| & GC stress testing mode \\
+\lstinline|--no-regions| & Disable region-based memory \\
+\lstinline|--no-assertions| & Disable runtime assertions \\
+\lstinline|-h, --help| & Show help \\
+\bottomrule
+\end{longtable}
+
+\begin{tipbox}{Exit Codes}
+\lstinline|clat test| exits with code 0 if all tests pass, and code 1 if any test fails.
+This makes it straightforward to integrate into CI pipelines and shell scripts.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Assert Functions}\label{sec:assert-functions}
+\index{assert}\index{assert\_eq}\index{assert\_type}\index{assertions}
+
+Lattice provides a rich set of built-in assertion functions.
+These are not library functions---they're built into the evaluator and the runtime (\filename{src/eval.c}, \filename{src/runtime.c}), so they're always available without any imports.
+
+\subsection{\texttt{assert(condition, message?)}}\label{sec:assert-basic}
+\index{assert}
+
+The fundamental assertion.
+If the condition is falsy, the test fails with the optional message:
+
+\begin{lstlisting}[language=Lattice, caption={Basic assert usage}]
+test "assert basics" {
+    assert(1 == 1, "one equals one")
+    assert(true, "true is truthy")
+    assert(42, "non-zero integers are truthy")
+    assert("hello", "non-empty strings are truthy")
+}
+\end{lstlisting}
+
+When \lstinline|assert| fails, it throws an error that the test runner catches.
+The failure message includes your custom string, making it clear which assertion broke:
+
+\begin{lstlisting}[language=Lattice, caption={A failing assert}]
+test "this will fail" {
+    let balance = -50
+    assert(balance >= 0, "balance must not be negative")
+    // Output: FAIL  this will fail -- assertion failed: balance must not be negative
+}
+\end{lstlisting}
+
+\subsection{\texttt{assert\_eq(actual, expected)}}\label{sec:assert-eq}
+\index{assert\_eq}
+
+The workhorse of testing.
+Checks that two values are equal, and if not, shows both values in the failure message:
+
+\begin{lstlisting}[language=Lattice, caption={assert\_eq with clear failure messages}]
+test "string operations" {
+    let greeting = "hello" + " " + "world"
+    assert_eq(greeting, "hello world")
+
+    let trimmed = "  spaces  ".trim()
+    assert_eq(trimmed, "spaces")
+}
+
+test "array operations" {
+    let numbers = [1, 2, 3, 4, 5]
+    assert_eq(len(numbers), 5)
+    assert_eq(numbers[0], 1)
+    assert_eq(numbers[4], 5)
+}
+\end{lstlisting}
+
+If the assertion fails, you get a message like:
+\begin{lstlisting}[language=Lattice]
+// FAIL  string operations -- assert_eq failed: expected "spaces", got "  spaces  "
+\end{lstlisting}
+
+This level of detail in failure messages is worth its weight in gold during debugging.
+You don't need to add print statements---the assertion tells you exactly what went wrong.
+
+\subsection{\texttt{assert\_ne(actual, expected)}}\label{sec:assert-ne}
+\index{assert\_ne}
+
+The opposite of \lstinline|assert_eq|.
+Fails if the two values are equal:
+
+\begin{lstlisting}[language=Lattice, caption={Asserting inequality}]
+test "unique ID generation" {
+    let id1 = generate_id()
+    let id2 = generate_id()
+    assert_ne(id1, id2)
+}
+\end{lstlisting}
+
+\subsection{\texttt{assert\_true(value)} and \texttt{assert\_false(value)}}\label{sec:assert-bool}
+\index{assert\_true}\index{assert\_false}
+
+Strict boolean checks.
+Unlike \lstinline|assert|, which accepts any truthy value, \lstinline|assert_true| expects exactly \lstinline|true| and \lstinline|assert_false| expects exactly \lstinline|false|:
+
+\begin{lstlisting}[language=Lattice, caption={Strict boolean assertions}]
+test "boolean checks" {
+    let is_admin = check_role("admin")
+    assert_true(is_admin)
+
+    let is_expired = check_expiry("2099-12-31")
+    assert_false(is_expired)
+}
+\end{lstlisting}
+
+\begin{warnbox}{assert\_true Is Strict}
+\lstinline|assert_true(42)| will \emph{fail} because \lstinline|42| is not the boolean value \lstinline|true|, even though it's truthy.
+If you want truthy checking, use \lstinline|assert(42, "expected truthy")|.
+\end{warnbox}
+
+\subsection{\texttt{assert\_type(value, type\_name)}}\label{sec:assert-type}
+\index{assert\_type}
+
+Verifies that a value has the expected type.
+The type name is a string that matches the output of \lstinline|typeof()|, such as \lstinline|"Int"|, \lstinline|"Float"|, \lstinline|"String"|, \lstinline|"Array"|, or the name of a struct:
+
+\begin{lstlisting}[language=Lattice, caption={Type assertions}]
+struct Point {
+    x: Float,
+    y: Float
+}
+
+test "type checking" {
+    assert_type(42, "Int")
+    assert_type(3.14, "Float")
+    assert_type("hello", "String")
+    assert_type([1, 2, 3], "Array")
+    assert_type(true, "Bool")
+
+    let origin = Point { x: 0.0, y: 0.0 }
+    assert_type(origin, "Point")
+}
+\end{lstlisting}
+
+The \lstinline|assert_type| function checks both the primitive type and, for structs, the struct name.
+So \lstinline|assert_type(origin, "Point")| succeeds because the evaluator (in \filename{src/eval.c}) compares the struct's name field against the expected string.
+
+\subsection{\texttt{assert\_contains(haystack, needle)}}\label{sec:assert-contains}
+\index{assert\_contains}
+
+Checks that a string or array contains a given element:
+
+\begin{lstlisting}[language=Lattice, caption={Containment assertions}]
+test "string containment" {
+    let message = "the quick brown fox"
+    assert_contains(message, "brown")
+    assert_contains(message, "fox")
+}
+
+test "array containment" {
+    let colors = ["red", "green", "blue"]
+    assert_contains(colors, "green")
+}
+\end{lstlisting}
+
+\subsection{\texttt{assert\_throws(closure)}}\label{sec:assert-throws}
+\index{assert\_throws}
+
+Verifies that a piece of code throws an error.
+Pass a closure that should fail:
+
+\begin{lstlisting}[language=Lattice, caption={Asserting that code throws an error}]
+test "division by zero throws" {
+    assert_throws(|_| {
+        let result = 10 / 0
+    })
+}
+
+test "index out of bounds throws" {
+    assert_throws(|_| {
+        let items = [1, 2, 3]
+        let bad = items[99]
+    })
+}
+\end{lstlisting}
+
+The built-in \lstinline|assert_throws| wraps the closure in a \lstinline|try|/\lstinline|catch| block.
+If no error is thrown, the assertion fails with the message ``expected an error but none was thrown.''
+
+\subsection{Summary of Built-in Assertions}\label{sec:assert-summary}
+
+\begin{longtable}{@{}lp{8cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Description} \\
+\midrule
+\endhead
+\lstinline|assert(cond, msg?)| & Fails if \lstinline|cond| is falsy \\
+\lstinline|assert_eq(a, b)| & Fails if \lstinline|a != b|, showing both values \\
+\lstinline|assert_ne(a, b)| & Fails if \lstinline|a == b| \\
+\lstinline|assert_true(v)| & Fails if \lstinline|v| is not exactly \lstinline|true| \\
+\lstinline|assert_false(v)| & Fails if \lstinline|v| is not exactly \lstinline|false| \\
+\lstinline|assert_type(v, t)| & Fails if \lstinline|typeof(v)| is not \lstinline|t| \\
+\lstinline|assert_contains(h, n)| & Fails if string/array \lstinline|h| doesn't contain \lstinline|n| \\
+\lstinline|assert_throws(fn)| & Fails if the closure does not throw \\
+\bottomrule
+\end{longtable}
+
+%% ─────────────────────────────────────────────────────────────
+\section{The Test Standard Library Module}\label{sec:test-stdlib}
+\index{test standard library}\index{lib/test.lat}
+
+Beyond the built-in assertions, Lattice ships with a test library at \filename{lib/test.lat} that provides a more structured, framework-style testing experience.
+This is useful for larger projects that need test suites organized into groups.
+
+\subsection{Importing the Test Library}\label{sec:test-import}
+
+\begin{lstlisting}[language=Lattice, caption={Importing the test library}]
+import "lib/test" as t
+\end{lstlisting}
+
+\subsection{Organizing Tests with \texttt{describe} and \texttt{it}}\label{sec:describe-it}
+\index{describe}\index{it}
+
+The test library provides two organizational primitives.
+The \lstinline|describe()| function creates a named test suite, and \lstinline|it()| creates individual test cases within a suite.
+
+\begin{lstlisting}[language=Lattice, caption={Structured test suites}]
+import "lib/test" as t
+
+t.run([
+    t.describe("String operations", |_| {
+        return [
+            t.it("concatenation", |_| {
+                t.assert_eq("hello" + " " + "world", "hello world")
+            }),
+            t.it("length", |_| {
+                t.assert_eq(len("lattice"), 7)
+            }),
+            t.it("uppercase", |_| {
+                t.assert_eq("hello".upper(), "HELLO")
+            })
+        ]
+    }),
+    t.describe("Math operations", |_| {
+        return [
+            t.it("addition", |_| {
+                t.assert_eq(2 + 2, 4)
+                t.assert_eq(1.5 + 2.5, 4.0)
+            }),
+            t.it("division by zero", |_| {
+                t.assert_throws(|_| { 1 / 0 })
+            })
+        ]
+    })
+])
+\end{lstlisting}
+
+Running this with \lstinline|clat run| (not \lstinline|clat test|---this is a program, not a test file) produces:
+
+\begin{lstlisting}[language=Lattice, caption={Structured test output}]
+// Running tests...
+//
+//   String operations
+//     checkmark concatenation
+//     checkmark length
+//     checkmark uppercase
+//
+//   Math operations
+//     checkmark addition
+//     checkmark division by zero
+//
+// 5 passed, 0 failed, 5 total
+// Completed in 2ms
+\end{lstlisting}
+
+\begin{notebox}{Built-in Tests vs.\ the Test Library}
+The built-in \lstinline|test "name" \{ ... \}| blocks are ideal for unit tests that live alongside source code, run by \lstinline|clat test|.
+The \lstinline|lib/test| library is better for standalone test programs that need more structure---nested suites, timing, and a custom runner.
+Both approaches work well; use whichever fits your project.
+\end{notebox}
+
+\subsection{Extended Assertions in the Test Library}\label{sec:test-lib-assertions}
+\index{assert\_gt}\index{assert\_lt}\index{assert\_near}\index{assert\_nil}
+
+The test library provides additional assertion functions beyond the built-ins:
+
+\begin{lstlisting}[language=Lattice, caption={Extended assertions from lib/test}]
+import "lib/test" as t
+
+t.run([
+    t.describe("Comparisons", |_| {
+        return [
+            t.it("greater than / less than", |_| {
+                t.assert_gt(10, 5)
+                t.assert_lt(3, 7)
+                t.assert_gte(5, 5)
+                t.assert_lte(5, 5)
+            }),
+            t.it("floating-point proximity", |_| {
+                let pi = 3.14159265
+                t.assert_near(pi, 3.14, 0.01)
+            }),
+            t.it("nil checks", |_| {
+                t.assert_nil(nil)
+                t.assert_not_nil(42)
+                t.assert_not_nil("hello")
+            }),
+            t.it("type checking", |_| {
+                t.assert_type(42, "Int")
+                t.assert_type("hi", "String")
+            })
+        ]
+    })
+])
+\end{lstlisting}
+
+Here's the full list of assertions provided by \filename{lib/test.lat}:
+
+\begin{longtable}{@{}lp{8cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Description} \\
+\midrule
+\endhead
+\lstinline|t.check(cond)| & Fail if condition is falsy \\
+\lstinline|t.assert_eq(actual, expected)| & Fail if values differ \\
+\lstinline|t.assert_neq(actual, expected)| & Fail if values are equal \\
+\lstinline|t.assert_gt(a, b)| & Fail if \lstinline|a <= b| \\
+\lstinline|t.assert_lt(a, b)| & Fail if \lstinline|a >= b| \\
+\lstinline|t.assert_gte(a, b)| & Fail if \lstinline|a < b| \\
+\lstinline|t.assert_lte(a, b)| & Fail if \lstinline|a > b| \\
+\lstinline|t.assert_near(actual, expected, epsilon)| & Fail if values differ by more than \lstinline|epsilon| \\
+\lstinline|t.assert_contains(haystack, needle)| & Fail if haystack doesn't contain needle \\
+\lstinline|t.assert_throws(closure)| & Fail if the closure doesn't throw \\
+\lstinline|t.assert_type(value, type_name)| & Fail if the type doesn't match \\
+\lstinline|t.assert_nil(value)| & Fail if value is not \lstinline|nil| \\
+\lstinline|t.assert_not_nil(value)| & Fail if value is \lstinline|nil| \\
+\lstinline|t.assert_true(value)| & Fail if value is not \lstinline|true| \\
+\lstinline|t.assert_false(value)| & Fail if value is not \lstinline|false| \\
+\bottomrule
+\end{longtable}
+
+\begin{tipbox}{assert\_near for Floating-Point Tests}
+Comparing floating-point numbers with \lstinline|assert_eq| can lead to spurious failures due to rounding.
+Use \lstinline|t.assert_near(actual, expected, epsilon)| instead, where \lstinline|epsilon| is the acceptable margin of error.
+For most calculations, an epsilon of \lstinline|0.0001| is a good starting point.
+\end{tipbox}
+
+\subsection{How the Test Library Works Internally}\label{sec:test-lib-internals}
+
+If you open \filename{lib/test.lat}, you'll find that the library is written entirely in Lattice.
+There's no magic---it uses the built-in \lstinline|assert()| function combined with \lstinline|format()| and \lstinline|repr()| to produce clear error messages, and \lstinline|try|/\lstinline|catch| to recover from assertion failures.
+
+The \lstinline|it()| function returns a \lstinline|Map| with \lstinline|"name"| and \lstinline|"fn"| keys.
+The \lstinline|describe()| function calls the builder closure to get an array of these Maps and wraps them in a suite Map.
+The \lstinline|run()| function iterates through suites and test cases, invoking each closure inside a \lstinline|try|/\lstinline|catch| block.
+If the closure completes without error, the test passes.
+If an assertion triggers an error, the catch block captures it and reports the failure.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Testing Strategies for Lattice Programs}\label{sec:testing-strategies}
+\index{testing strategies}
+
+Having the tools is one thing.
+Using them effectively is another.
+Let's explore strategies that experienced Lattice developers rely on.
+
+\subsection{Unit Testing: One Function, One Test}\label{sec:unit-testing}
+
+The most common pattern: write a test block for each public function.
+Keep tests close to the code they exercise.
+
+\begin{lstlisting}[language=Lattice, caption={Unit tests alongside the code}]
+fn is_palindrome(s: String) -> Bool {
+    let reversed = s.chars().reverse().join("")
+    return s == reversed
+}
+
+test "is_palindrome with palindromes" {
+    assert_true(is_palindrome("racecar"))
+    assert_true(is_palindrome("level"))
+    assert_true(is_palindrome("a"))
+    assert_true(is_palindrome(""))
+}
+
+test "is_palindrome with non-palindromes" {
+    assert_false(is_palindrome("hello"))
+    assert_false(is_palindrome("lattice"))
+}
+\end{lstlisting}
+
+\subsection{Testing Edge Cases}\label{sec:edge-cases}
+
+The most productive tests often check boundaries: empty inputs, zero values, negative numbers, maximum sizes, and \lstinline|nil|.
+
+\begin{lstlisting}[language=Lattice, caption={Testing edge cases}]
+fn safe_divide(a: Float, b: Float) -> Float {
+    if b == 0.0 {
+        return 0.0
+    }
+    return a / b
+}
+
+test "safe_divide normal cases" {
+    assert_eq(safe_divide(10.0, 2.0), 5.0)
+    assert_eq(safe_divide(7.0, 3.5), 2.0)
+}
+
+test "safe_divide edge cases" {
+    assert_eq(safe_divide(0.0, 5.0), 0.0)
+    assert_eq(safe_divide(10.0, 0.0), 0.0)
+    assert_eq(safe_divide(0.0, 0.0), 0.0)
+    assert_eq(safe_divide(-10.0, 2.0), -5.0)
+}
+\end{lstlisting}
+
+\subsection{Testing Error Paths}\label{sec:testing-errors}
+
+Use \lstinline|assert_throws| (either the built-in or the library version) to verify that functions fail when they should:
+
+\begin{lstlisting}[language=Lattice, caption={Testing that errors are thrown correctly}]
+fn parse_positive_int(s: String) -> Int {
+    let n = parse_int(s)
+    if is_error(n) {
+        return error("not a valid integer: " + s)
+    }
+    if n <= 0 {
+        return error("expected positive integer, got " + to_string(n))
+    }
+    return n
+}
+
+test "parse_positive_int rejects invalid input" {
+    assert_throws(|_| { parse_positive_int("abc") })
+    assert_throws(|_| { parse_positive_int("-5") })
+    assert_throws(|_| { parse_positive_int("0") })
+}
+
+test "parse_positive_int accepts valid input" {
+    assert_eq(parse_positive_int("42"), 42)
+    assert_eq(parse_positive_int("1"), 1)
+}
+\end{lstlisting}
+
+\subsection{Testing Structs and Methods}\label{sec:testing-structs}
+
+When testing structs, create instances with known values and verify field access, method results, and trait implementations:
+
+\begin{lstlisting}[language=Lattice, caption={Testing structs}]
+struct Rectangle {
+    width: Float,
+    height: Float
+}
+
+fn area(r: Rectangle) -> Float {
+    return r.width * r.height
+}
+
+fn perimeter(r: Rectangle) -> Float {
+    return 2.0 * (r.width + r.height)
+}
+
+fn is_square(r: Rectangle) -> Bool {
+    return r.width == r.height
+}
+
+test "rectangle area" {
+    let r = Rectangle { width: 5.0, height: 3.0 }
+    assert_eq(area(r), 15.0)
+}
+
+test "rectangle perimeter" {
+    let r = Rectangle { width: 5.0, height: 3.0 }
+    assert_eq(perimeter(r), 16.0)
+}
+
+test "square detection" {
+    let square = Rectangle { width: 4.0, height: 4.0 }
+    let rect = Rectangle { width: 4.0, height: 6.0 }
+    assert_true(is_square(square))
+    assert_false(is_square(rect))
+}
+\end{lstlisting}
+
+\subsection{Organizing a Test Suite}\label{sec:organizing-tests}
+
+For a project of any size, keep tests in a dedicated \filename{tests/} directory.
+Each test file mirrors the module it tests:
+
+\begin{lstlisting}[language=Lattice, caption={Project layout with tests}]
+// src/
+//   math.lat
+//   strings.lat
+//   http.lat
+// tests/
+//   test_math.lat
+//   test_strings.lat
+//   test_http.lat
+\end{lstlisting}
+
+Then run the entire suite with:
+
+\begin{lstlisting}[language=Lattice, caption={Running the full test suite}]
+// $ clat test tests/
+\end{lstlisting}
+
+\subsection{The Test-First Workflow}\label{sec:test-first}
+
+A powerful practice: write the test \emph{before} the implementation.
+
+\begin{lstlisting}[language=Lattice, caption={Writing the test first}]
+// Step 1: Write the test
+fn fibonacci(n: Int) -> Int {
+    // TODO: implement
+    return 0
+}
+
+test "fibonacci sequence" {
+    assert_eq(fibonacci(0), 0)
+    assert_eq(fibonacci(1), 1)
+    assert_eq(fibonacci(2), 1)
+    assert_eq(fibonacci(5), 5)
+    assert_eq(fibonacci(10), 55)
+}
+
+// Step 2: Run it (it fails)
+// $ clat test fib.lat
+//   FAIL  fibonacci sequence -- assert_eq failed: expected 1, got 0
+
+// Step 3: Implement until it passes
+\end{lstlisting}
+
+The failing test gives you a clear target.
+Once all assertions pass, you know the implementation is correct---at least for the cases you specified.
+
+\subsection{Testing with GC Stress Mode}\label{sec:gc-stress}
+\index{gc-stress}\index{testing!GC stress}
+
+The \lstinline|--gc-stress| flag triggers garbage collection after every allocation.
+This is invaluable for catching memory bugs:
+
+\begin{lstlisting}[language=Lattice, caption={Running tests with GC stress}]
+// $ clat test --gc-stress tests/
+\end{lstlisting}
+
+Under GC stress, any test that accidentally holds a dangling reference or forgets to root a value will fail quickly.
+It makes tests slower, so you wouldn't run this in every CI build---but running it periodically catches subtle bugs that normal execution misses.
+
+\subsection{Disabling Assertions for Performance Testing}\label{sec:no-assertions}
+
+The \lstinline|--no-assertions| flag disables runtime assertions (specifically, the \lstinline|debug_assert| built-in).
+This is useful when you want to benchmark code that includes debug assertions without removing them from the source:
+
+\begin{lstlisting}[language=Lattice, caption={Running without runtime assertions}]
+// $ clat test --no-assertions benchmarks/
+\end{lstlisting}
+
+Note that \lstinline|assert()| (the testing assertion) is not affected by this flag---only \lstinline|debug_assert()| is suppressed.
+
+%% ─────────────────────────────────────────────────────────────
+\section*{Exercises}\label{sec:testing-exercises}
+\addcontentsline{toc}{section}{Exercises}
+
+\begin{enumerate}
+  \item Write a \lstinline|stack.lat| module that implements a stack using an array (with \lstinline|push|, \lstinline|pop|, \lstinline|peek|, and \lstinline|is_empty| functions). Include inline \lstinline|test| blocks that verify each operation, including edge cases like popping from an empty stack.
+
+  \item Create a structured test suite using \lstinline|lib/test| that tests a string utility library with at least three \lstinline|describe| groups and five total test cases. Use \lstinline|assert_eq|, \lstinline|assert_contains|, and \lstinline|assert_throws|.
+
+  \item Write a test file that uses \lstinline|assert_near| to verify floating-point calculations (trigonometry, compound interest, or physics formulas). Experiment with different epsilon values to understand how precision affects test results.
+
+  \item Set up a small project with three source files in \filename{src/} and corresponding test files in \filename{tests/}. Run the entire test suite, then use \lstinline|--filter| to run only the tests related to one module. Write a one-line CI command that formats and tests the whole project.
+
+  \item Write a test that verifies the \emph{behavior} of the phase system. For example, verify that freezing a value with \lstinline|freeze| prevents mutation by catching the resulting error with \lstinline|assert_throws|.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:testing-next}
+\addcontentsline{toc}{section}{What's Next}
+
+When a test fails and the assertion message isn't enough to pinpoint the problem, you need a more powerful tool: a debugger.
+In \cref{ch:debugging}, we'll explore Lattice's built-in CLI debugger, learn how to set breakpoints, step through code line by line, inspect variables, and even connect VS Code for a full graphical debugging experience.

@@ -1,0 +1,792 @@
+\chapter{Values, Types, and the Shape of Things}\label{ch:values-types}
+
+\index{types}\index{values}
+
+Before you can freeze something, you need something \emph{to} freeze.
+Before you can match a pattern, you need data shaped in a way the pattern can describe.
+Everything in Lattice starts with values---the fundamental atoms of computation---and their types.
+
+In this chapter, we will meet every core value type in Lattice, learn the operators that transform them, and discover the surprisingly rich world of string literals.
+By the end, you will have a complete mental model of the raw materials Lattice gives you to work with.
+
+%% ───────────────────────────────────────────────────────────
+\section{Integers}\label{sec:integers}
+\index{Int}\index{integers}
+
+Integers in Lattice are 64-bit signed values, stored internally as C's \lstinline|int64_t| (you can verify this in \filename{include/value.h}, where \lstinline|VAL_INT| maps to the \lstinline|int_val| field of the value union).
+This gives you a range from $-2^{63}$ to $2^{63}-1$---large enough for most practical purposes.
+
+\begin{lstlisting}[language=Lattice, caption={Integer basics}]
+let population = 8_100_000_000
+let negative = -42
+let zero = 0
+
+print(typeof(population))  // Int
+print(typeof(zero))        // Int
+\end{lstlisting}
+
+\begin{defnbox}{Integer Range}
+Lattice integers are 64-bit signed: they range from $-9{,}223{,}372{,}036{,}854{,}775{,}808$ to $9{,}223{,}372{,}036{,}854{,}775{,}807$.
+There is no automatic promotion to big integers---if you overflow, you'll get unexpected results.
+For most applications, 64 bits is more than sufficient.
+\end{defnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Floats}\label{sec:floats}
+\index{Float}\index{floats}
+
+Floating-point numbers use 64-bit double precision (C's \lstinline|double|).
+Any number literal containing a decimal point is a float:
+
+\begin{lstlisting}[language=Lattice, caption={Float basics}]
+let pi = 3.14159
+let temperature = -40.0
+let ratio = 0.618
+
+print(typeof(pi))           // Float
+print(typeof(temperature))  // Float
+\end{lstlisting}
+
+\begin{warnbox}{Integer Division vs.\ Float Division}
+Division between two integers produces an integer (truncated toward zero).
+If you want a decimal result, make sure at least one operand is a float:
+\begin{lstlisting}[language=Lattice, numbers=none]
+print(7 / 2)       // 3 (integer division)
+print(7.0 / 2.0)   // 3.5 (float division)
+print(7 / 2.0)     // 3.5 (mixed: promotes to float)
+\end{lstlisting}
+\end{warnbox}
+
+Lattice provides two functions for inspecting special float values:
+
+\begin{lstlisting}[language=Lattice, caption={Special float values}]
+print(is_nan(0.0 / 0.0))   // true
+print(is_inf(1.0 / 0.0))   // true
+\end{lstlisting}
+
+You can convert between integers and floats explicitly:
+
+\begin{lstlisting}[language=Lattice, caption={Numeric conversions}]
+let x = to_float(42)     // 42.0
+let y = to_int(3.14)     // 3 (truncates toward zero)
+let z = round(3.7)       // 4
+let w = floor(3.9)       // 3
+let v = ceil(3.1)        // 4
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{Booleans}\label{sec:booleans}
+\index{Bool}\index{booleans}
+
+Booleans are \lstinline|true|\index{true} or \lstinline|false|\index{false}.
+No surprises here:
+
+\begin{lstlisting}[language=Lattice, caption={Boolean basics}]
+let is_valid = true
+let has_errors = false
+
+print(typeof(is_valid))  // Bool
+print(!is_valid)         // false
+print(is_valid && has_errors)  // false
+print(is_valid || has_errors)  // true
+\end{lstlisting}
+
+\subsection{Truthiness}\label{subsec:truthiness}
+\index{truthiness}
+
+In contexts where a boolean is expected (like \lstinline|if| conditions), Lattice applies \emph{truthiness} rules:
+
+\begin{itemize}
+  \item \lstinline|false| is falsy.
+  \item \lstinline|nil| is falsy.
+  \item \lstinline|0| (integer zero) is falsy.
+  \item \lstinline|""| (empty string) is falsy.
+  \item Everything else is truthy---including empty arrays and empty maps.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Truthiness in action}]
+if 42 { print("truthy") }         // truthy
+if "" { print("truthy") } else { print("falsy") }  // falsy
+if nil { print("truthy") } else { print("falsy") }  // falsy
+if [] { print("truthy") }         // truthy (empty array is truthy!)
+\end{lstlisting}
+
+\begin{warnbox}{Empty Arrays Are Truthy}
+Unlike Python, empty arrays and empty maps are \emph{truthy} in Lattice.
+If you want to check whether a collection is empty, use \lstinline|.len() == 0| or \lstinline|.is_empty()| (for strings).
+\end{warnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Strings}\label{sec:strings}
+\index{String}\index{strings}
+
+Strings in Lattice are immutable, UTF-8 encoded sequences of characters.
+They are the most feature-rich of the primitive types, with three different literal syntaxes and over 20 built-in methods.
+
+\subsection{Double-Quoted Strings}\label{subsec:double-strings}
+\index{strings!double-quoted}
+
+The standard string literal uses double quotes and supports both escape sequences and interpolation:
+
+\begin{lstlisting}[language=Lattice, caption={Double-quoted strings}]
+let greeting = "Hello, World!"
+let with_newline = "line one\nline two"
+let with_tab = "column A\tcolumn B"
+\end{lstlisting}
+
+The full set of escape sequences is:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Escape} & \textbf{Character} \\
+\midrule
+\lstinline|\\n| & Newline \\
+\lstinline|\\t| & Tab \\
+\lstinline|\\r| & Carriage return \\
+\lstinline|\\0| & Null byte \\
+\lstinline|\\\\| & Literal backslash \\
+\lstinline|\\"| & Literal double quote \\
+\lstinline|\\'| & Literal single quote \\
+\lstinline|\\$| & Literal dollar sign (prevents interpolation) \\
+\lstinline|\\xHH| & Hex byte (e.g., \lstinline|\\x41| for 'A') \\
+\bottomrule
+\end{tabular}
+\caption{String escape sequences}\label{tab:escape-sequences}
+\index{escape sequences}
+\end{table}
+
+\subsection{String Interpolation}\label{subsec:string-interpolation}
+\index{string interpolation}
+
+Inside double-quoted strings, \lstinline|${expr}| embeds the result of any expression:
+
+\begin{lstlisting}[language=Lattice, caption={String interpolation}]
+let language = "Lattice"
+let major = 0
+let minor = 3
+
+print("Welcome to ${language}")
+// Welcome to Lattice
+
+print("Version ${major}.${minor}")
+// Version 0.3
+
+print("2 + 2 = ${2 + 2}")
+// 2 + 2 = 4
+
+let name = "world"
+print("${"hello".to_upper()}, ${name}!")
+// HELLO, world!
+\end{lstlisting}
+
+The expression inside the braces can be arbitrarily complex---function calls, method chains, arithmetic, even nested strings.
+The lexer handles this by tracking brace depth, recursively lexing the expression tokens embedded within the string (you can see this machinery in \filename{src/lexer.c}, where interpolated strings are split into \lstinline|TOK_INTERP_START|, expression tokens, and \lstinline|TOK_INTERP_END| segments).
+
+To include a literal \lstinline|${| in a string, escape the dollar sign:
+
+\begin{lstlisting}[language=Lattice, caption={Escaping interpolation}]
+print("Use \${expr} for interpolation")
+// Use ${expr} for interpolation
+\end{lstlisting}
+
+\subsection{Single-Quoted Strings}\label{subsec:single-strings}
+\index{strings!single-quoted}
+
+Single-quoted strings have \textbf{no interpolation}\index{string interpolation!disabling}.
+The \lstinline|${...}| syntax is treated as literal characters:
+
+\begin{lstlisting}[language=Lattice, caption={Single-quoted strings: no interpolation}]
+let pattern = 'Hello, ${name}'
+print(pattern)
+// Hello, ${name}
+\end{lstlisting}
+
+Single-quoted strings still support escape sequences (\lstinline|\\n|, \lstinline|\\t|, etc.), so they are not fully ``raw'' strings.
+Their primary use case is when you have strings that contain dollar signs and braces and you don't want to worry about accidental interpolation:
+
+\begin{lstlisting}[language=Lattice, caption={Single-quoted strings for templates}]
+let template = 'Dear ${recipient}, your order #${order_id} is ready.'
+print(template)
+// Dear ${recipient}, your order #${order_id} is ready.
+\end{lstlisting}
+
+\begin{tipbox}{When to Use Single vs.\ Double Quotes}
+Use double quotes when you want interpolation: \lstinline|"Hello, ${name}"|.
+Use single quotes when you're writing templates, regex patterns, or any string where \lstinline|$\{...\}| should be literal text.
+\end{tipbox}
+
+\subsection{Triple-Quoted Strings}\label{subsec:triple-strings}
+\index{strings!triple-quoted}\index{multi-line strings}
+
+Triple-quoted strings (\lstinline|""" ... """|) span multiple lines and support automatic dedenting:
+
+\begin{lstlisting}[language=Lattice, caption={Triple-quoted strings}]
+let html = """
+    <div>
+        <h1>Welcome</h1>
+        <p>Hello, world!</p>
+    </div>
+    """
+print(html)
+\end{lstlisting}
+
+Output (note how the leading whitespace has been stripped):
+
+\begin{lstlisting}[numbers=none]
+<div>
+    <h1>Welcome</h1>
+    <p>Hello, world!</p>
+</div>
+\end{lstlisting}
+
+The dedenting algorithm uses the indentation of the closing \lstinline|"""| as the baseline and strips that much leading whitespace from every line.
+This lets you indent your multi-line strings to match the surrounding code without polluting the string content.
+
+Triple-quoted strings support interpolation:
+
+\begin{lstlisting}[language=Lattice, caption={Triple-quoted strings with interpolation}]
+let name = "Lattice"
+let version = "0.3.28"
+let banner = """
+    ============================
+     ${name} v${version}
+     A crystallization language
+    ============================
+    """
+print(banner)
+\end{lstlisting}
+
+\subsection{Common String Methods}\label{subsec:string-methods}
+\index{strings!methods}
+
+Strings come with a rich set of methods.
+Here are some of the most commonly used ones:
+
+\begin{lstlisting}[language=Lattice, caption={String methods}]
+let message = "  Hello, Lattice!  "
+
+print(message.trim())            // "Hello, Lattice!"
+print(message.len())             // 20
+print(message.contains("Lat"))   // true
+print(message.to_upper())        // "  HELLO, LATTICE!  "
+print(message.replace("Lattice", "World"))  // "  Hello, World!  "
+print(message.split(","))        // ["  Hello", " Lattice!  "]
+
+let path = "/home/user/documents/report.txt"
+print(path.starts_with("/home"))  // true
+print(path.ends_with(".txt"))     // true
+print(path.index_of("user"))     // 6
+\end{lstlisting}
+
+For a complete reference of string methods, see Chapter~8 (\emph{Strings in Depth}).
+
+%% ───────────────────────────────────────────────────────────
+\section{Nil and Unit}\label{sec:nil-unit}
+
+Lattice has two ``empty'' types, and understanding the difference matters.
+
+\subsection{Nil}\label{subsec:nil}
+\index{nil}\index{Nil}
+
+\lstinline|nil| represents ``no value here''---the explicit absence of a meaningful value.
+It's the value returned by \lstinline|Map.get()| for a missing key, and it's what you use when you want to intentionally store ``nothing'':
+
+\begin{lstlisting}[language=Lattice, caption={Nil basics}]
+let nothing = nil
+print(typeof(nothing))  // Nil
+
+flux m = Map::new()
+m["key"] = "value"
+print(m.get("key"))      // value
+print(m.get("missing"))  // nil
+\end{lstlisting}
+
+\lstinline|nil| is \emph{falsy}---it evaluates to false in boolean contexts.
+This makes it natural to use with the nil coalescing operator\index{nil coalescing}:
+
+\begin{lstlisting}[language=Lattice, caption={Nil coalescing with ??}]
+let port = nil ?? 8080
+print(port)  // 8080
+
+let name = "Alice" ?? "Anonymous"
+print(name)  // Alice (left side is not nil, so it wins)
+\end{lstlisting}
+
+\subsection{Unit}\label{subsec:unit}
+\index{unit}\index{Unit}
+
+\lstinline|unit| is the type of ``nothing happened''---the return type of statements, \lstinline|print()| calls, and variable assignments.
+You rarely encounter it explicitly, but it's always there behind the scenes:
+
+\begin{lstlisting}[language=Lattice, caption={Unit in action}]
+let result = print("hello")
+print(typeof(result))  // Unit
+\end{lstlisting}
+
+In the REPL, both \lstinline|nil| and \lstinline|unit| are suppressed---neither produces the \lstinline|=>| output line.
+
+\begin{defnbox}{Nil vs.\ Unit}
+\lstinline|nil| means ``this value is intentionally empty.''
+It can be stored in variables, returned from functions, and compared with \lstinline|==|.
+
+\lstinline|unit| means ``this expression produces no value.''
+It's the implicit return of statements and void-like functions.
+You typically don't store it or test for it.
+
+Think of \lstinline|nil| as an empty box and \lstinline|unit| as the absence of a box.
+\end{defnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Type Checking with \texttt{typeof()}}\label{sec:typeof}
+\index{typeof()}
+
+The \lstinline|typeof()| built-in function returns a string naming the type of any value:
+
+\begin{lstlisting}[language=Lattice, caption={typeof() for every core type}]
+print(typeof(42))             // Int
+print(typeof(3.14))           // Float
+print(typeof(true))           // Bool
+print(typeof("hello"))        // String
+print(typeof(nil))            // Nil
+print(typeof([1, 2, 3]))     // Array
+print(typeof(Map::new()))    // Map
+print(typeof(Set::new()))    // Set
+print(typeof((1, 2)))        // Tuple
+print(typeof(0..10))         // Range
+print(typeof(|x| x))         // Closure
+\end{lstlisting}
+
+\lstinline|typeof()| returns the string name, not a type object.
+You compare it with string equality:
+
+\begin{lstlisting}[language=Lattice, caption={Runtime type checking}]
+fn describe(value: any) -> String {
+    if typeof(value) == "Int" {
+        "an integer: ${to_string(value)}"
+    } else if typeof(value) == "String" {
+        "a string: ${value}"
+    } else if typeof(value) == "Array" {
+        "an array of length ${to_string(value.len())}"
+    } else {
+        "something else: ${to_string(value)}"
+    }
+}
+
+print(describe(42))          // an integer: 42
+print(describe("hello"))     // a string: hello
+print(describe([1, 2, 3]))  // an array of length 3
+\end{lstlisting}
+
+For struct instances, \lstinline|typeof()| returns the struct's name:
+
+\begin{lstlisting}[language=Lattice, caption={typeof() with structs}]
+struct User { name: String, age: Int }
+let alice = User { name: "Alice", age: 30 }
+print(typeof(alice))  // User
+\end{lstlisting}
+
+\begin{tipbox}{Type Annotations vs.\ typeof()}
+Function parameter type annotations (\lstinline|fn foo(x: Int)|) and \lstinline|typeof()| serve different purposes.
+Annotations are checked automatically on every call and produce clear error messages.
+\lstinline|typeof()| is for when you need to branch on type at runtime---rare in well-typed code, but useful for utility functions, serializers, and debugging.
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Number Literals in Detail}\label{sec:number-literals}
+\index{number literals}
+
+Lattice supports several formats for writing numeric literals, all designed for readability.
+
+\subsection{Underscore Separators}\label{subsec:underscores}
+\index{number literals!underscores}
+
+You can place underscores between digits in both integer and float literals.
+The underscores are purely visual---they are stripped before the number is parsed:
+
+\begin{lstlisting}[language=Lattice, caption={Underscore separators}]
+let population = 8_100_000_000
+let bytes = 1_048_576
+let precise_pi = 3.14_159_265
+
+print(population)   // 8100000000
+print(bytes)        // 1048576
+print(precise_pi)   // 3.14159265
+\end{lstlisting}
+
+This is especially useful for large numbers where counting zeros is error-prone.
+
+\subsection{Hexadecimal Literals}\label{subsec:hex-literals}
+\index{number literals!hexadecimal}
+
+Integer literals can be written in hexadecimal with the \lstinline|0x| prefix:
+
+\begin{lstlisting}[language=Lattice, caption={Hexadecimal literals}]
+let red = 0xFF0000
+let mask = 0xDEAD_BEEF
+let byte = 0x7F
+
+print(red)    // 16711680
+print(mask)   // 3735928559
+print(byte)   // 127
+\end{lstlisting}
+
+Hex digits can be uppercase or lowercase, and underscore separators work with hex too.
+The lexer (in \filename{src/lexer.c}) detects the \lstinline|0x| or \lstinline|0X| prefix, reads hex digits with \lstinline|isxdigit()|, strips underscores, and converts using \lstinline|strtoll()| with base 16.
+
+\subsection{No Scientific Notation}\label{subsec:no-scientific}
+
+Lattice does not currently support scientific notation (like \lstinline|1.5e10| or \lstinline|3e-4|).
+If you need to express very large or very small numbers, use \lstinline|pow()|:
+
+\begin{lstlisting}[language=Lattice, caption={Expressing large numbers}]
+let avogadro = 6.022 * pow(10.0, 23.0)
+let planck = 6.626 * pow(10.0, -34.0)
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{Operators}\label{sec:operators}
+\index{operators}
+
+Lattice provides a comprehensive set of operators that will feel familiar to anyone coming from C, JavaScript, or Python.
+
+\subsection{Arithmetic Operators}\label{subsec:arithmetic}
+\index{operators!arithmetic}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Operator} & \textbf{Description} & \textbf{Example} & \textbf{Result} \\
+\midrule
+\lstinline|+| & Addition & \lstinline|3 + 4| & \lstinline|7| \\
+\lstinline|-| & Subtraction & \lstinline|10 - 3| & \lstinline|7| \\
+\lstinline|*| & Multiplication & \lstinline|6 * 7| & \lstinline|42| \\
+\lstinline|/| & Division & \lstinline|15 / 4| & \lstinline|3| \\
+\lstinline|%| & Modulo & \lstinline|17 % 5| & \lstinline|2| \\
+\bottomrule
+\end{tabular}
+\caption{Arithmetic operators}\label{tab:arithmetic-operators}
+\end{table}
+
+The \lstinline|+| operator also works for string concatenation\index{string concatenation}:
+
+\begin{lstlisting}[language=Lattice, caption={String concatenation with +}]
+let full = "Hello" + ", " + "World!"
+print(full)  // Hello, World!
+\end{lstlisting}
+
+\subsection{Comparison Operators}\label{subsec:comparison}
+\index{operators!comparison}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Operator} & \textbf{Description} & \textbf{Example} & \textbf{Result} \\
+\midrule
+\lstinline|==| & Equal & \lstinline|3 == 3| & \lstinline|true| \\
+\lstinline|!=| & Not equal & \lstinline|3 != 4| & \lstinline|true| \\
+\lstinline|<|  & Less than & \lstinline|3 < 5| & \lstinline|true| \\
+\lstinline|>|  & Greater than & \lstinline|5 > 3| & \lstinline|true| \\
+\lstinline|<=| & Less or equal & \lstinline|3 <= 3| & \lstinline|true| \\
+\lstinline|>=| & Greater or equal & \lstinline|4 >= 5| & \lstinline|false| \\
+\bottomrule
+\end{tabular}
+\caption{Comparison operators}\label{tab:comparison-operators}
+\end{table}
+
+Comparison operators work on integers, floats, strings (lexicographic order), and booleans.
+Equality (\lstinline|==|) uses structural comparison for arrays, maps, and structs:
+
+\begin{lstlisting}[language=Lattice, caption={Structural equality}]
+print([1, 2, 3] == [1, 2, 3])   // true
+print([1, 2] == [1, 2, 3])      // false
+print("abc" < "abd")             // true (lexicographic)
+\end{lstlisting}
+
+\subsection{Logical Operators}\label{subsec:logical}
+\index{operators!logical}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Operator} & \textbf{Description} & \textbf{Example} & \textbf{Result} \\
+\midrule
+\lstinline|&&| & Logical AND & \lstinline|true && false| & \lstinline|false| \\
+\lstinline!||! & Logical OR  & \lstinline!true || false! & \lstinline|true| \\
+\lstinline|!|  & Logical NOT & \lstinline|!true| & \lstinline|false| \\
+\bottomrule
+\end{tabular}
+\caption{Logical operators}\label{tab:logical-operators}
+\end{table}
+
+Both \lstinline|&&| and \lstinline!||! are short-circuiting\index{short-circuit evaluation}: the right operand is only evaluated if needed.
+
+\begin{lstlisting}[language=Lattice, caption={Short-circuit evaluation}]
+// The second condition is never evaluated
+let safe = false && (1 / 0 > 0)
+print(safe)  // false
+
+// The second condition is never evaluated
+let ok = true || (1 / 0 > 0)
+print(ok)    // true
+\end{lstlisting}
+
+\subsection{Bitwise Operators}\label{subsec:bitwise}
+\index{operators!bitwise}
+
+Lattice provides the full set of bitwise operations on integers:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Operator} & \textbf{Description} & \textbf{Example} & \textbf{Result} \\
+\midrule
+\lstinline|&| & Bitwise AND & \lstinline|0xFF & 0x0F| & \lstinline|15| \\
+\lstinline!|! & Bitwise OR  & \lstinline!0xF0 | 0x0F! & \lstinline|255| \\
+\lstinline|^| & Bitwise XOR & \lstinline|0xFF ^ 0x0F| & \lstinline|240| \\
+\lstinline|~| & Bitwise NOT & \lstinline|~0| & \lstinline|-1| \\
+\lstinline|<<| & Left shift  & \lstinline|1 << 8| & \lstinline|256| \\
+\lstinline|>>| & Right shift & \lstinline|256 >> 4| & \lstinline|16| \\
+\bottomrule
+\end{tabular}
+\caption{Bitwise operators}\label{tab:bitwise-operators}
+\end{table}
+
+Bitwise operators are essential for systems programming tasks like flag manipulation, color encoding, and protocol parsing:
+
+\begin{lstlisting}[language=Lattice, caption={Bitwise operations in practice}]
+// Extract RGB components from a 24-bit color
+let color = 0xFF8040
+let red   = (color >> 16) & 0xFF   // 255
+let green = (color >> 8) & 0xFF    // 128
+let blue  = color & 0xFF           // 64
+
+print("R=${to_string(red)} G=${to_string(green)} B=${to_string(blue)}")
+// R=255 G=128 B=64
+\end{lstlisting}
+
+\subsection{Compound Assignment}\label{subsec:compound-assignment}
+\index{operators!compound assignment}
+
+Every arithmetic and bitwise operator has a compound assignment form:
+
+\begin{lstlisting}[language=Lattice, caption={Compound assignment operators}]
+flux score = 100
+score += 10    // score = 110
+score -= 5     // score = 105
+score *= 2     // score = 210
+score /= 3     // score = 70
+score %= 30    // score = 10
+
+flux flags = 0xFF
+flags &= 0x0F   // flags = 15
+flags |= 0xF0   // flags = 255
+flags ^= 0x0F   // flags = 240
+flags <<= 4     // flags = 3840
+flags >>= 8     // flags = 15
+\end{lstlisting}
+
+\begin{notebox}{Compound Assignment Requires \texttt{flux}}
+Compound assignment operators modify the variable in place.
+This only works with \lstinline|flux| (mutable) variables.
+Attempting to use \lstinline|+=| on a \lstinline|let| or \lstinline|fix| binding that refers to a crystal value will produce an error.
+\end{notebox}
+
+\subsection{The Nil Coalescing Operator}\label{subsec:nil-coalescing}
+\index{operators!nil coalescing}\index{??}
+
+The \lstinline|??| operator returns the left side if it is not \lstinline|nil|; otherwise, it returns the right side:
+
+\begin{lstlisting}[language=Lattice, caption={Nil coalescing}]
+let name = nil ?? "Anonymous"
+print(name)  // Anonymous
+
+let title = "Engineer" ?? "Unknown"
+print(title)  // Engineer
+
+// Chains: first non-nil wins
+let result = nil ?? nil ?? "found it"
+print(result)  // found it
+\end{lstlisting}
+
+This is particularly useful when reading from maps, where missing keys return \lstinline|nil|:
+
+\begin{lstlisting}[language=Lattice, caption={Nil coalescing with map lookups}]
+flux config = Map::new()
+config["host"] = "localhost"
+
+let host = config.get("host") ?? "0.0.0.0"
+let port = config.get("port") ?? 8080
+
+print(host)  // localhost
+print(port)  // 8080
+\end{lstlisting}
+
+\subsection{Optional Chaining}\label{subsec:optional-chaining}
+\index{operators!optional chaining}\index{?.}
+
+The \lstinline|?.|\index{?.} operator safely navigates through potentially \lstinline|nil| values.
+If the receiver is \lstinline|nil|, the entire chain short-circuits to \lstinline|nil| instead of producing an error:
+
+\begin{lstlisting}[language=Lattice, caption={Optional chaining}]
+let user = nil
+print(user?.name)           // nil (no error)
+print(user?.address?.city)  // nil (chain short-circuits)
+
+// Combine with ?? for defaults
+let city = user?.address?.city ?? "Unknown"
+print(city)  // Unknown
+\end{lstlisting}
+
+\subsection{The Range Operator}\label{subsec:range-operator}
+\index{operators!range}\index{..}
+
+The \lstinline|..| operator creates a range---a pair of integers representing a half-open interval (\lstinline|start| inclusive, \lstinline|end| exclusive):
+
+\begin{lstlisting}[language=Lattice, caption={Range operator}]
+for i in 0..5 {
+    print(i)  // 0, 1, 2, 3, 4
+}
+
+print(typeof(0..10))  // Range
+\end{lstlisting}
+
+Ranges are used with \lstinline|for| loops and in pattern matching.
+
+%% ───────────────────────────────────────────────────────────
+\section{Comments}\label{sec:comments}
+\index{comments}
+
+Lattice supports three styles of comments.
+
+\subsection{Line Comments}\label{subsec:line-comments}
+\index{comments!line}
+
+A \lstinline|//| starts a comment that extends to the end of the line:
+
+\begin{lstlisting}[language=Lattice, caption={Line comments}]
+let x = 42  // this is a comment
+// this entire line is a comment
+\end{lstlisting}
+
+\subsection{Block Comments}\label{subsec:block-comments}
+\index{comments!block}
+
+Block comments use \lstinline|/* ... */| and can span multiple lines.
+They can be \textbf{nested}\index{comments!nested}, which is particularly useful for commenting out code that already contains comments:
+
+\begin{lstlisting}[language=Lattice, caption={Block comments (nestable)}]
+/* This is a block comment */
+
+/*
+ * Multi-line block comment.
+ * Often used for function documentation.
+ */
+
+/* You can /* nest */ block comments */
+\end{lstlisting}
+
+The nesting support is implemented by tracking a depth counter in the lexer---each \lstinline|/*| increments it and each \lstinline|*/| decrements it.
+The comment only ends when the depth reaches zero.
+
+\subsection{Doc Comments}\label{subsec:doc-comments}
+\index{comments!doc}\index{doc comments}
+
+Lines starting with \lstinline|///| are \emph{doc comments}.
+They are treated as regular comments by the interpreter, but the \lstinline|clat doc| tool extracts them to generate documentation:
+
+\begin{lstlisting}[language=Lattice, caption={Doc comments}]
+/// Calculate the area of a circle.
+/// Takes a radius and returns the area.
+fn circle_area(radius: Float) -> Float {
+    3.14159 * radius * radius
+}
+\end{lstlisting}
+
+We'll cover the documentation generator in detail in Chapter~30 (\emph{The Formatter and Doc Generator}).
+For now, get in the habit of documenting your functions with \lstinline|///|---your future self will thank you.
+
+%% ───────────────────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:types-together}
+
+Let's write a small program that uses several of the types and operators we've covered:
+
+\begin{lstlisting}[language=Lattice, caption={A temperature converter using multiple types}]
+/// Convert a temperature between Fahrenheit and Celsius.
+/// The `from` parameter must be "F" or "C".
+fn convert_temp(value: Float, from: String) -> String {
+    let result = if from == "F" {
+        (value - 32.0) * 5.0 / 9.0
+    } else {
+        value * 9.0 / 5.0 + 32.0
+    }
+
+    let to_unit = if from == "F" { "C" } else { "F" }
+    let rounded = round(result * 100.0) / 100.0
+
+    "${to_string(value)} ${from} = ${to_string(rounded)} ${to_unit}"
+}
+
+// Build a conversion table
+let temps = [0.0, 32.0, 72.0, 100.0, 212.0]
+for temp in temps {
+    print(convert_temp(temp, "F"))
+}
+/*
+    0.0 F = -17.78 C
+    32.0 F = 0.0 C
+    72.0 F = 22.22 C
+    100.0 F = 37.78 C
+    212.0 F = 100.0 C
+*/
+\end{lstlisting}
+
+This program demonstrates:
+\begin{itemize}
+  \item \textbf{Floats} for temperature values
+  \item \textbf{Strings} with interpolation for formatted output
+  \item \textbf{Comparison operators} (\lstinline|==|) for branching
+  \item \textbf{Arithmetic operators} for the conversion formula
+  \item \textbf{Arrays} to hold a list of temperatures
+  \item \textbf{Doc comments} on the function
+  \item \textbf{Block comments} for expected output
+  \item The \lstinline|if|/\lstinline|else| expression returning a value
+\end{itemize}
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch03-exercises}
+
+\begin{enumerate}
+  \item \textbf{Type Explorer.}
+  In the REPL, use \lstinline|typeof()| on at least 10 different values, including an array of arrays, a map with string keys, a range, a closure, and \lstinline|nil|.
+  Write down any surprises.
+
+  \item \textbf{Hex Color Parser.}
+  Write a function \lstinline|fn parse_color(hex: Int) -> [Int]| that takes a hex color like \lstinline|0xFF8040| and returns an array \lstinline|[r, g, b]| using bitwise operators.
+  Test it with several colors.
+
+  \item \textbf{String Processing.}
+  Write a function that takes a full name like \lstinline|"ada lovelace"| and returns it in title case: \lstinline|"Ada Lovelace"|.
+  Use string methods.
+  (Hint: \lstinline|.title_case()| exists!)
+
+  \item \textbf{Nil Safety.}
+  Write a function \lstinline|fn safe_get(m: Map, key: String, default_val: any) -> any| that returns the map's value for the given key, or \lstinline|default_val| if the key is missing.
+  Use the \lstinline|??| operator.
+
+  \item \textbf{Triple-Quote Art.}
+  Use a triple-quoted string with interpolation to create an ASCII art box around a message.
+  The function should take a message string and return the boxed version with proper padding.
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:ch03-whats-next}
+
+We've surveyed the raw materials---integers, floats, booleans, strings, nil, and unit---and the tools for working with them.
+But so far, our values have been rootless: created, used, and forgotten.
+In the next chapter, we will learn how to \emph{bind} values to names with \lstinline|let|, \lstinline|flux|, and \lstinline|fix|, and we'll get our first real look at the phase system that gives Lattice its crystalline character.

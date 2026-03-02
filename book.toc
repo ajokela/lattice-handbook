@@ -1,0 +1,1164 @@
+\contentsline {part}{I\hspace {1em}First Contact}{1}{part.1}%
+\contentsline {chapter}{\numberline {1}Hello, Lattice}{3}{chapter.1}%
+\contentsline {section}{\numberline {1.1}What Lattice Is and Why It Exists}{3}{section.1.1}%
+\contentsline {subsection}{\numberline {1.1.1}The Phase System}{4}{subsection.1.1.1}%
+\contentsline {subsection}{\numberline {1.1.2}Familiar Syntax, Modern Features}{4}{subsection.1.1.2}%
+\contentsline {subsection}{\numberline {1.1.3}Batteries Included}{5}{subsection.1.1.3}%
+\contentsline {section}{\numberline {1.2}Installing Lattice}{5}{section.1.2}%
+\contentsline {subsection}{\numberline {1.2.1}Prerequisites}{5}{subsection.1.2.1}%
+\contentsline {subsection}{\numberline {1.2.2}macOS}{5}{subsection.1.2.2}%
+\contentsline {subsection}{\numberline {1.2.3}Linux}{6}{subsection.1.2.3}%
+\contentsline {subsection}{\numberline {1.2.4}Windows}{6}{subsection.1.2.4}%
+\contentsline {subsection}{\numberline {1.2.5}WebAssembly}{7}{subsection.1.2.5}%
+\contentsline {subsection}{\numberline {1.2.6}Verifying the Installation}{7}{subsection.1.2.6}%
+\contentsline {section}{\numberline {1.3}Your First Program: Hello, World!}{7}{section.1.3}%
+\contentsline {subsection}{\numberline {1.3.1}A Slightly More Interesting Program}{8}{subsection.1.3.1}%
+\contentsline {subsection}{\numberline {1.3.2}Functions}{8}{subsection.1.3.2}%
+\contentsline {subsection}{\numberline {1.3.3}Running the Examples Directory}{9}{subsection.1.3.3}%
+\contentsline {section}{\numberline {1.4}Running Files vs.\ the REPL}{10}{section.1.4}%
+\contentsline {subsection}{\numberline {1.4.1}Running from a File}{10}{subsection.1.4.1}%
+\contentsline {subsection}{\numberline {1.4.2}The Interactive REPL}{11}{subsection.1.4.2}%
+\contentsline {subsection}{\numberline {1.4.3}Passing Arguments to Scripts}{12}{subsection.1.4.3}%
+\contentsline {section}{\numberline {1.5}A Taste of What Makes Lattice Different}{13}{section.1.5}%
+\contentsline {subsection}{\numberline {1.5.1}The Phase System in Action}{13}{subsection.1.5.1}%
+\contentsline {subsection}{\numberline {1.5.2}Pattern Matching}{14}{subsection.1.5.2}%
+\contentsline {subsection}{\numberline {1.5.3}Structured Concurrency}{14}{subsection.1.5.3}%
+\contentsline {subsection}{\numberline {1.5.4}Closures and Functional Style}{15}{subsection.1.5.4}%
+\contentsline {subsection}{\numberline {1.5.5}String Interpolation Everywhere}{16}{subsection.1.5.5}%
+\contentsline {subsection}{\numberline {1.5.6}One More Thing: Strict Mode}{16}{subsection.1.5.6}%
+\contentsline {section}{\numberline {1.6}Exercises}{17}{section.1.6}%
+\contentsline {chapter}{\numberline {2}The REPL Is Your Laboratory}{19}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Launching the REPL}{19}{section.2.1}%
+\contentsline {subsection}{\numberline {2.1.1}Persistent State Across Lines}{20}{subsection.2.1.1}%
+\contentsline {subsection}{\numberline {2.1.2}Multi-line Input}{20}{subsection.2.1.2}%
+\contentsline {section}{\numberline {2.2}Tab Completion and Discoverability}{21}{section.2.2}%
+\contentsline {subsection}{\numberline {2.2.1}Keyword and Built-in Completion}{21}{subsection.2.2.1}%
+\contentsline {subsection}{\numberline {2.2.2}Method Completion After a Dot}{22}{subsection.2.2.2}%
+\contentsline {subsection}{\numberline {2.2.3}Constructor Completion After ::}{22}{subsection.2.2.3}%
+\contentsline {section}{\numberline {2.3}Defining Functions, Structs, and Enums Interactively}{23}{section.2.3}%
+\contentsline {subsection}{\numberline {2.3.1}Functions}{23}{subsection.2.3.1}%
+\contentsline {subsection}{\numberline {2.3.2}Structs}{24}{subsection.2.3.2}%
+\contentsline {subsection}{\numberline {2.3.3}Enums}{24}{subsection.2.3.3}%
+\contentsline {section}{\numberline {2.4}The \texttt {=>} Prefix: How the REPL Talks Back}{25}{section.2.4}%
+\contentsline {subsection}{\numberline {2.4.1}The Display Rule}{25}{subsection.2.4.1}%
+\contentsline {subsection}{\numberline {2.4.2}The \texttt {repr} Format}{26}{subsection.2.4.2}%
+\contentsline {subsection}{\numberline {2.4.3}Distinguishing \texttt {print} from \texttt {=>}}{27}{subsection.2.4.3}%
+\contentsline {section}{\numberline {2.5}Tips and Tricks for Exploratory Programming}{27}{section.2.5}%
+\contentsline {subsection}{\numberline {2.5.1}Use \texttt {typeof()} to Inspect Values}{28}{subsection.2.5.1}%
+\contentsline {subsection}{\numberline {2.5.2}Use \texttt {phase\_of()} to Inspect Phase}{28}{subsection.2.5.2}%
+\contentsline {subsection}{\numberline {2.5.3}Build Data Structures Incrementally}{28}{subsection.2.5.3}%
+\contentsline {subsection}{\numberline {2.5.4}Test Functions with Edge Cases}{29}{subsection.2.5.4}%
+\contentsline {subsection}{\numberline {2.5.5}Use History to Save Typing}{29}{subsection.2.5.5}%
+\contentsline {subsection}{\numberline {2.5.6}Explore the Standard Library}{30}{subsection.2.5.6}%
+\contentsline {subsection}{\numberline {2.5.7}Error Recovery}{30}{subsection.2.5.7}%
+\contentsline {subsection}{\numberline {2.5.8}The Debugging REPL}{31}{subsection.2.5.8}%
+\contentsline {subsection}{\numberline {2.5.9}Alternative REPL Backends}{31}{subsection.2.5.9}%
+\contentsline {subsection}{\numberline {2.5.10}A Complete Exploratory Session}{32}{subsection.2.5.10}%
+\contentsline {section}{\numberline {2.6}Exercises}{33}{section.2.6}%
+\contentsline {chapter}{\numberline {3}Values, Types, and the Shape of Things}{35}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Integers}{35}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Floats}{36}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Booleans}{37}{section.3.3}%
+\contentsline {subsection}{\numberline {3.3.1}Truthiness}{37}{subsection.3.3.1}%
+\contentsline {section}{\numberline {3.4}Strings}{38}{section.3.4}%
+\contentsline {subsection}{\numberline {3.4.1}Double-Quoted Strings}{38}{subsection.3.4.1}%
+\contentsline {subsection}{\numberline {3.4.2}String Interpolation}{38}{subsection.3.4.2}%
+\contentsline {subsection}{\numberline {3.4.3}Single-Quoted Strings}{40}{subsection.3.4.3}%
+\contentsline {subsection}{\numberline {3.4.4}Triple-Quoted Strings}{40}{subsection.3.4.4}%
+\contentsline {subsection}{\numberline {3.4.5}Common String Methods}{41}{subsection.3.4.5}%
+\contentsline {section}{\numberline {3.5}Nil and Unit}{42}{section.3.5}%
+\contentsline {subsection}{\numberline {3.5.1}Nil}{42}{subsection.3.5.1}%
+\contentsline {subsection}{\numberline {3.5.2}Unit}{43}{subsection.3.5.2}%
+\contentsline {section}{\numberline {3.6}Type Checking with \texttt {typeof()}}{43}{section.3.6}%
+\contentsline {section}{\numberline {3.7}Number Literals in Detail}{45}{section.3.7}%
+\contentsline {subsection}{\numberline {3.7.1}Underscore Separators}{45}{subsection.3.7.1}%
+\contentsline {subsection}{\numberline {3.7.2}Hexadecimal Literals}{45}{subsection.3.7.2}%
+\contentsline {subsection}{\numberline {3.7.3}No Scientific Notation}{46}{subsection.3.7.3}%
+\contentsline {section}{\numberline {3.8}Operators}{46}{section.3.8}%
+\contentsline {subsection}{\numberline {3.8.1}Arithmetic Operators}{46}{subsection.3.8.1}%
+\contentsline {subsection}{\numberline {3.8.2}Comparison Operators}{47}{subsection.3.8.2}%
+\contentsline {subsection}{\numberline {3.8.3}Logical Operators}{47}{subsection.3.8.3}%
+\contentsline {subsection}{\numberline {3.8.4}Bitwise Operators}{48}{subsection.3.8.4}%
+\contentsline {subsection}{\numberline {3.8.5}Compound Assignment}{49}{subsection.3.8.5}%
+\contentsline {subsection}{\numberline {3.8.6}The Nil Coalescing Operator}{49}{subsection.3.8.6}%
+\contentsline {subsection}{\numberline {3.8.7}Optional Chaining}{50}{subsection.3.8.7}%
+\contentsline {subsection}{\numberline {3.8.8}The Range Operator}{51}{subsection.3.8.8}%
+\contentsline {section}{\numberline {3.9}Comments}{51}{section.3.9}%
+\contentsline {subsection}{\numberline {3.9.1}Line Comments}{51}{subsection.3.9.1}%
+\contentsline {subsection}{\numberline {3.9.2}Block Comments}{51}{subsection.3.9.2}%
+\contentsline {subsection}{\numberline {3.9.3}Doc Comments}{52}{subsection.3.9.3}%
+\contentsline {section}{\numberline {3.10}Putting It All Together}{52}{section.3.10}%
+\contentsline {section}{\numberline {3.11}Exercises}{54}{section.3.11}%
+\contentsline {chapter}{\numberline {4}Variables and the Idea of Phase}{55}{chapter.4}%
+\contentsline {section}{\numberline {4.1}\texttt {let}, \texttt {flux}, and \texttt {fix}}{55}{section.4.1}%
+\contentsline {subsection}{\numberline {4.1.1}\texttt {let} --- Inferred Phase}{55}{subsection.4.1.1}%
+\contentsline {subsection}{\numberline {4.1.2}\texttt {flux} --- Explicitly Fluid}{56}{subsection.4.1.2}%
+\contentsline {subsection}{\numberline {4.1.3}\texttt {fix} --- Explicitly Crystal}{57}{subsection.4.1.3}%
+\contentsline {subsection}{\numberline {4.1.4}The Shorthand Prefixes: \texttt {\~{}} and \texttt {*}}{58}{subsection.4.1.4}%
+\contentsline {subsection}{\numberline {4.1.5}Comparing the Three Keywords}{58}{subsection.4.1.5}%
+\contentsline {section}{\numberline {4.2}Why Mutability Is a First-Class Concept}{59}{section.4.2}%
+\contentsline {section}{\numberline {4.3}Quick Introduction to \texttt {freeze()} and \texttt {thaw()}}{60}{section.4.3}%
+\contentsline {subsection}{\numberline {4.3.1}\texttt {freeze()} --- Fluid to Crystal}{60}{subsection.4.3.1}%
+\contentsline {subsection}{\numberline {4.3.2}\texttt {thaw()} --- Crystal to Fluid}{61}{subsection.4.3.2}%
+\contentsline {subsection}{\numberline {4.3.3}\texttt {clone()} --- Independent Copy}{61}{subsection.4.3.3}%
+\contentsline {section}{\numberline {4.4}\texttt {\#mode casual} vs.\ \texttt {\#mode strict}}{62}{section.4.4}%
+\contentsline {subsection}{\numberline {4.4.1}Casual Mode}{62}{subsection.4.4.1}%
+\contentsline {subsection}{\numberline {4.4.2}Strict Mode}{63}{subsection.4.4.2}%
+\contentsline {subsection}{\numberline {4.4.3}Inside the Phase Checker}{64}{subsection.4.4.3}%
+\contentsline {section}{\numberline {4.5}First Encounter with the Phase Philosophy}{65}{section.4.5}%
+\contentsline {subsection}{\numberline {4.5.1}The Lifecycle of Data}{65}{subsection.4.5.1}%
+\contentsline {subsection}{\numberline {4.5.2}The Chemistry Metaphor}{66}{subsection.4.5.2}%
+\contentsline {subsection}{\numberline {4.5.3}Phase and Concurrency}{67}{subsection.4.5.3}%
+\contentsline {subsection}{\numberline {4.5.4}A Preview: The Forge Block}{67}{subsection.4.5.4}%
+\contentsline {section}{\numberline {4.6}Practical Patterns}{68}{section.4.6}%
+\contentsline {subsection}{\numberline {4.6.1}Accumulate Then Freeze}{68}{subsection.4.6.1}%
+\contentsline {subsection}{\numberline {4.6.2}Configuration Objects}{69}{subsection.4.6.2}%
+\contentsline {subsection}{\numberline {4.6.3}The Fluid Working Copy}{70}{subsection.4.6.3}%
+\contentsline {section}{\numberline {4.7}Exercises}{71}{section.4.7}%
+\contentsline {part}{II\hspace {1em}The Working Programmer}{73}{part.2}%
+\contentsline {chapter}{\numberline {5}Control Flow}{75}{chapter.5}%
+\contentsline {section}{\numberline {5.1}if/else as Expressions}{75}{section.5.1}%
+\contentsline {subsection}{\numberline {5.1.1}How the Value Is Determined}{76}{subsection.5.1.1}%
+\contentsline {subsection}{\numberline {5.1.2}What Happens Without an else?}{77}{subsection.5.1.2}%
+\contentsline {subsection}{\numberline {5.1.3}Nested and Chained Conditions}{78}{subsection.5.1.3}%
+\contentsline {subsection}{\numberline {5.1.4}Blocks as Expressions}{78}{subsection.5.1.4}%
+\contentsline {section}{\numberline {5.2}Loops: while, loop, for}{79}{section.5.2}%
+\contentsline {subsection}{\numberline {5.2.1}while Loops}{79}{subsection.5.2.1}%
+\contentsline {subsection}{\numberline {5.2.2}Infinite Loops with loop}{80}{subsection.5.2.2}%
+\contentsline {subsection}{\numberline {5.2.3}for Loops and Iteration}{81}{subsection.5.2.3}%
+\contentsline {subsection}{\numberline {5.2.4}Nested Loops}{83}{subsection.5.2.4}%
+\contentsline {section}{\numberline {5.3}break, continue, return}{83}{section.5.3}%
+\contentsline {subsection}{\numberline {5.3.1}break --- Exit the Loop}{83}{subsection.5.3.1}%
+\contentsline {subsection}{\numberline {5.3.2}continue --- Skip to the Next Iteration}{84}{subsection.5.3.2}%
+\contentsline {subsection}{\numberline {5.3.3}return --- Exit the Function}{85}{subsection.5.3.3}%
+\contentsline {section}{\numberline {5.4}Ranges}{87}{section.5.4}%
+\contentsline {subsection}{\numberline {5.4.1}Creating Ranges}{87}{subsection.5.4.1}%
+\contentsline {subsection}{\numberline {5.4.2}Ranges with Expressions}{88}{subsection.5.4.2}%
+\contentsline {subsection}{\numberline {5.4.3}Ranges for Indexing and Slicing}{89}{subsection.5.4.3}%
+\contentsline {subsection}{\numberline {5.4.4}Ranges as First-Class Values}{89}{subsection.5.4.4}%
+\contentsline {section}{\numberline {5.5}The Nil-Coalescing Operator \texttt {??}}{90}{section.5.5}%
+\contentsline {subsection}{\numberline {5.5.1}Short-Circuit Evaluation}{91}{subsection.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.2}Chaining \texttt {??}}{91}{subsection.5.5.2}%
+\contentsline {subsection}{\numberline {5.5.3}Combining \texttt {??} with Other Expressions}{92}{subsection.5.5.3}%
+\contentsline {section}{\numberline {5.6}The Pipe Operator}{93}{section.5.6}%
+\contentsline {subsection}{\numberline {5.6.1}How pipe() Works}{94}{subsection.5.6.1}%
+\contentsline {subsection}{\numberline {5.6.2}Building Data Pipelines}{95}{subsection.5.6.2}%
+\contentsline {subsection}{\numberline {5.6.3}pipe() with Named Functions}{96}{subsection.5.6.3}%
+\contentsline {section}{\numberline {5.7}Putting It All Together}{98}{section.5.7}%
+\contentsline {section}{\numberline {5.8}Exercises}{100}{section.5.8}%
+\contentsline {chapter}{\numberline {6}Functions and Closures}{101}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Defining Functions with fn}{101}{section.6.1}%
+\contentsline {subsection}{\numberline {6.1.1}Functions Are Values}{102}{subsection.6.1.1}%
+\contentsline {subsection}{\numberline {6.1.2}Function Bodies as Expressions}{102}{subsection.6.1.2}%
+\contentsline {subsection}{\numberline {6.1.3}Recursive Functions}{103}{subsection.6.1.3}%
+\contentsline {section}{\numberline {6.2}Type Annotations on Parameters and Return Types}{104}{section.6.2}%
+\contentsline {subsection}{\numberline {6.2.1}How Runtime Type Checking Works}{104}{subsection.6.2.1}%
+\contentsline {subsection}{\numberline {6.2.2}Return Type Checking}{105}{subsection.6.2.2}%
+\contentsline {subsection}{\numberline {6.2.3}Common Type Names}{105}{subsection.6.2.3}%
+\contentsline {section}{\numberline {6.3}Default Parameter Values and Variadic Parameters}{106}{section.6.3}%
+\contentsline {subsection}{\numberline {6.3.1}Default Parameter Values}{106}{subsection.6.3.1}%
+\contentsline {subsection}{\numberline {6.3.2}Variadic Parameters}{107}{subsection.6.3.2}%
+\contentsline {subsection}{\numberline {6.3.3}Combining Defaults and Variadics}{108}{subsection.6.3.3}%
+\contentsline {section}{\numberline {6.4}Closures: \texttt {|x| x * 2}}{109}{section.6.4}%
+\contentsline {subsection}{\numberline {6.4.1}Closures with Default and Variadic Parameters}{110}{subsection.6.4.1}%
+\contentsline {subsection}{\numberline {6.4.2}Where Closures Shine}{110}{subsection.6.4.2}%
+\contentsline {section}{\numberline {6.5}Closures Capture Their Environment}{111}{section.6.5}%
+\contentsline {subsection}{\numberline {6.5.1}How Upvalue Capture Works Under the Hood}{112}{subsection.6.5.1}%
+\contentsline {subsection}{\numberline {6.5.2}Closures in Loops}{113}{subsection.6.5.2}%
+\contentsline {section}{\numberline {6.6}Higher-Order Functions}{114}{section.6.6}%
+\contentsline {subsection}{\numberline {6.6.1}Functions That Return Functions}{114}{subsection.6.6.1}%
+\contentsline {subsection}{\numberline {6.6.2}Callbacks and Event Handlers}{114}{subsection.6.6.2}%
+\contentsline {subsection}{\numberline {6.6.3}Function Composition}{115}{subsection.6.6.3}%
+\contentsline {subsection}{\numberline {6.6.4}Building Abstractions with Higher-Order Functions}{116}{subsection.6.6.4}%
+\contentsline {section}{\numberline {6.7}require and ensure --- Contracts on Your Functions}{117}{section.6.7}%
+\contentsline {subsection}{\numberline {6.7.1}Preconditions with require}{117}{subsection.6.7.1}%
+\contentsline {subsection}{\numberline {6.7.2}Postconditions with ensure}{118}{subsection.6.7.2}%
+\contentsline {subsection}{\numberline {6.7.3}When to Use Contracts}{119}{subsection.6.7.3}%
+\contentsline {section}{\numberline {6.8}Putting It All Together}{120}{section.6.8}%
+\contentsline {section}{\numberline {6.9}Exercises}{122}{section.6.9}%
+\contentsline {chapter}{\numberline {7}Arrays, Maps, Sets, and Friends}{123}{chapter.7}%
+\contentsline {section}{\numberline {7.1}Arrays: Creation, Indexing, and Mutation}{123}{section.7.1}%
+\contentsline {subsection}{\numberline {7.1.1}Indexing and Slicing}{124}{subsection.7.1.1}%
+\contentsline {subsection}{\numberline {7.1.2}Mutation with push and pop}{124}{subsection.7.1.2}%
+\contentsline {subsection}{\numberline {7.1.3}Essential Non-Closure Methods}{125}{subsection.7.1.3}%
+\contentsline {section}{\numberline {7.2}Closure-Based Array Methods}{127}{section.7.2}%
+\contentsline {subsection}{\numberline {7.2.1}map --- Transform Every Element}{127}{subsection.7.2.1}%
+\contentsline {subsection}{\numberline {7.2.2}filter --- Keep Matching Elements}{128}{subsection.7.2.2}%
+\contentsline {subsection}{\numberline {7.2.3}reduce --- Collapse to a Single Value}{128}{subsection.7.2.3}%
+\contentsline {subsection}{\numberline {7.2.4}sort\_by --- Custom Sorting}{129}{subsection.7.2.4}%
+\contentsline {subsection}{\numberline {7.2.5}group\_by --- Categorize Elements}{129}{subsection.7.2.5}%
+\contentsline {subsection}{\numberline {7.2.6}More Closure Methods}{130}{subsection.7.2.6}%
+\contentsline {section}{\numberline {7.3}Non-Closure Array Methods Reference}{131}{section.7.3}%
+\contentsline {section}{\numberline {7.4}The Spread Operator \texttt {...}}{131}{section.7.4}%
+\contentsline {section}{\numberline {7.5}Maps}{133}{section.7.5}%
+\contentsline {subsection}{\numberline {7.5.1}Map Methods}{134}{subsection.7.5.1}%
+\contentsline {subsection}{\numberline {7.5.2}Iterating Over Maps}{135}{subsection.7.5.2}%
+\contentsline {subsection}{\numberline {7.5.3}Maps as Lightweight Objects}{136}{subsection.7.5.3}%
+\contentsline {section}{\numberline {7.6}Sets}{137}{section.7.6}%
+\contentsline {subsection}{\numberline {7.6.1}Set Operations}{137}{subsection.7.6.1}%
+\contentsline {subsection}{\numberline {7.6.2}Subset and Superset Testing}{139}{subsection.7.6.2}%
+\contentsline {subsection}{\numberline {7.6.3}Converting Between Sets and Arrays}{139}{subsection.7.6.3}%
+\contentsline {section}{\numberline {7.7}Tuples}{139}{section.7.7}%
+\contentsline {subsection}{\numberline {7.7.1}Accessing Tuple Elements}{140}{subsection.7.7.1}%
+\contentsline {subsection}{\numberline {7.7.2}Tuples vs.\ Arrays}{141}{subsection.7.7.2}%
+\contentsline {section}{\numberline {7.8}Choosing the Right Collection}{142}{section.7.8}%
+\contentsline {section}{\numberline {7.9}Exercises}{143}{section.7.9}%
+\contentsline {chapter}{\numberline {8}Strings in Depth}{145}{chapter.8}%
+\contentsline {section}{\numberline {8.1}Interpolation, Escaping, and Raw Strings}{145}{section.8.1}%
+\contentsline {subsection}{\numberline {8.1.1}String Interpolation}{145}{subsection.8.1.1}%
+\contentsline {subsection}{\numberline {8.1.2}Escape Sequences}{146}{subsection.8.1.2}%
+\contentsline {subsection}{\numberline {8.1.3}Single-Quoted Strings}{147}{subsection.8.1.3}%
+\contentsline {subsection}{\numberline {8.1.4}Triple-Quoted Strings}{147}{subsection.8.1.4}%
+\contentsline {section}{\numberline {8.2}Core String Methods}{148}{section.8.2}%
+\contentsline {subsection}{\numberline {8.2.1}split --- Break a String Apart}{148}{subsection.8.2.1}%
+\contentsline {subsection}{\numberline {8.2.2}trim, trim\_start, trim\_end}{148}{subsection.8.2.2}%
+\contentsline {subsection}{\numberline {8.2.3}replace}{148}{subsection.8.2.3}%
+\contentsline {subsection}{\numberline {8.2.4}contains, starts\_with, ends\_with}{149}{subsection.8.2.4}%
+\contentsline {subsection}{\numberline {8.2.5}count}{149}{subsection.8.2.5}%
+\contentsline {section}{\numberline {8.3}Case Transformations}{150}{section.8.3}%
+\contentsline {subsection}{\numberline {8.3.1}Naming Convention Converters}{150}{subsection.8.3.1}%
+\contentsline {section}{\numberline {8.4}Characters, Bytes, and Substrings}{151}{section.8.4}%
+\contentsline {subsection}{\numberline {8.4.1}chars() and bytes()}{151}{subsection.8.4.1}%
+\contentsline {subsection}{\numberline {8.4.2}len(), substring(), and index\_of()}{152}{subsection.8.4.2}%
+\contentsline {subsection}{\numberline {8.4.3}More String Utilities}{153}{subsection.8.4.3}%
+\contentsline {section}{\numberline {8.5}Working with Unicode}{153}{section.8.5}%
+\contentsline {subsection}{\numberline {8.5.1}ord() and chr()}{154}{subsection.8.5.1}%
+\contentsline {subsection}{\numberline {8.5.2}Building a Caesar Cipher}{156}{subsection.8.5.2}%
+\contentsline {section}{\numberline {8.6}Regular Expressions}{156}{section.8.6}%
+\contentsline {subsection}{\numberline {8.6.1}regex\_match --- Test a Pattern}{156}{subsection.8.6.1}%
+\contentsline {subsection}{\numberline {8.6.2}regex\_find\_all --- Extract All Matches}{157}{subsection.8.6.2}%
+\contentsline {subsection}{\numberline {8.6.3}regex\_replace --- Pattern-Based Replacement}{157}{subsection.8.6.3}%
+\contentsline {subsection}{\numberline {8.6.4}Regex Flags}{158}{subsection.8.6.4}%
+\contentsline {section}{\numberline {8.7}Putting It All Together}{159}{section.8.7}%
+\contentsline {section}{\numberline {8.8}Exercises}{161}{section.8.8}%
+\contentsline {chapter}{\numberline {9}Pattern Matching}{163}{chapter.9}%
+\contentsline {section}{\numberline {9.1}The \texttt {match} Expression}{164}{section.9.1}%
+\contentsline {subsection}{\numberline {9.1.1}Arm Bodies: Expressions and Blocks}{165}{subsection.9.1.1}%
+\contentsline {subsection}{\numberline {9.1.2}First Match Wins}{165}{subsection.9.1.2}%
+\contentsline {section}{\numberline {9.2}Literal Patterns}{166}{section.9.2}%
+\contentsline {section}{\numberline {9.3}Wildcard and Binding Patterns}{167}{section.9.3}%
+\contentsline {subsection}{\numberline {9.3.1}The Wildcard \texttt {\_}}{167}{subsection.9.3.1}%
+\contentsline {subsection}{\numberline {9.3.2}Binding Patterns}{167}{subsection.9.3.2}%
+\contentsline {section}{\numberline {9.4}Range Patterns}{168}{section.9.4}%
+\contentsline {section}{\numberline {9.5}Guards}{170}{section.9.5}%
+\contentsline {subsection}{\numberline {9.5.1}Guards with Other Pattern Types}{171}{subsection.9.5.1}%
+\contentsline {section}{\numberline {9.6}Array Destructuring Patterns}{172}{section.9.6}%
+\contentsline {subsection}{\numberline {9.6.1}Rest Patterns}{173}{subsection.9.6.1}%
+\contentsline {subsection}{\numberline {9.6.2}Array Patterns and Guards}{174}{subsection.9.6.2}%
+\contentsline {section}{\numberline {9.7}Struct Destructuring Patterns}{174}{section.9.7}%
+\contentsline {section}{\numberline {9.8}Enum Variant Patterns}{176}{section.9.8}%
+\contentsline {subsection}{\numberline {9.8.1}Variants Without Payloads}{177}{subsection.9.8.1}%
+\contentsline {subsection}{\numberline {9.8.2}Nested Enum Patterns}{177}{subsection.9.8.2}%
+\contentsline {subsection}{\numberline {9.8.3}Enum Matching with Guards}{178}{subsection.9.8.3}%
+\contentsline {section}{\numberline {9.9}Exhaustiveness Checking}{179}{section.9.9}%
+\contentsline {subsection}{\numberline {9.9.1}How the Checker Works}{179}{subsection.9.9.1}%
+\contentsline {subsection}{\numberline {9.9.2}Enum Exhaustiveness}{179}{subsection.9.9.2}%
+\contentsline {subsection}{\numberline {9.9.3}Boolean Exhaustiveness}{180}{subsection.9.9.3}%
+\contentsline {subsection}{\numberline {9.9.4}Limitations of the Checker}{181}{subsection.9.9.4}%
+\contentsline {section}{\numberline {9.10}Phase-Qualified Patterns}{182}{section.9.10}%
+\contentsline {section}{\numberline {9.11}Putting It All Together}{182}{section.9.11}%
+\contentsline {section}{\numberline {9.12}How Match Compiles}{185}{section.9.12}%
+\contentsline {subsection}{\numberline {9.12.1}The Stack Invariant}{185}{subsection.9.12.1}%
+\contentsline {subsection}{\numberline {9.12.2}Compilation by Pattern Type}{186}{subsection.9.12.2}%
+\contentsline {section}{\numberline {9.13}Common Patterns and Idioms}{186}{section.9.13}%
+\contentsline {subsection}{\numberline {9.13.1}Replacing Long if/else Chains}{186}{subsection.9.13.1}%
+\contentsline {subsection}{\numberline {9.13.2}Extracting from Nested Structures}{187}{subsection.9.13.2}%
+\contentsline {subsection}{\numberline {9.13.3}State Machines}{188}{subsection.9.13.3}%
+\contentsline {subsection}{\numberline {9.13.4}The Option Pattern}{189}{subsection.9.13.4}%
+\contentsline {section}{\numberline {9.14}Exercises}{190}{section.9.14}%
+\contentsline {chapter}{\numberline {10}Error Handling}{193}{chapter.10}%
+\contentsline {section}{\numberline {10.1}Error Values: \texttt {error()} and \texttt {is\_error()}}{194}{section.10.1}%
+\contentsline {section}{\numberline {10.2}The Result Type}{195}{section.10.2}%
+\contentsline {subsection}{\numberline {10.2.1}Working with Results}{196}{subsection.10.2.1}%
+\contentsline {section}{\numberline {10.3}try/catch}{197}{section.10.3}%
+\contentsline {subsection}{\numberline {10.3.1}try/catch Is an Expression}{198}{subsection.10.3.1}%
+\contentsline {subsection}{\numberline {10.3.2}The Error Map}{198}{subsection.10.3.2}%
+\contentsline {subsection}{\numberline {10.3.3}What Can Be Caught?}{199}{subsection.10.3.3}%
+\contentsline {section}{\numberline {10.4}The \texttt {?}\ Operator}{200}{section.10.4}%
+\contentsline {subsection}{\numberline {10.4.1}How \texttt {?} Works}{201}{subsection.10.4.1}%
+\contentsline {subsection}{\numberline {10.4.2}Chaining \texttt {?}}{201}{subsection.10.4.2}%
+\contentsline {section}{\numberline {10.5}panic()}{202}{section.10.5}%
+\contentsline {section}{\numberline {10.6}defer}{203}{section.10.6}%
+\contentsline {subsection}{\numberline {10.6.1}Execution Order: LIFO}{203}{subsection.10.6.1}%
+\contentsline {subsection}{\numberline {10.6.2}Scope-Aware Execution}{204}{subsection.10.6.2}%
+\contentsline {subsection}{\numberline {10.6.3}Defer and Errors}{204}{subsection.10.6.3}%
+\contentsline {subsection}{\numberline {10.6.4}Defer and Return Values}{205}{subsection.10.6.4}%
+\contentsline {subsection}{\numberline {10.6.5}How Defer Compiles}{206}{subsection.10.6.5}%
+\contentsline {section}{\numberline {10.7}Contracts Revisited}{206}{section.10.7}%
+\contentsline {subsection}{\numberline {10.7.1}require: Preconditions}{206}{subsection.10.7.1}%
+\contentsline {subsection}{\numberline {10.7.2}ensure: Postconditions}{207}{subsection.10.7.2}%
+\contentsline {subsection}{\numberline {10.7.3}Combining Contracts with try/catch}{207}{subsection.10.7.3}%
+\contentsline {section}{\numberline {10.8}Assertions}{208}{section.10.8}%
+\contentsline {section}{\numberline {10.9}The \texttt {try\_fn} Helper}{209}{section.10.9}%
+\contentsline {section}{\numberline {10.10}Designing for Graceful Failure}{210}{section.10.10}%
+\contentsline {subsection}{\numberline {10.10.1}Choosing the Right Tool}{210}{subsection.10.10.1}%
+\contentsline {subsection}{\numberline {10.10.2}The Error Boundary Pattern}{211}{subsection.10.10.2}%
+\contentsline {subsection}{\numberline {10.10.3}Fail Fast, Recover High}{211}{subsection.10.10.3}%
+\contentsline {section}{\numberline {10.11}Exercises}{212}{section.10.11}%
+\contentsline {part}{III\hspace {1em}The Phase System}{215}{part.3}%
+\contentsline {chapter}{\numberline {11}Phases Explained}{217}{chapter.11}%
+\contentsline {section}{\numberline {11.1}The Philosophy: Mutability as a Material Property}{217}{section.11.1}%
+\contentsline {section}{\numberline {11.2}\texttt {flux} (Fluid) --- Mutable, Alive, in Motion}{218}{section.11.2}%
+\contentsline {subsection}{\numberline {11.2.1}Fluid Collections}{219}{subsection.11.2.1}%
+\contentsline {subsection}{\numberline {11.2.2}Fluid Reassignment}{219}{subsection.11.2.2}%
+\contentsline {section}{\numberline {11.3}\texttt {fix} (Crystal) --- Immutable, Hardened, Permanent}{220}{section.11.3}%
+\contentsline {subsection}{\numberline {11.3.1}Why Crystal Is Not Just ``const''}{221}{subsection.11.3.1}%
+\contentsline {subsection}{\numberline {11.3.2}Crystal Values and Memory}{222}{subsection.11.3.2}%
+\contentsline {section}{\numberline {11.4}\texttt {let} --- Phase Inference}{222}{section.11.4}%
+\contentsline {subsection}{\numberline {11.4.1}The Relationship Between \texttt {let} and Strict Mode}{223}{subsection.11.4.1}%
+\contentsline {section}{\numberline {11.5}\texttt {freeze()}, \texttt {thaw()}, \texttt {clone()} in Depth}{223}{section.11.5}%
+\contentsline {subsection}{\numberline {11.5.1}\texttt {freeze()} --- Crystallization}{223}{subsection.11.5.1}%
+\contentsline {subsubsection}{Freezing with Contracts}{224}{subsubsection*.2}%
+\contentsline {subsection}{\numberline {11.5.2}\texttt {thaw()} --- Melting a Crystal}{225}{subsection.11.5.2}%
+\contentsline {subsubsection}{Thawing Refs}{226}{subsubsection*.3}%
+\contentsline {subsection}{\numberline {11.5.3}\texttt {clone()} --- Independent Copy}{226}{subsection.11.5.3}%
+\contentsline {section}{\numberline {11.6}Advanced Phase Operations}{227}{section.11.6}%
+\contentsline {subsection}{\numberline {11.6.1}\texttt {forge} --- Scoped Construction}{227}{subsection.11.6.1}%
+\contentsline {subsection}{\numberline {11.6.2}\texttt {anneal} --- Transform a Crystal}{228}{subsection.11.6.2}%
+\contentsline {subsection}{\numberline {11.6.3}\texttt {crystallize} and \texttt {borrow} --- Scoped Phase Changes}{229}{subsection.11.6.3}%
+\contentsline {subsection}{\numberline {11.6.4}\texttt {sublimate} --- The Point of No Return}{230}{subsection.11.6.4}%
+\contentsline {section}{\numberline {11.7}When and Why to Freeze Values}{231}{section.11.7}%
+\contentsline {subsection}{\numberline {11.7.1}Sharing Data Between Threads}{231}{subsection.11.7.1}%
+\contentsline {subsection}{\numberline {11.7.2}API Boundaries}{231}{subsection.11.7.2}%
+\contentsline {subsection}{\numberline {11.7.3}Snapshot Semantics}{232}{subsection.11.7.3}%
+\contentsline {subsection}{\numberline {11.7.4}Performance Optimization}{233}{subsection.11.7.4}%
+\contentsline {subsection}{\numberline {11.7.5}Correctness Guarantees}{233}{subsection.11.7.5}%
+\contentsline {section}{\numberline {11.8}Phase Errors and What They Tell You}{233}{section.11.8}%
+\contentsline {subsection}{\numberline {11.8.1}Mutating a Crystal Value}{233}{subsection.11.8.1}%
+\contentsline {subsection}{\numberline {11.8.2}Assigning to a Crystal Binding}{234}{subsection.11.8.2}%
+\contentsline {subsection}{\numberline {11.8.3}Strict Mode: \texttt {let} Not Allowed}{234}{subsection.11.8.3}%
+\contentsline {subsection}{\numberline {11.8.4}Strict Mode: Phase Mismatch}{235}{subsection.11.8.4}%
+\contentsline {subsection}{\numberline {11.8.5}Strict Mode: Freezing an Already Crystal Value}{235}{subsection.11.8.5}%
+\contentsline {subsection}{\numberline {11.8.6}Strict Mode: Thawing an Already Fluid Value}{235}{subsection.11.8.6}%
+\contentsline {subsection}{\numberline {11.8.7}Strict Mode: Fluid Values in \texttt {spawn}}{236}{subsection.11.8.7}%
+\contentsline {subsection}{\numberline {11.8.8}Annotation Violations}{236}{subsection.11.8.8}%
+\contentsline {section}{\numberline {11.9}Querying Phase at Runtime}{237}{section.11.9}%
+\contentsline {section}{\numberline {11.10}Summary: The Phase Lifecycle}{238}{section.11.10}%
+\contentsline {section}{\numberline {11.11}Exercises}{239}{section.11.11}%
+\contentsline {chapter}{\numberline {12}Memory and Arenas}{241}{chapter.12}%
+\contentsline {section}{\numberline {12.1}The FluidHeap: Mark-Sweep GC for Mutable Values}{241}{section.12.1}%
+\contentsline {subsection}{\numberline {12.1.1}How the FluidHeap Works}{242}{subsection.12.1.1}%
+\contentsline {subsection}{\numberline {12.1.2}Mark-Sweep Collection}{242}{subsection.12.1.2}%
+\contentsline {subsection}{\numberline {12.1.3}The GC Threshold and Adaptive Growth}{243}{subsection.12.1.3}%
+\contentsline {section}{\numberline {12.2}The CrystalRegion: Arena-Backed Storage for Immutable Values}{243}{section.12.2}%
+\contentsline {subsection}{\numberline {12.2.1}What Is an Arena?}{244}{subsection.12.2.1}%
+\contentsline {subsection}{\numberline {12.2.2}Region Structure}{244}{subsection.12.2.2}%
+\contentsline {subsection}{\numberline {12.2.3}How Freeze Moves Data}{245}{subsection.12.2.3}%
+\contentsline {subsection}{\numberline {12.2.4}Region Collection}{245}{subsection.12.2.4}%
+\contentsline {subsection}{\numberline {12.2.5}The RegionManager}{246}{subsection.12.2.5}%
+\contentsline {section}{\numberline {12.3}The Ephemeral BumpArena: Short-Lived Temporaries}{246}{section.12.3}%
+\contentsline {subsection}{\numberline {12.3.1}How the BumpArena Works}{246}{subsection.12.3.1}%
+\contentsline {subsection}{\numberline {12.3.2}The Reset Cycle}{247}{subsection.12.3.2}%
+\contentsline {section}{\numberline {12.4}How Freeze Moves a Value from Heap to Arena}{248}{section.12.4}%
+\contentsline {subsection}{\numberline {12.4.1}Step by Step}{248}{subsection.12.4.1}%
+\contentsline {subsection}{\numberline {12.4.2}Memory Layout Comparison}{249}{subsection.12.4.2}%
+\contentsline {section}{\numberline {12.5}String Interning and Why It Matters}{249}{section.12.5}%
+\contentsline {subsection}{\numberline {12.5.1}How Interning Works}{249}{subsection.12.5.1}%
+\contentsline {subsection}{\numberline {12.5.2}What Gets Interned}{249}{subsection.12.5.2}%
+\contentsline {subsection}{\numberline {12.5.3}Why Interning Matters for Phase}{250}{subsection.12.5.3}%
+\contentsline {section}{\numberline {12.6}The DualHeap: Putting It All Together}{250}{section.12.6}%
+\contentsline {section}{\numberline {12.7}GC Flags: Tuning the Collector}{251}{section.12.7}%
+\contentsline {subsection}{\numberline {12.7.1}\texttt {--gc}: Enable the Garbage Collector}{251}{subsection.12.7.1}%
+\contentsline {subsection}{\numberline {12.7.2}\texttt {--gc-stress}: Collect on Every Allocation}{252}{subsection.12.7.2}%
+\contentsline {subsection}{\numberline {12.7.3}\texttt {--gc-incremental}: Spread Work Across Safe Points}{252}{subsection.12.7.3}%
+\contentsline {subsection}{\numberline {12.7.4}GC Statistics}{253}{subsection.12.7.4}%
+\contentsline {section}{\numberline {12.8}Special Region IDs}{253}{section.12.8}%
+\contentsline {section}{\numberline {12.9}Memory Best Practices}{254}{section.12.9}%
+\contentsline {section}{\numberline {12.10}Exercises}{255}{section.12.10}%
+\contentsline {chapter}{\numberline {13}Alloys and Reactive Bonds}{257}{chapter.13}%
+\contentsline {section}{\numberline {13.1}Alloy Structs: Per-Field Phase Declarations}{257}{section.13.1}%
+\contentsline {subsection}{\numberline {13.1.1}How Alloys Work Under the Hood}{259}{subsection.13.1.1}%
+\contentsline {subsection}{\numberline {13.1.2}Partial Freeze with \texttt {except}}{259}{subsection.13.1.2}%
+\contentsline {section}{\numberline {13.2}Designing Data with Mixed Mutability}{260}{section.13.2}%
+\contentsline {subsection}{\numberline {13.2.1}Identity + State Pattern}{260}{subsection.13.2.1}%
+\contentsline {subsection}{\numberline {13.2.2}Configuration + Runtime Pattern}{261}{subsection.13.2.2}%
+\contentsline {subsection}{\numberline {13.2.3}Append-Only Pattern}{262}{subsection.13.2.3}%
+\contentsline {section}{\numberline {13.3}Reactive Bonds: \texttt {bond()}, \texttt {unbond()}, \texttt {react()}, \texttt {unreact()}}{263}{section.13.3}%
+\contentsline {subsection}{\numberline {13.3.1}Reactions: Responding to Phase Changes}{264}{subsection.13.3.1}%
+\contentsline {subsection}{\numberline {13.3.2}Removing Reactions}{265}{subsection.13.3.2}%
+\contentsline {subsection}{\numberline {13.3.3}Bonds: Phase Dependency Relationships}{265}{subsection.13.3.3}%
+\contentsline {subsection}{\numberline {13.3.4}Removing Bonds}{266}{subsection.13.3.4}%
+\contentsline {section}{\numberline {13.4}Bond Strategies: Mirror, Inverse, Gate}{267}{section.13.4}%
+\contentsline {subsection}{\numberline {13.4.1}Mirror Strategy}{267}{subsection.13.4.1}%
+\contentsline {subsection}{\numberline {13.4.2}Designing Custom Strategies}{267}{subsection.13.4.2}%
+\contentsline {subsubsection}{Inverse Pattern}{267}{subsubsection*.4}%
+\contentsline {subsubsection}{Gate Pattern}{268}{subsubsection*.5}%
+\contentsline {section}{\numberline {13.5}Pressure: \texttt {pressurize()}, \texttt {depressurize()}, \texttt {pressure\_of()}}{269}{section.13.5}%
+\contentsline {subsection}{\numberline {13.5.1}Pressure Modes}{270}{subsection.13.5.1}%
+\contentsline {subsection}{\numberline {13.5.2}Querying and Removing Pressure}{270}{subsection.13.5.2}%
+\contentsline {subsection}{\numberline {13.5.3}Implementation Details}{271}{subsection.13.5.3}%
+\contentsline {section}{\numberline {13.6}Seeds: \texttt {seed()}, \texttt {unseed()}}{271}{section.13.6}%
+\contentsline {subsection}{\numberline {13.6.1}Seeds and \texttt {grow()}}{273}{subsection.13.6.1}%
+\contentsline {subsection}{\numberline {13.6.2}Removing Seeds Manually}{273}{subsection.13.6.2}%
+\contentsline {subsection}{\numberline {13.6.3}Multiple Seeds}{274}{subsection.13.6.3}%
+\contentsline {section}{\numberline {13.7}Building Reactive Data Flows}{275}{section.13.7}%
+\contentsline {subsection}{\numberline {13.7.1}Example: Configuration Validation Pipeline}{275}{subsection.13.7.1}%
+\contentsline {subsection}{\numberline {13.7.2}Example: Sensor Data with Pressure Guards}{277}{subsection.13.7.2}%
+\contentsline {subsection}{\numberline {13.7.3}Example: Multi-Stage Initialization}{278}{subsection.13.7.3}%
+\contentsline {section}{\numberline {13.8}Exercises}{279}{section.13.8}%
+\contentsline {chapter}{\numberline {14}Strict Mode and Static Phase Checking}{281}{chapter.14}%
+\contentsline {section}{\numberline {14.1}\texttt {\#mode strict} --- What Changes}{281}{section.14.1}%
+\contentsline {section}{\numberline {14.2}The Static Phase Checker}{283}{section.14.2}%
+\contentsline {subsection}{\numberline {14.2.1}Architecture}{283}{subsection.14.2.1}%
+\contentsline {subsection}{\numberline {14.2.2}Scope Tracking}{283}{subsection.14.2.2}%
+\contentsline {subsection}{\numberline {14.2.3}Expression Phase Inference}{284}{subsection.14.2.3}%
+\contentsline {subsection}{\numberline {14.2.4}Statement Checking}{284}{subsection.14.2.4}%
+\contentsline {subsection}{\numberline {14.2.5}The Spawn Checker}{284}{subsection.14.2.5}%
+\contentsline {section}{\numberline {14.3}Phase Annotations: \texttt {@fluid}, \texttt {@crystal}}{285}{section.14.3}%
+\contentsline {subsection}{\numberline {14.3.1}Annotation Syntax}{285}{subsection.14.3.1}%
+\contentsline {subsection}{\numberline {14.3.2}What Annotations Do}{286}{subsection.14.3.2}%
+\contentsline {subsection}{\numberline {14.3.3}Annotations on Functions}{286}{subsection.14.3.3}%
+\contentsline {section}{\numberline {14.4}Phase Constraints: \texttt {(\textasciitilde |\,*)}, \texttt {(flux|\,fix)}}{287}{section.14.4}%
+\contentsline {subsection}{\numberline {14.4.1}Constraint Syntax}{288}{subsection.14.4.1}%
+\contentsline {subsection}{\numberline {14.4.2}Constraint Checking}{289}{subsection.14.4.2}%
+\contentsline {section}{\numberline {14.5}Phase-Dependent Function Overloading}{290}{section.14.5}%
+\contentsline {subsection}{\numberline {14.5.1}How Overload Resolution Works}{290}{subsection.14.5.1}%
+\contentsline {subsection}{\numberline {14.5.2}Overloading in Strict Mode}{291}{subsection.14.5.2}%
+\contentsline {subsection}{\numberline {14.5.3}Registration and Chaining}{292}{subsection.14.5.3}%
+\contentsline {section}{\numberline {14.6}Designing APIs That Are Phase-Aware}{292}{section.14.6}%
+\contentsline {subsection}{\numberline {14.6.1}Produce Crystal, Accept Any}{292}{subsection.14.6.1}%
+\contentsline {subsection}{\numberline {14.6.2}Phase-Specific Behavior via Overloading}{293}{subsection.14.6.2}%
+\contentsline {subsection}{\numberline {14.6.3}Guard Clauses with \texttt {phase\_of()}}{294}{subsection.14.6.3}%
+\contentsline {subsection}{\numberline {14.6.4}Strict Mode in Library Code}{294}{subsection.14.6.4}%
+\contentsline {subsection}{\numberline {14.6.5}Documenting Phase Expectations}{295}{subsection.14.6.5}%
+\contentsline {section}{\numberline {14.7}Putting It All Together: A Strict-Mode Example}{295}{section.14.7}%
+\contentsline {section}{\numberline {14.8}Exercises}{297}{section.14.8}%
+\contentsline {part}{IV\hspace {1em}Structures and Abstractions}{299}{part.4}%
+\contentsline {chapter}{\numberline {15}Structs}{301}{chapter.15}%
+\contentsline {section}{\numberline {15.1}Defining and Instantiating Structs}{301}{section.15.1}%
+\contentsline {subsection}{\numberline {15.1.1}Nested Structs}{303}{subsection.15.1.1}%
+\contentsline {subsection}{\numberline {15.1.2}Structs with Typed Fields}{303}{subsection.15.1.2}%
+\contentsline {section}{\numberline {15.2}Field Access and Mutation}{304}{section.15.2}%
+\contentsline {subsection}{\numberline {15.2.1}Mutation Requires \texttt {flux}}{304}{subsection.15.2.1}%
+\contentsline {subsection}{\numberline {15.2.2}Optional Field Access}{305}{subsection.15.2.2}%
+\contentsline {subsection}{\numberline {15.2.3}Passing Structs to Functions}{306}{subsection.15.2.3}%
+\contentsline {subsection}{\numberline {15.2.4}Structs in Collections}{306}{subsection.15.2.4}%
+\contentsline {section}{\numberline {15.3}Methods via Traits: \texttt {impl} Blocks}{307}{section.15.3}%
+\contentsline {subsection}{\numberline {15.3.1}Multiple Traits per Struct}{308}{subsection.15.3.1}%
+\contentsline {subsection}{\numberline {15.3.2}Methods in Loops}{309}{subsection.15.3.2}%
+\contentsline {section}{\numberline {15.4}Callable Struct Fields}{310}{section.15.4}%
+\contentsline {subsection}{\numberline {15.4.1}Stateful Callable Fields}{311}{subsection.15.4.1}%
+\contentsline {subsection}{\numberline {15.4.2}How the Runtime Resolves Calls}{313}{subsection.15.4.2}%
+\contentsline {section}{\numberline {15.5}Custom Equality with \texttt {eq}}{313}{section.15.5}%
+\contentsline {subsection}{\numberline {15.5.1}Overriding Equality with an \texttt {eq} Field}{314}{subsection.15.5.1}%
+\contentsline {subsection}{\numberline {15.5.2}When Custom Equality Matters}{315}{subsection.15.5.2}%
+\contentsline {section}{\numberline {15.6}Struct Reflection}{316}{section.15.6}%
+\contentsline {subsection}{\numberline {15.6.1}\texttt {struct\_name()}}{316}{subsection.15.6.1}%
+\contentsline {subsection}{\numberline {15.6.2}\texttt {struct\_fields()}}{317}{subsection.15.6.2}%
+\contentsline {subsection}{\numberline {15.6.3}\texttt {struct\_to\_map()}}{317}{subsection.15.6.3}%
+\contentsline {subsection}{\numberline {15.6.4}\texttt {struct\_from\_map()}}{318}{subsection.15.6.4}%
+\contentsline {subsection}{\numberline {15.6.5}A Practical Reflection Example}{318}{subsection.15.6.5}%
+\contentsline {section}{\numberline {15.7}Struct Destructuring}{319}{section.15.7}%
+\contentsline {section}{\numberline {15.8}Pass-by-Value Semantics}{320}{section.15.8}%
+\contentsline {subsection}{\numberline {15.8.1}Implications for Function Calls}{321}{subsection.15.8.1}%
+\contentsline {subsection}{\numberline {15.8.2}Why Pass-by-Value?}{322}{subsection.15.8.2}%
+\contentsline {subsection}{\numberline {15.8.3}The \texttt {clone} Keyword}{322}{subsection.15.8.3}%
+\contentsline {subsection}{\numberline {15.8.4}When Copies Get Expensive}{323}{subsection.15.8.4}%
+\contentsline {section}{\numberline {15.9}A Larger Example: Entity Component System}{323}{section.15.9}%
+\contentsline {section}{\numberline {15.10}Exercises}{325}{section.15.10}%
+\contentsline {chapter}{\numberline {16}Enums}{327}{chapter.16}%
+\contentsline {section}{\numberline {16.1}Defining Enums With and Without Payloads}{327}{section.16.1}%
+\contentsline {subsection}{\numberline {16.1.1}Variants with Payloads}{328}{subsection.16.1.1}%
+\contentsline {section}{\numberline {16.2}Constructing Variants}{329}{section.16.2}%
+\contentsline {subsection}{\numberline {16.2.1}Enums Returned from Functions}{330}{subsection.16.2.1}%
+\contentsline {subsection}{\numberline {16.2.2}Enums in Collections}{332}{subsection.16.2.2}%
+\contentsline {subsection}{\numberline {16.2.3}Runtime Introspection Methods}{332}{subsection.16.2.3}%
+\contentsline {section}{\numberline {16.3}Matching on Enums}{333}{section.16.3}%
+\contentsline {subsection}{\numberline {16.3.1}Matching Unit Variants}{333}{subsection.16.3.1}%
+\contentsline {subsection}{\numberline {16.3.2}Destructuring Payloads}{333}{subsection.16.3.2}%
+\contentsline {subsection}{\numberline {16.3.3}Multi-Element Payloads}{334}{subsection.16.3.3}%
+\contentsline {subsection}{\numberline {16.3.4}Using Destructured Values in Computations}{335}{subsection.16.3.4}%
+\contentsline {subsection}{\numberline {16.3.5}Block Bodies in Arms}{335}{subsection.16.3.5}%
+\contentsline {subsection}{\numberline {16.3.6}Ignoring Payload with Wildcards}{336}{subsection.16.3.6}%
+\contentsline {subsection}{\numberline {16.3.7}Nested Match Expressions}{336}{subsection.16.3.7}%
+\contentsline {section}{\numberline {16.4}Using Enums for State Machines}{337}{section.16.4}%
+\contentsline {subsection}{\numberline {16.4.1}Driving State Transitions}{338}{subsection.16.4.1}%
+\contentsline {subsection}{\numberline {16.4.2}A Parser Token Example}{339}{subsection.16.4.2}%
+\contentsline {section}{\numberline {16.5}Option-Like and Result-Like Patterns}{340}{section.16.5}%
+\contentsline {subsection}{\numberline {16.5.1}The Option Pattern}{341}{subsection.16.5.1}%
+\contentsline {subsection}{\numberline {16.5.2}The Result Pattern}{343}{subsection.16.5.2}%
+\contentsline {subsection}{\numberline {16.5.3}Chaining Results}{343}{subsection.16.5.3}%
+\contentsline {section}{\numberline {16.6}Enum Exhaustiveness Guarantees}{344}{section.16.6}%
+\contentsline {subsection}{\numberline {16.6.1}How It Works}{345}{subsection.16.6.1}%
+\contentsline {subsection}{\numberline {16.6.2}Boolean Exhaustiveness}{346}{subsection.16.6.2}%
+\contentsline {subsection}{\numberline {16.6.3}Non-Enum Matches}{346}{subsection.16.6.3}%
+\contentsline {subsection}{\numberline {16.6.4}Why Exhaustiveness Matters}{347}{subsection.16.6.4}%
+\contentsline {section}{\numberline {16.7}Recursive Enums}{347}{section.16.7}%
+\contentsline {subsection}{\numberline {16.7.1}An Expression Evaluator}{349}{subsection.16.7.1}%
+\contentsline {section}{\numberline {16.8}Practical Patterns}{349}{section.16.8}%
+\contentsline {subsection}{\numberline {16.8.1}Enums and Loops}{349}{subsection.16.8.1}%
+\contentsline {subsection}{\numberline {16.8.2}Enums as Function Return Types}{350}{subsection.16.8.2}%
+\contentsline {subsection}{\numberline {16.8.3}Under the Hood}{351}{subsection.16.8.3}%
+\contentsline {section}{\numberline {16.9}Exercises}{352}{section.16.9}%
+\contentsline {chapter}{\numberline {17}Traits and Impl Blocks}{353}{chapter.17}%
+\contentsline {section}{\numberline {17.1}Declaring Traits}{353}{section.17.1}%
+\contentsline {subsection}{\numberline {17.1.1}Multi-Method Traits}{354}{subsection.17.1.1}%
+\contentsline {subsection}{\numberline {17.1.2}Traits with Extra Parameters}{354}{subsection.17.1.2}%
+\contentsline {section}{\numberline {17.2}Implementing Traits for Structs}{355}{section.17.2}%
+\contentsline {subsection}{\numberline {17.2.1}How \texttt {self} Works}{355}{subsection.17.2.1}%
+\contentsline {subsection}{\numberline {17.2.2}Accessing Fields through \texttt {self}}{356}{subsection.17.2.2}%
+\contentsline {subsection}{\numberline {17.2.3}Method Chaining}{357}{subsection.17.2.3}%
+\contentsline {section}{\numberline {17.3}Multiple Impl Blocks per Struct}{359}{section.17.3}%
+\contentsline {subsection}{\numberline {17.3.1}How Method Registration Works}{361}{subsection.17.3.1}%
+\contentsline {section}{\numberline {17.4}Designing with Interfaces}{361}{section.17.4}%
+\contentsline {subsection}{\numberline {17.4.1}The Same Trait on Different Types}{361}{subsection.17.4.1}%
+\contentsline {subsection}{\numberline {17.4.2}Traits for Separation of Concerns}{363}{subsection.17.4.2}%
+\contentsline {subsection}{\numberline {17.4.3}Naming Conventions}{364}{subsection.17.4.3}%
+\contentsline {section}{\numberline {17.5}Trait-Driven Polymorphism}{364}{section.17.5}%
+\contentsline {subsection}{\numberline {17.5.1}Heterogeneous Collections}{364}{subsection.17.5.1}%
+\contentsline {subsection}{\numberline {17.5.2}Methods in Expressions and Conditionals}{366}{subsection.17.5.2}%
+\contentsline {subsection}{\numberline {17.5.3}Methods in Loops}{366}{subsection.17.5.3}%
+\contentsline {subsection}{\numberline {17.5.4}Traits on Enums}{367}{subsection.17.5.4}%
+\contentsline {subsection}{\numberline {17.5.5}A Complete Polymorphism Example}{368}{subsection.17.5.5}%
+\contentsline {section}{\numberline {17.6}Under the Hood}{370}{section.17.6}%
+\contentsline {subsection}{\numberline {17.6.1}Compilation}{370}{subsection.17.6.1}%
+\contentsline {subsection}{\numberline {17.6.2}Dispatch Performance}{370}{subsection.17.6.2}%
+\contentsline {subsection}{\numberline {17.6.3}Self Cloning}{370}{subsection.17.6.3}%
+\contentsline {section}{\numberline {17.7}Exercises}{371}{section.17.7}%
+\contentsline {chapter}{\numberline {18}Generics}{373}{chapter.18}%
+\contentsline {section}{\numberline {18.1}Generic Functions}{373}{section.18.1}%
+\contentsline {subsection}{\numberline {18.1.1}Multiple Type Parameters}{374}{subsection.18.1.1}%
+\contentsline {subsection}{\numberline {18.1.2}When to Use Generic Functions}{374}{subsection.18.1.2}%
+\contentsline {subsection}{\numberline {18.1.3}Generic Functions with Constraints}{375}{subsection.18.1.3}%
+\contentsline {section}{\numberline {18.2}Generic Structs}{376}{section.18.2}%
+\contentsline {subsection}{\numberline {18.2.1}Multi-Parameter Structs}{377}{subsection.18.2.1}%
+\contentsline {subsection}{\numberline {18.2.2}Realistic Generic Structs}{377}{subsection.18.2.2}%
+\contentsline {subsection}{\numberline {18.2.3}Generic Structs with Traits}{378}{subsection.18.2.3}%
+\contentsline {section}{\numberline {18.3}Generic Enums and Trait Implementations}{379}{section.18.3}%
+\contentsline {subsection}{\numberline {18.3.1}Generic Result}{380}{subsection.18.3.1}%
+\contentsline {subsection}{\numberline {18.3.2}Recursive Generic Enums}{381}{subsection.18.3.2}%
+\contentsline {section}{\numberline {18.4}Type Expressions}{381}{section.18.4}%
+\contentsline {subsection}{\numberline {18.4.1}Named Types}{382}{subsection.18.4.1}%
+\contentsline {subsection}{\numberline {18.4.2}Parameterised Named Types}{382}{subsection.18.4.2}%
+\contentsline {subsection}{\numberline {18.4.3}Array Types}{382}{subsection.18.4.3}%
+\contentsline {subsection}{\numberline {18.4.4}Function Types}{383}{subsection.18.4.4}%
+\contentsline {subsection}{\numberline {18.4.5}Combining Type Expressions}{384}{subsection.18.4.5}%
+\contentsline {subsection}{\numberline {18.4.6}Phase Annotations in Types}{384}{subsection.18.4.6}%
+\contentsline {section}{\numberline {18.5}Practical Patterns with Generics}{385}{section.18.5}%
+\contentsline {subsection}{\numberline {18.5.1}The Wrapper Pattern}{385}{subsection.18.5.1}%
+\contentsline {subsection}{\numberline {18.5.2}The Builder Pattern}{385}{subsection.18.5.2}%
+\contentsline {subsection}{\numberline {18.5.3}Higher-Order Generic Functions}{386}{subsection.18.5.3}%
+\contentsline {subsection}{\numberline {18.5.4}Generic Option Utilities}{387}{subsection.18.5.4}%
+\contentsline {subsection}{\numberline {18.5.5}Combining Generics, Enums, and Traits}{388}{subsection.18.5.5}%
+\contentsline {section}{\numberline {18.6}The Future of Generics in Lattice}{390}{section.18.6}%
+\contentsline {section}{\numberline {18.7}Exercises}{390}{section.18.7}%
+\contentsline {part}{V\hspace {1em}Concurrency}{393}{part.5}%
+\contentsline {chapter}{\numberline {19}Structured Concurrency with \texttt {scope} and \texttt {spawn}}{395}{chapter.19}%
+\contentsline {section}{\numberline {19.1}The \texttt {scope \{ spawn \{ \ldots \ \} \}} Model}{395}{section.19.1}%
+\contentsline {subsection}{\numberline {19.1.1}What Goes Where}{396}{subsection.19.1.1}%
+\contentsline {subsection}{\numberline {19.1.2}Multiple Spawns}{397}{subsection.19.1.2}%
+\contentsline {section}{\numberline {19.2}Why Structured Concurrency Matters}{398}{section.19.2}%
+\contentsline {subsection}{\numberline {19.2.1}The Problem with Unstructured Threads}{398}{subsection.19.2.1}%
+\contentsline {subsection}{\numberline {19.2.2}Lattice's Guarantee}{399}{subsection.19.2.2}%
+\contentsline {section}{\numberline {19.3}Joining Semantics---No Orphaned Tasks}{400}{section.19.3}%
+\contentsline {subsection}{\numberline {19.3.1}Nested Scopes}{401}{subsection.19.3.1}%
+\contentsline {subsection}{\numberline {19.3.2}Scopes in Loops}{401}{subsection.19.3.2}%
+\contentsline {section}{\numberline {19.4}Sharing Data Between Spawned Tasks}{402}{section.19.4}%
+\contentsline {subsection}{\numberline {19.4.1}Communicating Through Channels}{403}{subsection.19.4.1}%
+\contentsline {subsection}{\numberline {19.4.2}Communicating Through Ref}{404}{subsection.19.4.2}%
+\contentsline {section}{\numberline {19.5}The Sublimate Phase for Thread-Safe Values}{404}{section.19.5}%
+\contentsline {subsection}{\numberline {19.5.1}Using \texttt {sublimate}}{405}{subsection.19.5.1}%
+\contentsline {subsection}{\numberline {19.5.2}Sublimate vs.\ Freeze}{405}{subsection.19.5.2}%
+\contentsline {subsection}{\numberline {19.5.3}Sublimating Complex Structures}{406}{subsection.19.5.3}%
+\contentsline {section}{\numberline {19.6}Practical Examples}{407}{section.19.6}%
+\contentsline {subsection}{\numberline {19.6.1}Parallel Computation: Fan-Out / Fan-In}{407}{subsection.19.6.1}%
+\contentsline {subsection}{\numberline {19.6.2}Parallel String Processing}{409}{subsection.19.6.2}%
+\contentsline {subsection}{\numberline {19.6.3}Nested Parallelism: Two-Level Fan-Out}{410}{subsection.19.6.3}%
+\contentsline {subsection}{\numberline {19.6.4}Using a Cancellation Flag}{410}{subsection.19.6.4}%
+\contentsline {subsection}{\numberline {19.6.5}Scope with Error Handling}{412}{subsection.19.6.5}%
+\contentsline {section}{\numberline {19.7}Under the Hood}{412}{section.19.7}%
+\contentsline {subsection}{\numberline {19.7.1}Compilation}{412}{subsection.19.7.1}%
+\contentsline {subsection}{\numberline {19.7.2}Execution}{413}{subsection.19.7.2}%
+\contentsline {section}{\numberline {19.8}Exercises}{413}{section.19.8}%
+\contentsline {chapter}{\numberline {20}Channels and \texttt {select}}{415}{chapter.20}%
+\contentsline {section}{\numberline {20.1}\texttt {Channel::new()}, \texttt {send()}, \texttt {recv()}, \texttt {close()}}{415}{section.20.1}%
+\contentsline {subsection}{\numberline {20.1.1}\texttt {send()} --- Putting Values In}{416}{subsection.20.1.1}%
+\contentsline {subsection}{\numberline {20.1.2}\texttt {recv()} --- Taking Values Out}{416}{subsection.20.1.2}%
+\contentsline {subsection}{\numberline {20.1.3}What Happens When You \texttt {recv()} from a Closed, Empty Channel?}{418}{subsection.20.1.3}%
+\contentsline {subsection}{\numberline {20.1.4}\texttt {close()} --- Signaling Completion}{418}{subsection.20.1.4}%
+\contentsline {subsection}{\numberline {20.1.5}Channel Lifecycle}{419}{subsection.20.1.5}%
+\contentsline {section}{\numberline {20.2}Producer-Consumer Patterns}{420}{section.20.2}%
+\contentsline {subsection}{\numberline {20.2.1}Single Producer, Single Consumer}{420}{subsection.20.2.1}%
+\contentsline {subsection}{\numberline {20.2.2}Multiple Producers, Single Consumer}{420}{subsection.20.2.2}%
+\contentsline {subsection}{\numberline {20.2.3}Single Producer, Multiple Consumers}{421}{subsection.20.2.3}%
+\contentsline {section}{\numberline {20.3}\texttt {select} with Multiple Channels}{422}{section.20.3}%
+\contentsline {subsection}{\numberline {20.3.1}Anatomy of a \texttt {select} Arm}{423}{subsection.20.3.1}%
+\contentsline {subsection}{\numberline {20.3.2}Fairness}{424}{subsection.20.3.2}%
+\contentsline {subsection}{\numberline {20.3.3}Select in a Loop}{424}{subsection.20.3.3}%
+\contentsline {section}{\numberline {20.4}\texttt {default} and \texttt {timeout} Arms}{425}{section.20.4}%
+\contentsline {subsection}{\numberline {20.4.1}The \texttt {default} Arm}{426}{subsection.20.4.1}%
+\contentsline {subsection}{\numberline {20.4.2}The \texttt {timeout} Arm}{427}{subsection.20.4.2}%
+\contentsline {subsection}{\numberline {20.4.3}Combining \texttt {default} and \texttt {timeout}}{429}{subsection.20.4.3}%
+\contentsline {subsection}{\numberline {20.4.4}Select with All Channels Closed}{430}{subsection.20.4.4}%
+\contentsline {section}{\numberline {20.5}Building Pipelines with Channels}{430}{section.20.5}%
+\contentsline {subsection}{\numberline {20.5.1}A Two-Stage Pipeline}{431}{subsection.20.5.1}%
+\contentsline {subsection}{\numberline {20.5.2}A Three-Stage Pipeline}{431}{subsection.20.5.2}%
+\contentsline {subsection}{\numberline {20.5.3}Fan-Out Pipeline}{433}{subsection.20.5.3}%
+\contentsline {section}{\numberline {20.6}Async Iterators: \texttt {async\_iter}, \texttt {async\_map}, \texttt {async\_filter}}{433}{section.20.6}%
+\contentsline {subsection}{\numberline {20.6.1}\texttt {async\_iter} --- Channel-Backed Iterators}{434}{subsection.20.6.1}%
+\contentsline {subsection}{\numberline {20.6.2}\texttt {async\_map} --- Transform an Async Stream}{434}{subsection.20.6.2}%
+\contentsline {subsection}{\numberline {20.6.3}\texttt {async\_filter} --- Filter an Async Stream}{435}{subsection.20.6.3}%
+\contentsline {subsection}{\numberline {20.6.4}Composing Async Operations}{435}{subsection.20.6.4}%
+\contentsline {section}{\numberline {20.7}Under the Hood: \texttt {select} Implementation}{436}{section.20.7}%
+\contentsline {subsection}{\numberline {20.7.1}Compilation}{436}{subsection.20.7.1}%
+\contentsline {subsection}{\numberline {20.7.2}Execution}{437}{subsection.20.7.2}%
+\contentsline {section}{\numberline {20.8}Exercises}{437}{section.20.8}%
+\contentsline {chapter}{\numberline {21}Concurrency Patterns and Pitfalls}{439}{chapter.21}%
+\contentsline {section}{\numberline {21.1}\texttt {Ref} for Shared Mutable State}{439}{section.21.1}%
+\contentsline {subsection}{\numberline {21.1.1}\texttt {Ref::new()}, \texttt {.get()}, \texttt {.set()}}{439}{subsection.21.1.1}%
+\contentsline {subsection}{\numberline {21.1.2}Ref Proxying}{440}{subsection.21.1.2}%
+\contentsline {section}{\numberline {21.2}When to Use Channels vs.\ \texttt {Ref}}{441}{section.21.2}%
+\contentsline {subsection}{\numberline {21.2.1}The Core Trade-Off}{441}{subsection.21.2.1}%
+\contentsline {section}{\numberline {21.3}Deadlock Avoidance}{442}{section.21.3}%
+\contentsline {subsection}{\numberline {21.3.1}Classic Channel Deadlock}{442}{subsection.21.3.1}%
+\contentsline {subsection}{\numberline {21.3.2}Rules for Avoiding Deadlocks}{443}{subsection.21.3.2}%
+\contentsline {subsection}{\numberline {21.3.3}Deadlock-Free Pattern: The Coordinator}{444}{subsection.21.3.3}%
+\contentsline {section}{\numberline {21.4}Common Patterns}{444}{section.21.4}%
+\contentsline {subsection}{\numberline {21.4.1}Worker Pool}{444}{subsection.21.4.1}%
+\contentsline {subsection}{\numberline {21.4.2}Broadcast}{446}{subsection.21.4.2}%
+\contentsline {subsection}{\numberline {21.4.3}Request-Reply}{447}{subsection.21.4.3}%
+\contentsline {section}{\numberline {21.5}Testing Concurrent Code}{449}{section.21.5}%
+\contentsline {subsection}{\numberline {21.5.1}Deterministic Tests with Channels}{449}{subsection.21.5.1}%
+\contentsline {subsection}{\numberline {21.5.2}Stress Testing with Repeated Runs}{450}{subsection.21.5.2}%
+\contentsline {subsection}{\numberline {21.5.3}Testing with Timeouts}{450}{subsection.21.5.3}%
+\contentsline {subsection}{\numberline {21.5.4}Testing Error Propagation}{451}{subsection.21.5.4}%
+\contentsline {subsection}{\numberline {21.5.5}Rules of Thumb for Concurrent Tests}{452}{subsection.21.5.5}%
+\contentsline {section}{\numberline {21.6}Exercises}{453}{section.21.6}%
+\contentsline {part}{VI\hspace {1em}The Standard Library}{455}{part.6}%
+\contentsline {chapter}{\numberline {22}Files, Paths, and the Filesystem}{457}{chapter.22}%
+\contentsline {section}{\numberline {22.1}read\_file, write\_file, append\_file}{457}{section.22.1}%
+\contentsline {subsection}{\numberline {22.1.1}A Complete Read-Modify-Write Cycle}{459}{subsection.22.1.1}%
+\contentsline {section}{\numberline {22.2}The fs Module}{459}{section.22.2}%
+\contentsline {subsection}{\numberline {22.2.1}Checking Existence: file\_exists, is\_file, is\_dir}{460}{subsection.22.2.1}%
+\contentsline {subsection}{\numberline {22.2.2}Listing Directories: list\_dir}{460}{subsection.22.2.2}%
+\contentsline {subsection}{\numberline {22.2.3}Creating and Removing Directories: mkdir, rmdir}{461}{subsection.22.2.3}%
+\contentsline {subsection}{\numberline {22.2.4}Globbing: glob}{461}{subsection.22.2.4}%
+\contentsline {subsection}{\numberline {22.2.5}File Metadata: stat and file\_size}{462}{subsection.22.2.5}%
+\contentsline {subsection}{\numberline {22.2.6}Copying, Renaming, and Deleting}{463}{subsection.22.2.6}%
+\contentsline {subsection}{\numberline {22.2.7}Permissions and Canonical Paths}{464}{subsection.22.2.7}%
+\contentsline {section}{\numberline {22.3}The path Module}{464}{section.22.3}%
+\contentsline {subsection}{\numberline {22.3.1}Joining Paths: path\_join}{464}{subsection.22.3.1}%
+\contentsline {subsection}{\numberline {22.3.2}Dissecting Paths: path\_dir, path\_base, path\_ext}{465}{subsection.22.3.2}%
+\contentsline {subsection}{\numberline {22.3.3}Building a File Organizer}{466}{subsection.22.3.3}%
+\contentsline {section}{\numberline {22.4}Temporary Files and Directories}{467}{section.22.4}%
+\contentsline {subsection}{\numberline {22.4.1}A Safe Processing Pipeline}{469}{subsection.22.4.1}%
+\contentsline {section}{\numberline {22.5}Working with Buffers}{470}{section.22.5}%
+\contentsline {subsection}{\numberline {22.5.1}Creating Buffers}{470}{subsection.22.5.1}%
+\contentsline {subsection}{\numberline {22.5.2}Reading and Writing Binary Files}{470}{subsection.22.5.2}%
+\contentsline {subsection}{\numberline {22.5.3}Indexing and Mutation}{471}{subsection.22.5.3}%
+\contentsline {subsection}{\numberline {22.5.4}The push Method and Dynamic Growth}{472}{subsection.22.5.4}%
+\contentsline {subsection}{\numberline {22.5.5}Typed Read and Write Methods}{472}{subsection.22.5.5}%
+\contentsline {subsection}{\numberline {22.5.6}Slicing, Filling, and Converting}{473}{subsection.22.5.6}%
+\contentsline {subsection}{\numberline {22.5.7}Parsing a Binary File Format}{474}{subsection.22.5.7}%
+\contentsline {chapter}{\numberline {23}JSON, TOML, YAML, and CSV}{477}{chapter.23}%
+\contentsline {section}{\numberline {23.1}json\_parse / json\_stringify}{477}{section.23.1}%
+\contentsline {subsection}{\numberline {23.1.1}Parsing JSON}{477}{subsection.23.1.1}%
+\contentsline {subsection}{\numberline {23.1.2}Stringifying to JSON}{479}{subsection.23.1.2}%
+\contentsline {subsection}{\numberline {23.1.3}A Practical Example: Reading and Writing JSON Files}{480}{subsection.23.1.3}%
+\contentsline {section}{\numberline {23.2}toml\_parse / toml\_stringify}{480}{section.23.2}%
+\contentsline {subsection}{\numberline {23.2.1}Parsing TOML}{481}{subsection.23.2.1}%
+\contentsline {subsection}{\numberline {23.2.2}Stringifying to TOML}{483}{subsection.23.2.2}%
+\contentsline {section}{\numberline {23.3}yaml\_parse / yaml\_stringify}{483}{section.23.3}%
+\contentsline {subsection}{\numberline {23.3.1}Parsing YAML}{484}{subsection.23.3.1}%
+\contentsline {subsection}{\numberline {23.3.2}Stringifying to YAML}{486}{subsection.23.3.2}%
+\contentsline {section}{\numberline {23.4}csv\_parse / csv\_stringify}{486}{section.23.4}%
+\contentsline {subsection}{\numberline {23.4.1}Parsing CSV}{487}{subsection.23.4.1}%
+\contentsline {subsection}{\numberline {23.4.2}Working with Headers}{488}{subsection.23.4.2}%
+\contentsline {subsection}{\numberline {23.4.3}Stringifying to CSV}{489}{subsection.23.4.3}%
+\contentsline {section}{\numberline {23.5}Round-Tripping Data Between Formats}{490}{section.23.5}%
+\contentsline {subsection}{\numberline {23.5.1}CSV to JSON}{491}{subsection.23.5.1}%
+\contentsline {section}{\numberline {23.6}Building Configuration-Driven Programs}{492}{section.23.6}%
+\contentsline {subsection}{\numberline {23.6.1}The Configuration File}{492}{subsection.23.6.1}%
+\contentsline {subsection}{\numberline {23.6.2}The Analyzer}{494}{subsection.23.6.2}%
+\contentsline {subsection}{\numberline {23.6.3}Using the dotenv Library}{495}{subsection.23.6.3}%
+\contentsline {chapter}{\numberline {24}Networking and HTTP}{497}{chapter.24}%
+\contentsline {section}{\numberline {24.1}The http Module}{497}{section.24.1}%
+\contentsline {subsection}{\numberline {24.1.1}Simple GET Requests}{498}{subsection.24.1.1}%
+\contentsline {subsection}{\numberline {24.1.2}POST Requests}{499}{subsection.24.1.2}%
+\contentsline {subsection}{\numberline {24.1.3}The General-Purpose http\_request}{499}{subsection.24.1.3}%
+\contentsline {subsection}{\numberline {24.1.4}Error Handling in HTTP}{500}{subsection.24.1.4}%
+\contentsline {section}{\numberline {24.2}The net Module: TCP Networking}{501}{section.24.2}%
+\contentsline {subsection}{\numberline {24.2.1}Connecting to a Server}{502}{subsection.24.2.1}%
+\contentsline {subsection}{\numberline {24.2.2}Building a TCP Server}{503}{subsection.24.2.2}%
+\contentsline {subsection}{\numberline {24.2.3}TCP Function Reference}{504}{subsection.24.2.3}%
+\contentsline {section}{\numberline {24.3}TLS: Secure Connections}{504}{section.24.3}%
+\contentsline {subsection}{\numberline {24.3.1}Making a TLS Connection}{505}{subsection.24.3.1}%
+\contentsline {subsection}{\numberline {24.3.2}TLS Function Reference}{506}{subsection.24.3.2}%
+\contentsline {section}{\numberline {24.4}Building a Simple HTTP Server}{506}{section.24.4}%
+\contentsline {subsection}{\numberline {24.4.1}A Server from Scratch}{506}{subsection.24.4.1}%
+\contentsline {subsection}{\numberline {24.4.2}The http\_server Library}{508}{subsection.24.4.2}%
+\contentsline {subsubsection}{Registering Routes}{508}{subsubsection*.6}%
+\contentsline {subsubsection}{The Request Map}{509}{subsubsection*.7}%
+\contentsline {subsubsection}{Middleware}{510}{subsubsection*.8}%
+\contentsline {subsubsection}{Starting the Server}{511}{subsubsection*.9}%
+\contentsline {subsection}{\numberline {24.4.3}A Complete REST API}{511}{subsection.24.4.3}%
+\contentsline {section}{\numberline {24.5}URL Encoding and Decoding}{512}{section.24.5}%
+\contentsline {chapter}{\numberline {25}Time, Crypto, OS, and Everything Else}{515}{chapter.25}%
+\contentsline {section}{\numberline {25.1}The time Module}{515}{section.25.1}%
+\contentsline {subsection}{\numberline {25.1.1}Getting the Current Time}{515}{subsection.25.1.1}%
+\contentsline {subsection}{\numberline {25.1.2}Sleeping}{516}{subsection.25.1.2}%
+\contentsline {subsection}{\numberline {25.1.3}Formatting Timestamps}{516}{subsection.25.1.3}%
+\contentsline {subsection}{\numberline {25.1.4}Parsing Timestamps}{517}{subsection.25.1.4}%
+\contentsline {subsection}{\numberline {25.1.5}Extracting Date Components}{517}{subsection.25.1.5}%
+\contentsline {subsection}{\numberline {25.1.6}Date Arithmetic}{518}{subsection.25.1.6}%
+\contentsline {subsection}{\numberline {25.1.7}The datetime Functions}{519}{subsection.25.1.7}%
+\contentsline {section}{\numberline {25.2}The crypto Module}{520}{section.25.2}%
+\contentsline {subsection}{\numberline {25.2.1}Hashing: sha256, sha512, md5}{520}{subsection.25.2.1}%
+\contentsline {subsection}{\numberline {25.2.2}HMAC: hmac\_sha256}{521}{subsection.25.2.2}%
+\contentsline {subsection}{\numberline {25.2.3}Base64 Encoding and Decoding}{521}{subsection.25.2.3}%
+\contentsline {subsection}{\numberline {25.2.4}Random Bytes}{522}{subsection.25.2.4}%
+\contentsline {section}{\numberline {25.3}uuid()}{523}{section.25.3}%
+\contentsline {section}{\numberline {25.4}The os Module}{524}{section.25.4}%
+\contentsline {subsection}{\numberline {25.4.1}Environment Variables: env, env\_set, env\_keys}{525}{subsection.25.4.1}%
+\contentsline {subsection}{\numberline {25.4.2}Command-Line Arguments: args()}{526}{subsection.25.4.2}%
+\contentsline {subsection}{\numberline {25.4.3}System Information: platform, cwd, hostname, pid}{526}{subsection.25.4.3}%
+\contentsline {subsection}{\numberline {25.4.4}Executing External Commands: exec and shell}{527}{subsection.25.4.4}%
+\contentsline {section}{\numberline {25.5}The math Module}{528}{section.25.5}%
+\contentsline {subsection}{\numberline {25.5.1}Rounding and Absolute Value}{529}{subsection.25.5.1}%
+\contentsline {subsection}{\numberline {25.5.2}Powers, Roots, and Logarithms}{529}{subsection.25.5.2}%
+\contentsline {subsection}{\numberline {25.5.3}Min, Max, Clamp, and Lerp}{530}{subsection.25.5.3}%
+\contentsline {subsection}{\numberline {25.5.4}Trigonometry}{531}{subsection.25.5.4}%
+\contentsline {subsection}{\numberline {25.5.5}Random Numbers}{532}{subsection.25.5.5}%
+\contentsline {subsection}{\numberline {25.5.6}Other Math Functions}{533}{subsection.25.5.6}%
+\contentsline {section}{\numberline {25.6}The regex Module}{533}{section.25.6}%
+\contentsline {subsection}{\numberline {25.6.1}Matching: regex\_match}{533}{subsection.25.6.1}%
+\contentsline {subsection}{\numberline {25.6.2}Finding All Matches: regex\_find\_all}{534}{subsection.25.6.2}%
+\contentsline {subsection}{\numberline {25.6.3}Replacing: regex\_replace}{535}{subsection.25.6.3}%
+\contentsline {subsection}{\numberline {25.6.4}Practical Example: Log Parser}{536}{subsection.25.6.4}%
+\contentsline {part}{VII\hspace {1em}Iterators and Functional Style}{539}{part.7}%
+\contentsline {chapter}{\numberline {26}Lazy Iterators}{541}{chapter.26}%
+\contentsline {section}{\numberline {26.1}The Iterator Protocol}{541}{section.26.1}%
+\contentsline {subsection}{\numberline {26.1.1}What Can You Iterate Over?}{542}{subsection.26.1.1}%
+\contentsline {subsection}{\numberline {26.1.2}Using Iterators in For Loops}{543}{subsection.26.1.2}%
+\contentsline {section}{\numberline {26.2}Sources: Where Iterators Come From}{543}{section.26.2}%
+\contentsline {subsection}{\numberline {26.2.1}iter() --- From Collections}{543}{subsection.26.2.1}%
+\contentsline {subsection}{\numberline {26.2.2}range\_iter() --- Lazy Integer Sequences}{543}{subsection.26.2.2}%
+\contentsline {subsection}{\numberline {26.2.3}repeat\_iter() --- The Same Value, Over and Over}{544}{subsection.26.2.3}%
+\contentsline {section}{\numberline {26.3}Transformers: Reshaping the Stream}{545}{section.26.3}%
+\contentsline {subsection}{\numberline {26.3.1}.map() --- Transform Each Element}{545}{subsection.26.3.1}%
+\contentsline {subsection}{\numberline {26.3.2}.filter() --- Keep Only What Matters}{545}{subsection.26.3.2}%
+\contentsline {subsection}{\numberline {26.3.3}.take() --- Limit the Count}{546}{subsection.26.3.3}%
+\contentsline {subsection}{\numberline {26.3.4}.skip() --- Jump Ahead}{546}{subsection.26.3.4}%
+\contentsline {subsection}{\numberline {26.3.5}.enumerate() --- Track the Index}{547}{subsection.26.3.5}%
+\contentsline {subsection}{\numberline {26.3.6}.zip() --- Walk Two Iterators in Lockstep}{547}{subsection.26.3.6}%
+\contentsline {subsection}{\numberline {26.3.7}Chaining Transformers}{548}{subsection.26.3.7}%
+\contentsline {section}{\numberline {26.4}Consumers: Triggering the Work}{549}{section.26.4}%
+\contentsline {subsection}{\numberline {26.4.1}.collect() --- Materialize into an Array}{549}{subsection.26.4.1}%
+\contentsline {subsection}{\numberline {26.4.2}.reduce() --- Fold into a Single Value}{550}{subsection.26.4.2}%
+\contentsline {subsection}{\numberline {26.4.3}.any() and .all() --- Short-Circuit Boolean Tests}{551}{subsection.26.4.3}%
+\contentsline {subsection}{\numberline {26.4.4}.count() --- How Many?}{551}{subsection.26.4.4}%
+\contentsline {subsection}{\numberline {26.4.5}Summary of Consumers}{551}{subsection.26.4.5}%
+\contentsline {section}{\numberline {26.5}Building Your Own Iterators}{552}{section.26.5}%
+\contentsline {subsection}{\numberline {26.5.1}The Sequence Protocol}{552}{subsection.26.5.1}%
+\contentsline {subsection}{\numberline {26.5.2}Building a Fibonacci Iterator}{552}{subsection.26.5.2}%
+\contentsline {subsection}{\numberline {26.5.3}Custom Sequences from Scratch}{553}{subsection.26.5.3}%
+\contentsline {subsection}{\numberline {26.5.4}A Practical Example: Paginated API Results}{554}{subsection.26.5.4}%
+\contentsline {subsection}{\numberline {26.5.5}Composing fn Module Sequences}{555}{subsection.26.5.5}%
+\contentsline {section}{\numberline {26.6}Why Laziness Matters}{556}{section.26.6}%
+\contentsline {subsection}{\numberline {26.6.1}Memory Efficiency}{556}{subsection.26.6.1}%
+\contentsline {subsection}{\numberline {26.6.2}Computation Efficiency}{557}{subsection.26.6.2}%
+\contentsline {subsection}{\numberline {26.6.3}Infinite Sequences}{557}{subsection.26.6.3}%
+\contentsline {subsection}{\numberline {26.6.4}When to Stay Eager}{558}{subsection.26.6.4}%
+\contentsline {section}{\numberline {26.7}Under the Hood}{558}{section.26.7}%
+\contentsline {section}{\numberline {26.8}Exercises}{559}{section.26.8}%
+\contentsline {chapter}{\numberline {27}Functional Programming in Lattice}{561}{chapter.27}%
+\contentsline {section}{\numberline {27.1}pipe(), compose(), and identity()}{561}{section.27.1}%
+\contentsline {subsection}{\numberline {27.1.1}pipe() --- Threading Values Through Functions}{561}{subsection.27.1.1}%
+\contentsline {subsection}{\numberline {27.1.2}compose() --- Building New Functions from Old}{563}{subsection.27.1.2}%
+\contentsline {subsection}{\numberline {27.1.3}identity() --- The Do-Nothing Function}{564}{subsection.27.1.3}%
+\contentsline {section}{\numberline {27.2}The fn Standard Library Module}{565}{section.27.2}%
+\contentsline {subsection}{\numberline {27.2.1}Function Composition Utilities}{566}{subsection.27.2.1}%
+\contentsline {subsection}{\numberline {27.2.2}apply\_n --- Repeated Application}{566}{subsection.27.2.2}%
+\contentsline {subsection}{\numberline {27.2.3}thread() --- Module-Level Piping}{567}{subsection.27.2.3}%
+\contentsline {subsection}{\numberline {27.2.4}Collection Utilities}{567}{subsection.27.2.4}%
+\contentsline {subsubsection}{group\_by --- Categorize Elements}{567}{subsubsection*.10}%
+\contentsline {subsubsection}{partition --- Split into Two Groups}{568}{subsubsection*.11}%
+\contentsline {subsubsection}{frequencies --- Count Occurrences}{568}{subsubsection*.12}%
+\contentsline {subsubsection}{uniq\_by --- Deduplicate by Key}{568}{subsubsection*.13}%
+\contentsline {subsection}{\numberline {27.2.5}The Result Type}{569}{subsection.27.2.5}%
+\contentsline {section}{\numberline {27.3}Currying and Partial Application Patterns}{570}{section.27.3}%
+\contentsline {subsection}{\numberline {27.3.1}curry() --- One Argument at a Time}{570}{subsection.27.3.1}%
+\contentsline {subsection}{\numberline {27.3.2}partial() --- Bind Some Arguments Now}{571}{subsection.27.3.2}%
+\contentsline {subsection}{\numberline {27.3.3}Currying with Iterators}{572}{subsection.27.3.3}%
+\contentsline {section}{\numberline {27.4}When Functional Style Shines in Lattice}{572}{section.27.4}%
+\contentsline {subsection}{\numberline {27.4.1}Data Transformation Pipelines}{572}{subsection.27.4.1}%
+\contentsline {subsection}{\numberline {27.4.2}Callback-Heavy APIs}{573}{subsection.27.4.2}%
+\contentsline {subsection}{\numberline {27.4.3}Configuration and Strategy Patterns}{574}{subsection.27.4.3}%
+\contentsline {subsection}{\numberline {27.4.4}When Imperative Style Is Better}{574}{subsection.27.4.4}%
+\contentsline {section}{\numberline {27.5}Putting It All Together}{575}{section.27.5}%
+\contentsline {section}{\numberline {27.6}Exercises}{577}{section.27.6}%
+\contentsline {part}{VIII\hspace {1em}Modules, Packages, and Project Structure}{579}{part.8}%
+\contentsline {chapter}{\numberline {28}Modules and Imports}{581}{chapter.28}%
+\contentsline {section}{\numberline {28.1}Your First Import}{581}{section.28.1}%
+\contentsline {section}{\numberline {28.2}Import Styles}{582}{section.28.2}%
+\contentsline {subsection}{\numberline {28.2.1}Aliased Import: \texttt {import ... as}}{582}{subsection.28.2.1}%
+\contentsline {subsection}{\numberline {28.2.2}Selective Import: \texttt {import \{...\} from}}{583}{subsection.28.2.2}%
+\contentsline {subsection}{\numberline {28.2.3}Bare Import}{583}{subsection.28.2.3}%
+\contentsline {section}{\numberline {28.3}The Export System}{584}{section.28.3}%
+\contentsline {subsection}{\numberline {28.3.1}Explicit Exports}{584}{subsection.28.3.1}%
+\contentsline {subsection}{\numberline {28.3.2}Exporting Structs and Enums}{585}{subsection.28.3.2}%
+\contentsline {subsection}{\numberline {28.3.3}What Gets Filtered Out}{586}{subsection.28.3.3}%
+\contentsline {subsection}{\numberline {28.3.4}Re-exporting from Other Modules}{586}{subsection.28.3.4}%
+\contentsline {section}{\numberline {28.4}Built-in Modules}{587}{section.28.4}%
+\contentsline {section}{\numberline {28.5}Module Resolution}{588}{section.28.5}%
+\contentsline {subsection}{\numberline {28.5.1}The Resolution Order}{588}{subsection.28.5.1}%
+\contentsline {subsection}{\numberline {28.5.2}Package Resolution Strategies}{589}{subsection.28.5.2}%
+\contentsline {subsection}{\numberline {28.5.3}Relative and Nested Imports}{589}{subsection.28.5.3}%
+\contentsline {subsection}{\numberline {28.5.4}Module Caching}{590}{subsection.28.5.4}%
+\contentsline {section}{\numberline {28.6}Organizing Multi-File Projects}{591}{section.28.6}%
+\contentsline {subsection}{\numberline {28.6.1}A Minimal Project}{591}{subsection.28.6.1}%
+\contentsline {subsection}{\numberline {28.6.2}Growing Beyond One File}{592}{subsection.28.6.2}%
+\contentsline {subsection}{\numberline {28.6.3}Facade Modules}{593}{subsection.28.6.3}%
+\contentsline {subsection}{\numberline {28.6.4}Namespacing with Aliased Imports}{594}{subsection.28.6.4}%
+\contentsline {subsection}{\numberline {28.6.5}Scoped Imports}{594}{subsection.28.6.5}%
+\contentsline {section}{\numberline {28.7}Under the Hood: How Imports Work}{595}{section.28.7}%
+\contentsline {subsection}{\numberline {28.7.1}Parsing}{595}{subsection.28.7.1}%
+\contentsline {subsection}{\numberline {28.7.2}Compilation}{595}{subsection.28.7.2}%
+\contentsline {subsection}{\numberline {28.7.3}Runtime Execution}{595}{subsection.28.7.3}%
+\contentsline {section}{\numberline {28.8}Exercises}{596}{section.28.8}%
+\contentsline {chapter}{\numberline {29}The Package Manager}{599}{chapter.29}%
+\contentsline {section}{\numberline {29.1}Initializing a Project with \texttt {clat init}}{599}{section.29.1}%
+\contentsline {section}{\numberline {29.2}The \texttt {lattice.toml} Manifest}{600}{section.29.2}%
+\contentsline {subsection}{\numberline {29.2.1}The \texttt {[package]} Section}{601}{subsection.29.2.1}%
+\contentsline {subsection}{\numberline {29.2.2}The \texttt {[dependencies]} Section}{601}{subsection.29.2.2}%
+\contentsline {section}{\numberline {29.3}Adding, Removing, and Installing Packages}{602}{section.29.3}%
+\contentsline {subsection}{\numberline {29.3.1}\texttt {clat add}}{602}{subsection.29.3.1}%
+\contentsline {subsection}{\numberline {29.3.2}\texttt {clat install}}{603}{subsection.29.3.2}%
+\contentsline {subsection}{\numberline {29.3.3}\texttt {clat remove}}{603}{subsection.29.3.3}%
+\contentsline {section}{\numberline {29.4}Semantic Versioning and Dependency Resolution}{604}{section.29.4}%
+\contentsline {subsection}{\numberline {29.4.1}Version Constraints}{604}{subsection.29.4.1}%
+\contentsline {subsection}{\numberline {29.4.2}Caret vs.\ Tilde}{604}{subsection.29.4.2}%
+\contentsline {subsection}{\numberline {29.4.3}How Resolution Works}{605}{subsection.29.4.3}%
+\contentsline {section}{\numberline {29.5}The Lock File and Reproducible Builds}{606}{section.29.5}%
+\contentsline {subsection}{\numberline {29.5.1}What the Lock File Looks Like}{606}{subsection.29.5.1}%
+\contentsline {subsection}{\numberline {29.5.2}How the Lock File Ensures Reproducibility}{607}{subsection.29.5.2}%
+\contentsline {subsection}{\numberline {29.5.3}When Lock Entries Are Updated}{607}{subsection.29.5.3}%
+\contentsline {section}{\numberline {29.6}The Package Registry and Cache}{607}{section.29.6}%
+\contentsline {subsection}{\numberline {29.6.1}The Lattice Registry}{607}{subsection.29.6.1}%
+\contentsline {subsection}{\numberline {29.6.2}Overriding the Registry}{608}{subsection.29.6.2}%
+\contentsline {subsection}{\numberline {29.6.3}The Global Package Cache}{608}{subsection.29.6.3}%
+\contentsline {subsection}{\numberline {29.6.4}The \texttt {lat\_modules/} Directory}{609}{subsection.29.6.4}%
+\contentsline {section}{\numberline {29.7}Dependency Graphs and Cycle Detection}{610}{section.29.7}%
+\contentsline {subsection}{\numberline {29.7.1}How the Graph Is Built}{610}{subsection.29.7.1}%
+\contentsline {subsection}{\numberline {29.7.2}Cycle Detection}{611}{subsection.29.7.2}%
+\contentsline {section}{\numberline {29.8}Under the Hood: The Install Pipeline}{612}{section.29.8}%
+\contentsline {section}{\numberline {29.9}Putting It All Together}{612}{section.29.9}%
+\contentsline {section}{\numberline {29.10}Exercises}{615}{section.29.10}%
+\contentsline {part}{IX\hspace {1em}Tooling and Developer Experience}{617}{part.9}%
+\contentsline {chapter}{\numberline {30}The Formatter and Doc Generator}{619}{chapter.30}%
+\contentsline {section}{\numberline {30.1}\texttt {clat fmt} --- Formatting Your Code}{619}{section.30.1}%
+\contentsline {subsection}{\numberline {30.1.1}Formatting Multiple Files}{621}{subsection.30.1.1}%
+\contentsline {subsection}{\numberline {30.1.2}Check Mode: CI-Friendly Verification}{621}{subsection.30.1.2}%
+\contentsline {subsection}{\numberline {30.1.3}Reading from Standard Input}{621}{subsection.30.1.3}%
+\contentsline {section}{\numberline {30.2}\texttt {--width} for Configurable Line Width}{622}{section.30.2}%
+\contentsline {section}{\numberline {30.3}\texttt {///} Doc Comments}{623}{section.30.3}%
+\contentsline {subsection}{\numberline {30.3.1}Documenting All Declaration Types}{624}{subsection.30.3.1}%
+\contentsline {subsection}{\numberline {30.3.2}Module-Level Doc Comments}{624}{subsection.30.3.2}%
+\contentsline {subsection}{\numberline {30.3.3}Doc Comment Conventions}{625}{subsection.30.3.3}%
+\contentsline {section}{\numberline {30.4}\texttt {clat doc} --- Generating Documentation}{626}{section.30.4}%
+\contentsline {subsection}{\numberline {30.4.1}Documenting a Directory}{628}{subsection.30.4.1}%
+\contentsline {subsection}{\numberline {30.4.2}Writing Output to Files}{629}{subsection.30.4.2}%
+\contentsline {section}{\numberline {30.5}Output Formats: Markdown, JSON, HTML}{629}{section.30.5}%
+\contentsline {subsection}{\numberline {30.5.1}Markdown (Default)}{629}{subsection.30.5.1}%
+\contentsline {subsection}{\numberline {30.5.2}Plain Text}{629}{subsection.30.5.2}%
+\contentsline {subsection}{\numberline {30.5.3}JSON}{630}{subsection.30.5.3}%
+\contentsline {subsection}{\numberline {30.5.4}HTML}{631}{subsection.30.5.4}%
+\contentsline {subsection}{\numberline {30.5.5}The \texttt {--doc-format} Flag}{632}{subsection.30.5.5}%
+\contentsline {subsection}{\numberline {30.5.6}How Extraction Works Under the Hood}{632}{subsection.30.5.6}%
+\contentsline {section}{Exercises}{633}{Item.362}%
+\contentsline {section}{What's Next}{633}{Item.366}%
+\contentsline {chapter}{\numberline {31}Testing}{635}{chapter.31}%
+\contentsline {section}{\numberline {31.1}\texttt {test "name" \{ body \}} --- Inline Tests}{635}{section.31.1}%
+\contentsline {subsection}{\numberline {31.1.1}Tests Are Top-Level Declarations}{636}{subsection.31.1.1}%
+\contentsline {subsection}{\numberline {31.1.2}Tests Can Use Everything in the File}{637}{subsection.31.1.2}%
+\contentsline {subsection}{\numberline {31.1.3}What Happens During Normal Execution?}{638}{subsection.31.1.3}%
+\contentsline {section}{\numberline {31.2}\texttt {clat test} --- Running the Test Suite}{639}{section.31.2}%
+\contentsline {subsection}{\numberline {31.2.1}Directory Discovery}{639}{subsection.31.2.1}%
+\contentsline {subsection}{\numberline {31.2.2}Filtering Tests by Name}{640}{subsection.31.2.2}%
+\contentsline {subsection}{\numberline {31.2.3}Verbose Mode}{641}{subsection.31.2.3}%
+\contentsline {subsection}{\numberline {31.2.4}Summary Mode}{641}{subsection.31.2.4}%
+\contentsline {subsection}{\numberline {31.2.5}Full CLI Reference}{641}{subsection.31.2.5}%
+\contentsline {section}{\numberline {31.3}Assert Functions}{641}{section.31.3}%
+\contentsline {subsection}{\numberline {31.3.1}\texttt {assert(condition, message?)}}{642}{subsection.31.3.1}%
+\contentsline {subsection}{\numberline {31.3.2}\texttt {assert\_eq(actual, expected)}}{642}{subsection.31.3.2}%
+\contentsline {subsection}{\numberline {31.3.3}\texttt {assert\_ne(actual, expected)}}{643}{subsection.31.3.3}%
+\contentsline {subsection}{\numberline {31.3.4}\texttt {assert\_true(value)} and \texttt {assert\_false(value)}}{643}{subsection.31.3.4}%
+\contentsline {subsection}{\numberline {31.3.5}\texttt {assert\_type(value, type\_name)}}{644}{subsection.31.3.5}%
+\contentsline {subsection}{\numberline {31.3.6}\texttt {assert\_contains(haystack, needle)}}{645}{subsection.31.3.6}%
+\contentsline {subsection}{\numberline {31.3.7}\texttt {assert\_throws(closure)}}{645}{subsection.31.3.7}%
+\contentsline {subsection}{\numberline {31.3.8}Summary of Built-in Assertions}{646}{subsection.31.3.8}%
+\contentsline {section}{\numberline {31.4}The Test Standard Library Module}{646}{section.31.4}%
+\contentsline {subsection}{\numberline {31.4.1}Importing the Test Library}{646}{subsection.31.4.1}%
+\contentsline {subsection}{\numberline {31.4.2}Organizing Tests with \texttt {describe} and \texttt {it}}{646}{subsection.31.4.2}%
+\contentsline {subsection}{\numberline {31.4.3}Extended Assertions in the Test Library}{648}{subsection.31.4.3}%
+\contentsline {subsection}{\numberline {31.4.4}How the Test Library Works Internally}{650}{subsection.31.4.4}%
+\contentsline {section}{\numberline {31.5}Testing Strategies for Lattice Programs}{650}{section.31.5}%
+\contentsline {subsection}{\numberline {31.5.1}Unit Testing: One Function, One Test}{650}{subsection.31.5.1}%
+\contentsline {subsection}{\numberline {31.5.2}Testing Edge Cases}{651}{subsection.31.5.2}%
+\contentsline {subsection}{\numberline {31.5.3}Testing Error Paths}{652}{subsection.31.5.3}%
+\contentsline {subsection}{\numberline {31.5.4}Testing Structs and Methods}{653}{subsection.31.5.4}%
+\contentsline {subsection}{\numberline {31.5.5}Organizing a Test Suite}{654}{subsection.31.5.5}%
+\contentsline {subsection}{\numberline {31.5.6}The Test-First Workflow}{655}{subsection.31.5.6}%
+\contentsline {subsection}{\numberline {31.5.7}Testing with GC Stress Mode}{656}{subsection.31.5.7}%
+\contentsline {subsection}{\numberline {31.5.8}Disabling Assertions for Performance Testing}{657}{subsection.31.5.8}%
+\contentsline {section}{Exercises}{657}{lstnumber.31.31.1}%
+\contentsline {section}{What's Next}{657}{Item.371}%
+\contentsline {chapter}{\numberline {32}Debugging}{659}{chapter.32}%
+\contentsline {section}{\numberline {32.1}The \texttt {--debug} Flag and the CLI Debugger}{659}{section.32.1}%
+\contentsline {subsection}{\numberline {32.1.1}The Help Command}{660}{subsection.32.1.1}%
+\contentsline {subsection}{\numberline {32.1.2}Initial Breakpoint with \texttt {--break}}{660}{subsection.32.1.2}%
+\contentsline {subsection}{\numberline {32.1.3}Viewing Source Context}{661}{subsection.32.1.3}%
+\contentsline {subsection}{\numberline {32.1.4}Inspecting Variables}{661}{subsection.32.1.4}%
+\contentsline {subsection}{\numberline {32.1.5}Evaluating Expressions}{662}{subsection.32.1.5}%
+\contentsline {subsection}{\numberline {32.1.6}The Call Stack}{663}{subsection.32.1.6}%
+\contentsline {section}{\numberline {32.2}Breakpoints: Line, Function, Conditional}{663}{section.32.2}%
+\contentsline {subsection}{\numberline {32.2.1}Line Breakpoints}{663}{subsection.32.2.1}%
+\contentsline {subsection}{\numberline {32.2.2}Function Breakpoints}{664}{subsection.32.2.2}%
+\contentsline {subsection}{\numberline {32.2.3}Conditional Breakpoints}{664}{subsection.32.2.3}%
+\contentsline {subsection}{\numberline {32.2.4}Managing Breakpoints}{665}{subsection.32.2.4}%
+\contentsline {section}{\numberline {32.3}Step-Into, Step-Over, Step-Out}{666}{section.32.3}%
+\contentsline {subsection}{\numberline {32.3.1}Step-Into (\texttt {s})}{666}{subsection.32.3.1}%
+\contentsline {subsection}{\numberline {32.3.2}Step-Over (\texttt {n})}{667}{subsection.32.3.2}%
+\contentsline {subsection}{\numberline {32.3.3}Step-Out (\texttt {o})}{668}{subsection.32.3.3}%
+\contentsline {subsection}{\numberline {32.3.4}Continue (\texttt {c})}{668}{subsection.32.3.4}%
+\contentsline {section}{\numberline {32.4}Watch Expressions and \texttt {breakpoint()}}{669}{section.32.4}%
+\contentsline {subsection}{\numberline {32.4.1}Watch Expressions}{669}{subsection.32.4.1}%
+\contentsline {subsection}{\numberline {32.4.2}The \texttt {breakpoint()} Built-in}{670}{subsection.32.4.2}%
+\contentsline {section}{\numberline {32.5}DAP and VS Code Integration}{671}{section.32.5}%
+\contentsline {subsection}{\numberline {32.5.1}What Is DAP?}{671}{subsection.32.5.1}%
+\contentsline {subsection}{\numberline {32.5.2}Starting DAP Mode}{671}{subsection.32.5.2}%
+\contentsline {subsection}{\numberline {32.5.3}VS Code Configuration}{672}{subsection.32.5.3}%
+\contentsline {subsection}{\numberline {32.5.4}DAP Capabilities}{672}{subsection.32.5.4}%
+\contentsline {subsection}{\numberline {32.5.5}Features in the VS Code Debug View}{672}{subsection.32.5.5}%
+\contentsline {subsection}{\numberline {32.5.6}Using with Other Editors}{673}{subsection.32.5.6}%
+\contentsline {section}{\numberline {32.6}Value History: \texttt {track()}, \texttt {history()}, \texttt {rewind()}}{674}{section.32.6}%
+\contentsline {subsection}{\numberline {32.6.1}\texttt {track(variable)} --- Start Recording}{674}{subsection.32.6.1}%
+\contentsline {subsection}{\numberline {32.6.2}\texttt {history(variable)} --- View the Timeline}{674}{subsection.32.6.2}%
+\contentsline {subsection}{\numberline {32.6.3}\texttt {rewind(variable, n)} --- Look Back in Time}{675}{subsection.32.6.3}%
+\contentsline {subsection}{\numberline {32.6.4}Practical Example: Debugging a Running Total}{676}{subsection.32.6.4}%
+\contentsline {subsection}{\numberline {32.6.5}Combining Tracking with the Debugger}{678}{subsection.32.6.5}%
+\contentsline {section}{Exercises}{678}{lstnumber.32.30.17}%
+\contentsline {section}{What's Next}{679}{Item.377}%
+\contentsline {part}{X\hspace {1em}Under the Hood}{681}{part.10}%
+\contentsline {chapter}{\numberline {33}The Three Backends}{683}{chapter.33}%
+\contentsline {section}{\numberline {33.1}Tree-Walk Interpreter}{683}{section.33.1}%
+\contentsline {subsection}{\numberline {33.1.1}How It Works}{683}{subsection.33.1.1}%
+\contentsline {subsection}{\numberline {33.1.2}Environment and Scoping}{684}{subsection.33.1.2}%
+\contentsline {subsection}{\numberline {33.1.3}When to Use It}{685}{subsection.33.1.3}%
+\contentsline {section}{\numberline {33.2}Stack-Based Bytecode VM}{686}{section.33.2}%
+\contentsline {subsection}{\numberline {33.2.1}Compilation}{686}{subsection.33.2.1}%
+\contentsline {subsection}{\numberline {33.2.2}Opcodes}{687}{subsection.33.2.2}%
+\contentsline {subsection}{\numberline {33.2.3}The Value Stack}{688}{subsection.33.2.3}%
+\contentsline {subsection}{\numberline {33.2.4}Call Frames}{688}{subsection.33.2.4}%
+\contentsline {subsection}{\numberline {33.2.5}The Dispatch Loop}{689}{subsection.33.2.5}%
+\contentsline {subsection}{\numberline {33.2.6}Exception Handling and Defer}{689}{subsection.33.2.6}%
+\contentsline {subsection}{\numberline {33.2.7}Upvalues and Closures}{690}{subsection.33.2.7}%
+\contentsline {section}{\numberline {33.3}Register-Based VM}{691}{section.33.3}%
+\contentsline {subsection}{\numberline {33.3.1}Instruction Encoding}{691}{subsection.33.3.1}%
+\contentsline {subsection}{\numberline {33.3.2}Register Windows}{691}{subsection.33.3.2}%
+\contentsline {subsection}{\numberline {33.3.3}The Register Compiler}{692}{subsection.33.3.3}%
+\contentsline {subsection}{\numberline {33.3.4}Inline Caches}{693}{subsection.33.3.4}%
+\contentsline {subsection}{\numberline {33.3.5}RegChunk: The Register VM's Code Container}{694}{subsection.33.3.5}%
+\contentsline {section}{\numberline {33.4}Choosing a Backend}{694}{section.33.4}%
+\contentsline {subsection}{\numberline {33.4.1}Command-Line Flags}{694}{subsection.33.4.1}%
+\contentsline {subsection}{\numberline {33.4.2}Feature Support}{695}{subsection.33.4.2}%
+\contentsline {subsection}{\numberline {33.4.3}The Execution Pipeline}{695}{subsection.33.4.3}%
+\contentsline {section}{\numberline {33.5}Performance Characteristics}{696}{section.33.5}%
+\contentsline {subsection}{\numberline {33.5.1}Where the Time Goes}{696}{subsection.33.5.1}%
+\contentsline {subsection}{\numberline {33.5.2}Microbenchmark: Fibonacci}{696}{subsection.33.5.2}%
+\contentsline {subsection}{\numberline {33.5.3}Startup Time}{697}{subsection.33.5.3}%
+\contentsline {subsection}{\numberline {33.5.4}Memory Usage}{697}{subsection.33.5.4}%
+\contentsline {subsection}{\numberline {33.5.5}Which One Should You Choose?}{698}{subsection.33.5.5}%
+\contentsline {section}{\numberline {33.6}Exercises}{698}{section.33.6}%
+\contentsline {chapter}{\numberline {34}Bytecode Serialization}{699}{chapter.34}%
+\contentsline {section}{\numberline {34.1}The .latc and .rlat File Formats}{699}{section.34.1}%
+\contentsline {subsection}{\numberline {34.1.1}Header}{699}{subsection.34.1.1}%
+\contentsline {subsection}{\numberline {34.1.2}Chunk Serialization (Stack VM)}{700}{subsection.34.1.2}%
+\contentsline {subsection}{\numberline {34.1.3}RegChunk Serialization (Register VM)}{701}{subsection.34.1.3}%
+\contentsline {subsection}{\numberline {34.1.4}Endianness and Portability}{702}{subsection.34.1.4}%
+\contentsline {section}{\numberline {34.2}Pre-Compiling for Faster Startup}{702}{section.34.2}%
+\contentsline {subsection}{\numberline {34.2.1}The Compile Command}{702}{subsection.34.2.1}%
+\contentsline {subsection}{\numberline {34.2.2}Running Pre-Compiled Bytecode}{703}{subsection.34.2.2}%
+\contentsline {subsection}{\numberline {34.2.3}When to Pre-Compile}{704}{subsection.34.2.3}%
+\contentsline {section}{\numberline {34.3}The Self-Hosted Compiler}{704}{section.34.3}%
+\contentsline {subsection}{\numberline {34.3.1}A Compiler Written in Lattice}{704}{subsection.34.3.1}%
+\contentsline {subsection}{\numberline {34.3.2}Structure of the Self-Hosted Compiler}{705}{subsection.34.3.2}%
+\contentsline {subsection}{\numberline {34.3.3}How It Produces .latc Files}{706}{subsection.34.3.3}%
+\contentsline {section}{\numberline {34.4}Bootstrapping}{707}{section.34.4}%
+\contentsline {subsection}{\numberline {34.4.1}The Chicken-and-Egg Problem}{707}{subsection.34.4.1}%
+\contentsline {subsection}{\numberline {34.4.2}Why Self-Hosting Matters}{708}{subsection.34.4.2}%
+\contentsline {subsection}{\numberline {34.4.3}The Bootstrap in Practice}{709}{subsection.34.4.3}%
+\contentsline {chapter}{\numberline {35}Native Extensions}{711}{chapter.35}%
+\contentsline {section}{\numberline {35.1}The Extension API}{711}{section.35.1}%
+\contentsline {subsection}{\numberline {35.1.1}The Contract}{711}{subsection.35.1.1}%
+\contentsline {subsection}{\numberline {35.1.2}Loading an Extension from Lattice}{712}{subsection.35.1.2}%
+\contentsline {subsection}{\numberline {35.1.3}The LatExtFn Signature}{712}{subsection.35.1.3}%
+\contentsline {section}{\numberline {35.2}Value Constructors and Accessors}{713}{section.35.2}%
+\contentsline {subsection}{\numberline {35.2.1}Constructors}{713}{subsection.35.2.1}%
+\contentsline {subsection}{\numberline {35.2.2}Type Queries}{713}{subsection.35.2.2}%
+\contentsline {subsection}{\numberline {35.2.3}Accessors}{714}{subsection.35.2.3}%
+\contentsline {subsection}{\numberline {35.2.4}Cleanup}{714}{subsection.35.2.4}%
+\contentsline {section}{\numberline {35.3}Building a .dylib/.so Extension}{714}{section.35.3}%
+\contentsline {subsection}{\numberline {35.3.1}Step 1: Write the C Code}{715}{subsection.35.3.1}%
+\contentsline {subsection}{\numberline {35.3.2}Step 2: Write a Makefile}{716}{subsection.35.3.2}%
+\contentsline {subsection}{\numberline {35.3.3}Step 3: Build and Install}{717}{subsection.35.3.3}%
+\contentsline {subsection}{\numberline {35.3.4}Step 4: Use It from Lattice}{717}{subsection.35.3.4}%
+\contentsline {section}{\numberline {35.4}Available Extensions}{717}{section.35.4}%
+\contentsline {subsection}{\numberline {35.4.1}ffi --- Foreign Function Interface}{717}{subsection.35.4.1}%
+\contentsline {subsection}{\numberline {35.4.2}sqlite --- SQLite Database}{718}{subsection.35.4.2}%
+\contentsline {subsection}{\numberline {35.4.3}pg --- PostgreSQL}{719}{subsection.35.4.3}%
+\contentsline {subsection}{\numberline {35.4.4}redis --- Redis Client}{719}{subsection.35.4.4}%
+\contentsline {subsection}{\numberline {35.4.5}image --- Image Metadata and Operations}{720}{subsection.35.4.5}%
+\contentsline {subsection}{\numberline {35.4.6}websocket --- WebSocket Client and Server}{720}{subsection.35.4.6}%
+\contentsline {section}{\numberline {35.5}Extension Search Paths}{720}{section.35.5}%
+\contentsline {subsection}{\numberline {35.5.1}Security Considerations}{721}{subsection.35.5.1}%
+\contentsline {subsection}{\numberline {35.5.2}WASM Limitation}{722}{subsection.35.5.2}%
+\contentsline {chapter}{\numberline {36}Metaprogramming and Reflection}{723}{chapter.36}%
+\contentsline {section}{\numberline {36.1}Runtime Code Introspection and Dynamic Features}{723}{section.36.1}%
+\contentsline {subsection}{\numberline {36.1.1}Type Queries}{723}{subsection.36.1.1}%
+\contentsline {subsection}{\numberline {36.1.2}Phase Queries}{725}{subsection.36.1.2}%
+\contentsline {subsection}{\numberline {36.1.3}String Representations}{726}{subsection.36.1.3}%
+\contentsline {subsection}{\numberline {36.1.4}Dynamic Evaluation with lat\_eval()}{727}{subsection.36.1.4}%
+\contentsline {subsection}{\numberline {36.1.5}Completeness Checking with is\_complete()}{727}{subsection.36.1.5}%
+\contentsline {section}{\numberline {36.2}tokenize() --- Inspecting Tokens}{728}{section.36.2}%
+\contentsline {subsection}{\numberline {36.2.1}Use Cases for tokenize()}{729}{subsection.36.2.1}%
+\contentsline {subsection}{\numberline {36.2.2}Token Types}{730}{subsection.36.2.2}%
+\contentsline {section}{\numberline {36.3}Struct Reflection Functions}{730}{section.36.3}%
+\contentsline {subsection}{\numberline {36.3.1}struct\_name()}{731}{subsection.36.3.1}%
+\contentsline {subsection}{\numberline {36.3.2}struct\_fields()}{732}{subsection.36.3.2}%
+\contentsline {subsection}{\numberline {36.3.3}struct\_to\_map()}{732}{subsection.36.3.3}%
+\contentsline {subsection}{\numberline {36.3.4}struct\_from\_map()}{733}{subsection.36.3.4}%
+\contentsline {subsection}{\numberline {36.3.5}Combining Reflection for Generic Programming}{734}{subsection.36.3.5}%
+\contentsline {section}{\numberline {36.4}format() --- String Building}{736}{section.36.4}%
+\contentsline {subsection}{\numberline {36.4.1}Basic Usage}{736}{subsection.36.4.1}%
+\contentsline {subsection}{\numberline {36.4.2}Escaping Braces}{737}{subsection.36.4.2}%
+\contentsline {subsection}{\numberline {36.4.3}Error Handling}{737}{subsection.36.4.3}%
+\contentsline {subsection}{\numberline {36.4.4}format() vs. String Interpolation}{737}{subsection.36.4.4}%
+\contentsline {section}{\numberline {36.5}The Power and Danger of Runtime Features}{738}{section.36.5}%
+\contentsline {subsection}{\numberline {36.5.1}The Power}{738}{subsection.36.5.1}%
+\contentsline {subsection}{\numberline {36.5.2}The Dangers}{740}{subsection.36.5.2}%
+\contentsline {subsection}{\numberline {36.5.3}Guidelines for Responsible Metaprogramming}{741}{subsection.36.5.3}%
+\contentsline {section}{\numberline {36.6}Exercises}{742}{section.36.6}%
+\contentsline {part}{XI\hspace {1em}Real-World Lattice}{743}{part.11}%
+\contentsline {chapter}{\numberline {37}Building a CLI Tool}{745}{chapter.37}%
+\contentsline {section}{\numberline {37.1}The \texttt {cli} Library for Argument Parsing}{745}{section.37.1}%
+\contentsline {subsection}{\numberline {37.1.1}Creating a Parser}{745}{subsection.37.1.1}%
+\contentsline {subsection}{\numberline {37.1.2}Flags, Options, and Positional Arguments}{746}{subsection.37.1.2}%
+\contentsline {subsection}{\numberline {37.1.3}Parsing and the Result Map}{747}{subsection.37.1.3}%
+\contentsline {subsection}{\numberline {37.1.4}Automatic Help and Error Handling}{748}{subsection.37.1.4}%
+\contentsline {subsection}{\numberline {37.1.5}Combined Short Flags}{748}{subsection.37.1.5}%
+\contentsline {section}{\numberline {37.2}The \texttt {dotenv} Library for Configuration}{749}{section.37.2}%
+\contentsline {subsection}{\numberline {37.2.1}The Basics: \texttt {load} and \texttt {env}}{749}{subsection.37.2.1}%
+\contentsline {subsection}{\numberline {37.2.2}Loading Specific Files}{750}{subsection.37.2.2}%
+\contentsline {subsection}{\numberline {37.2.3}Advanced Loading with Options}{750}{subsection.37.2.3}%
+\contentsline {subsection}{\numberline {37.2.4}Parsing Rules}{751}{subsection.37.2.4}%
+\contentsline {section}{\numberline {37.3}The \texttt {log} Library for Structured Logging}{752}{section.37.3}%
+\contentsline {subsection}{\numberline {37.3.1}Quick Start: Module-Level Functions}{752}{subsection.37.3.1}%
+\contentsline {subsection}{\numberline {37.3.2}Log Levels}{752}{subsection.37.3.2}%
+\contentsline {subsection}{\numberline {37.3.3}Creating a Custom Logger}{753}{subsection.37.3.3}%
+\contentsline {subsection}{\numberline {37.3.4}Structured Context}{754}{subsection.37.3.4}%
+\contentsline {section}{\numberline {37.4}Putting It All Together: A Complete CLI Application}{755}{section.37.4}%
+\contentsline {subsection}{\numberline {37.4.1}Project Layout}{755}{subsection.37.4.1}%
+\contentsline {subsection}{\numberline {37.4.2}The Complete Source}{757}{subsection.37.4.2}%
+\contentsline {subsection}{\numberline {37.4.3}Running the Tool}{758}{subsection.37.4.3}%
+\contentsline {subsection}{\numberline {37.4.4}Design Walkthrough}{758}{subsection.37.4.4}%
+\contentsline {chapter}{\numberline {38}Building a Web Service}{761}{chapter.38}%
+\contentsline {section}{\numberline {38.1}The \texttt {http\_server} Library}{761}{section.38.1}%
+\contentsline {subsection}{\numberline {38.1.1}Hello, Web}{761}{subsection.38.1.1}%
+\contentsline {subsection}{\numberline {38.1.2}Response Helpers}{762}{subsection.38.1.2}%
+\contentsline {subsection}{\numberline {38.1.3}Route Registration}{763}{subsection.38.1.3}%
+\contentsline {subsection}{\numberline {38.1.4}Query Parameters}{764}{subsection.38.1.4}%
+\contentsline {subsection}{\numberline {38.1.5}Middleware}{765}{subsection.38.1.5}%
+\contentsline {subsection}{\numberline {38.1.6}Cookies}{766}{subsection.38.1.6}%
+\contentsline {section}{\numberline {38.2}The \texttt {template} Library for HTML Templating}{767}{section.38.2}%
+\contentsline {subsection}{\numberline {38.2.1}Variables and Escaping}{768}{subsection.38.2.1}%
+\contentsline {subsection}{\numberline {38.2.2}Filters}{769}{subsection.38.2.2}%
+\contentsline {subsection}{\numberline {38.2.3}Conditionals}{770}{subsection.38.2.3}%
+\contentsline {subsection}{\numberline {38.2.4}Loops}{771}{subsection.38.2.4}%
+\contentsline {subsection}{\numberline {38.2.5}Includes and Template Inheritance}{772}{subsection.38.2.5}%
+\contentsline {section}{\numberline {38.3}The \texttt {orm} Library for SQLite Persistence}{774}{section.38.3}%
+\contentsline {subsection}{\numberline {38.3.1}Connecting and Defining Models}{774}{subsection.38.3.1}%
+\contentsline {subsection}{\numberline {38.3.2}CRUD Operations}{774}{subsection.38.3.2}%
+\contentsline {section}{\numberline {38.4}JSON APIs with \texttt {json\_parse} and \texttt {json\_stringify}}{776}{section.38.4}%
+\contentsline {subsection}{\numberline {38.4.1}Parsing JSON}{777}{subsection.38.4.1}%
+\contentsline {subsection}{\numberline {38.4.2}Serializing to JSON}{777}{subsection.38.4.2}%
+\contentsline {subsection}{\numberline {38.4.3}JSON in HTTP Handlers}{778}{subsection.38.4.3}%
+\contentsline {section}{\numberline {38.5}A Complete Web Application from Scratch}{779}{section.38.5}%
+\contentsline {subsection}{\numberline {38.5.1}Architecture}{779}{subsection.38.5.1}%
+\contentsline {subsection}{\numberline {38.5.2}Templates}{780}{subsection.38.5.2}%
+\contentsline {subsection}{\numberline {38.5.3}The Application Source}{783}{subsection.38.5.3}%
+\contentsline {subsection}{\numberline {38.5.4}Testing It Out}{784}{subsection.38.5.4}%
+\contentsline {subsection}{\numberline {38.5.5}Design Walkthrough}{784}{subsection.38.5.5}%
+\contentsline {chapter}{\numberline {A}Language Grammar Reference}{787}{appendix.A}%
+\contentsline {section}{\numberline {A.1}Notation}{787}{section.A.1}%
+\contentsline {section}{\numberline {A.2}Program Structure}{787}{section.A.2}%
+\contentsline {section}{\numberline {A.3}Declarations}{788}{section.A.3}%
+\contentsline {section}{\numberline {A.4}Type Expressions}{788}{section.A.4}%
+\contentsline {section}{\numberline {A.5}Statements}{789}{section.A.5}%
+\contentsline {section}{\numberline {A.6}Expressions}{789}{section.A.6}%
+\contentsline {subsection}{\numberline {A.6.1}Postfix Expressions}{791}{subsection.A.6.1}%
+\contentsline {subsection}{\numberline {A.6.2}Primary Expressions}{792}{subsection.A.6.2}%
+\contentsline {subsection}{\numberline {A.6.3}Control-Flow Expressions}{793}{subsection.A.6.3}%
+\contentsline {subsection}{\numberline {A.6.4}Phase Expressions}{793}{subsection.A.6.4}%
+\contentsline {subsection}{\numberline {A.6.5}Other Expressions}{794}{subsection.A.6.5}%
+\contentsline {section}{\numberline {A.7}Patterns}{794}{section.A.7}%
+\contentsline {section}{\numberline {A.8}Lexical Grammar}{794}{section.A.8}%
+\contentsline {subsection}{\numberline {A.8.1}Keywords}{794}{subsection.A.8.1}%
+\contentsline {subsection}{\numberline {A.8.2}Literals}{795}{subsection.A.8.2}%
+\contentsline {subsection}{\numberline {A.8.3}Operators and Delimiters}{795}{subsection.A.8.3}%
+\contentsline {subsection}{\numberline {A.8.4}Compound Assignment Operators}{795}{subsection.A.8.4}%
+\contentsline {subsection}{\numberline {A.8.5}Comments}{796}{subsection.A.8.5}%
+\contentsline {chapter}{\numberline {B}Opcode Reference}{797}{appendix.B}%
+\contentsline {section}{\numberline {B.1}Stack VM Opcodes}{797}{section.B.1}%
+\contentsline {subsection}{\numberline {B.1.1}Stack Manipulation}{797}{subsection.B.1.1}%
+\contentsline {subsection}{\numberline {B.1.2}Arithmetic and Logic}{798}{subsection.B.1.2}%
+\contentsline {subsection}{\numberline {B.1.3}Bitwise Operations}{798}{subsection.B.1.3}%
+\contentsline {subsection}{\numberline {B.1.4}Comparison}{800}{subsection.B.1.4}%
+\contentsline {subsection}{\numberline {B.1.5}Variables and Upvalues}{800}{subsection.B.1.5}%
+\contentsline {subsection}{\numberline {B.1.6}Control Flow}{800}{subsection.B.1.6}%
+\contentsline {subsection}{\numberline {B.1.7}Functions and Closures}{800}{subsection.B.1.7}%
+\contentsline {subsection}{\numberline {B.1.8}Iterators}{800}{subsection.B.1.8}%
+\contentsline {subsection}{\numberline {B.1.9}Data Structures}{800}{subsection.B.1.9}%
+\contentsline {subsection}{\numberline {B.1.10}Method Invocation}{800}{subsection.B.1.10}%
+\contentsline {subsection}{\numberline {B.1.11}Exception Handling and Defer}{800}{subsection.B.1.11}%
+\contentsline {subsection}{\numberline {B.1.12}Phase System}{800}{subsection.B.1.12}%
+\contentsline {subsection}{\numberline {B.1.13}Builtins, I/O, and Modules}{800}{subsection.B.1.13}%
+\contentsline {subsection}{\numberline {B.1.14}Concurrency}{800}{subsection.B.1.14}%
+\contentsline {subsection}{\numberline {B.1.15}Optimization Fast-Path}{800}{subsection.B.1.15}%
+\contentsline {subsection}{\numberline {B.1.16}Type Checking and Miscellaneous}{800}{subsection.B.1.16}%
+\contentsline {section}{\numberline {B.2}Register VM Opcodes}{800}{section.B.2}%
+\contentsline {subsection}{\numberline {B.2.1}Data Movement}{802}{subsection.B.2.1}%
+\contentsline {subsection}{\numberline {B.2.2}Arithmetic}{802}{subsection.B.2.2}%
+\contentsline {subsection}{\numberline {B.2.3}Comparison and Logic}{802}{subsection.B.2.3}%
+\contentsline {subsection}{\numberline {B.2.4}Bitwise Operations}{802}{subsection.B.2.4}%
+\contentsline {subsection}{\numberline {B.2.5}Control Flow}{802}{subsection.B.2.5}%
+\contentsline {subsection}{\numberline {B.2.6}Variables, Fields, and Upvalues}{802}{subsection.B.2.6}%
+\contentsline {subsection}{\numberline {B.2.7}Functions}{802}{subsection.B.2.7}%
+\contentsline {subsection}{\numberline {B.2.8}Data Structures}{802}{subsection.B.2.8}%
+\contentsline {subsection}{\numberline {B.2.9}Builtins and Method Invocation}{802}{subsection.B.2.9}%
+\contentsline {subsection}{\numberline {B.2.10}Iterators, Phase, Exceptions, and Defer}{802}{subsection.B.2.10}%
+\contentsline {subsection}{\numberline {B.2.11}Advanced Phase, Concurrency, and Modules}{802}{subsection.B.2.11}%
+\contentsline {subsection}{\numberline {B.2.12}Optimization Fast-Path}{802}{subsection.B.2.12}%
+\contentsline {chapter}{\numberline {C}Phase Quick Reference}{809}{appendix.C}%
+\contentsline {section}{\numberline {C.1}Phase Tags at a Glance}{809}{section.C.1}%
+\contentsline {section}{\numberline {C.2}Binding Keywords}{809}{section.C.2}%
+\contentsline {section}{\numberline {C.3}Phase Transition Operations}{809}{section.C.3}%
+\contentsline {section}{\numberline {C.4}Advanced Phase Constructs}{809}{section.C.4}%
+\contentsline {section}{\numberline {C.5}Type Annotations with Phases}{810}{section.C.5}%
+\contentsline {section}{\numberline {C.6}Reactive Phase System}{810}{section.C.6}%
+\contentsline {section}{\numberline {C.7}Phase Queries}{810}{section.C.7}%
+\contentsline {section}{\numberline {C.8}Mode Comparison}{810}{section.C.8}%
+\contentsline {section}{\numberline {C.9}Pattern Matching with Phases}{810}{section.C.9}%
+\contentsline {section}{\numberline {C.10}Per-Field Phase Control}{811}{section.C.10}%
+\contentsline {section}{\numberline {C.11}Phase Dispatch (Overloading)}{812}{section.C.11}%
+\contentsline {chapter}{\numberline {D}Built-in Functions Reference}{815}{appendix.D}%
+\contentsline {section}{\numberline {D.1}Global Functions}{815}{section.D.1}%
+\contentsline {section}{\numberline {D.2}Array Methods}{815}{section.D.2}%
+\contentsline {subsection}{\numberline {D.2.1}Non-Closure Methods}{815}{subsection.D.2.1}%
+\contentsline {subsection}{\numberline {D.2.2}Closure Methods}{815}{subsection.D.2.2}%
+\contentsline {section}{\numberline {D.3}String Methods}{815}{section.D.3}%
+\contentsline {section}{\numberline {D.4}Map Methods}{815}{section.D.4}%
+\contentsline {section}{\numberline {D.5}Set Methods}{815}{section.D.5}%
+\contentsline {section}{\numberline {D.6}Buffer Methods}{815}{section.D.6}%
+\contentsline {section}{\numberline {D.7}Enum Methods}{815}{section.D.7}%
+\contentsline {section}{\numberline {D.8}Universal Properties}{816}{section.D.8}%

@@ -1,0 +1,771 @@
+\chapter{Arrays, Maps, Sets, and Friends}\label{ch:collections}
+
+\index{collections}
+
+Every program of any real size works with collections of data---lists of users, tables of configuration, sets of unique tags. Lattice provides four core collection types: \textbf{arrays} for ordered sequences, \textbf{maps} for key-value associations, \textbf{sets} for unique elements, and \textbf{tuples} for fixed-length heterogeneous groups.
+
+What makes these collections a joy to use is Lattice's rich method vocabulary. Arrays alone carry over two dozen methods, from the essential \lstinline|push| and \lstinline|pop| to powerful closure-based transforms like \lstinline|map|, \lstinline|filter|, and \lstinline|reduce|. Let's explore each collection type from creation through advanced usage.
+
+%% ─────────────────────────────────────────────
+\section{Arrays: Creation, Indexing, and Mutation}\label{sec:arrays}
+\index{arrays}\index{Array}
+
+An array is an ordered, growable sequence of values. Creating one is straightforward:
+
+\begin{lstlisting}[language=Lattice, caption={Creating arrays}]
+let numbers = [1, 2, 3, 4, 5]
+let mixed = [42, "hello", true, 3.14]
+let empty = []
+
+print(numbers) // Output: [1, 2, 3, 4, 5]
+print(mixed)   // Output: [42, "hello", true, 3.14]
+print(empty)   // Output: []
+\end{lstlisting}
+
+Arrays in Lattice are heterogeneous---a single array can hold values of different types. Internally (see \filename{include/value.h}), an array stores a pointer to a contiguous buffer of \lstinline|LatValue| elements along with the current length and capacity, growing as needed.
+
+\subsection{Indexing and Slicing}\label{sec:array-indexing}
+\index{array!indexing}\index{array!slicing}
+
+Elements are accessed by zero-based index:
+
+\begin{lstlisting}[language=Lattice, caption={Array indexing}]
+let colors = ["red", "green", "blue", "yellow"]
+
+print(colors[0])  // Output: red
+print(colors[2])  // Output: blue
+
+// Negative indices count from the end
+print(colors[-1]) // Output: yellow
+print(colors[-2]) // Output: blue
+\end{lstlisting}
+
+Slicing with ranges (\cref{sec:range-slicing}) extracts sub-arrays:
+
+\begin{lstlisting}[language=Lattice, caption={Array slicing}]
+let letters = ["a", "b", "c", "d", "e", "f"]
+
+let first_three = letters[0..3]
+print(first_three) // Output: ["a", "b", "c"]
+
+let middle = letters[2..5]
+print(middle) // Output: ["c", "d", "e"]
+\end{lstlisting}
+
+\subsection{Mutation with push and pop}\label{sec:push-pop}
+\index{push()@\texttt{push()}}\index{pop()@\texttt{pop()}}
+
+Arrays can be modified in place when they're in a mutable phase:
+
+\begin{lstlisting}[language=Lattice, caption={push and pop}]
+let fruits = ["apple", "banana"]
+
+fruits.push("cherry")
+print(fruits) // Output: ["apple", "banana", "cherry"]
+
+let removed = fruits.pop()
+print(removed) // Output: cherry
+print(fruits)  // Output: ["apple", "banana"]
+\end{lstlisting}
+
+The \lstinline|push| method appends an element to the end, and \lstinline|pop| removes and returns the last element (or \lstinline|nil| if the array is empty). Both methods respect phase constraints---if an array is in the crystal phase (\lstinline|fix|), attempting to push or pop will produce an error.
+
+\begin{lstlisting}[language=Lattice, caption={Building arrays with push}]
+flux primes = []
+for n in 2..50 {
+  flux is_prime = true
+  for divisor in 2..n {
+    if n % divisor == 0 {
+      is_prime = false
+      break
+    }
+  }
+  if is_prime {
+    primes.push(n)
+  }
+}
+print(primes) // Output: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]
+\end{lstlisting}
+
+\subsection{Essential Non-Closure Methods}\label{sec:array-basic-methods}
+\index{array!methods}
+
+Here are the methods that don't take closures---the bread and butter of array manipulation:
+
+\begin{lstlisting}[language=Lattice, caption={Array inspection methods}]
+let items = [10, 20, 30, 20, 40]
+
+print(items.len())          // Output: 5
+print(items.contains(20))   // Output: true
+print(items.contains(99))   // Output: false
+print(items.index_of(30))   // Output: 2
+print(items.index_of(99))   // Output: -1
+print(items.first())        // Output: 10
+print(items.last())         // Output: 40
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Array transformation methods}]
+let numbers = [3, 1, 4, 1, 5, 9, 2, 6]
+
+print(numbers.reverse())  // Output: [6, 2, 9, 5, 1, 4, 1, 3]
+print(numbers.unique())   // Output: [3, 1, 4, 5, 9, 2, 6]
+print(numbers.sort())     // Output: [1, 1, 2, 3, 4, 5, 6, 9]
+print(numbers.sum())      // Output: 31
+print(numbers.min())      // Output: 1
+print(numbers.max())      // Output: 9
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Array subsetting methods}]
+let alphabet = ["a", "b", "c", "d", "e", "f", "g"]
+
+print(alphabet.take(3))   // Output: ["a", "b", "c"]
+print(alphabet.drop(4))   // Output: ["e", "f", "g"]
+print(alphabet.chunk(3))  // Output: [["a", "b", "c"], ["d", "e", "f"], ["g"]]
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={join, enumerate, and zip}]
+let words = ["Lattice", "is", "great"]
+print(words.join(" "))  // Output: Lattice is great
+print(words.join("-"))  // Output: Lattice-is-great
+
+let items = ["apple", "banana", "cherry"]
+print(items.enumerate())
+// Output: [[0, "apple"], [1, "banana"], [2, "cherry"]]
+
+let keys = ["name", "age", "city"]
+let vals = ["Alice", 30, "Paris"]
+print(keys.zip(vals))
+// Output: [["name", "Alice"], ["age", 30], ["city", "Paris"]]
+\end{lstlisting}
+
+\begin{notebox}{sort() vs.\ sort\_by()}
+The \lstinline|sort()| method (no closure) works only with homogeneous arrays of \lstinline|Int|, \lstinline|Float|, or \lstinline|String|. It uses the natural ordering (ascending numeric, lexicographic for strings). For custom sorting logic or heterogeneous data, use \lstinline|sort_by()| with a comparator closure.
+\end{notebox}
+
+%% ─────────────────────────────────────────────
+\section{Closure-Based Array Methods}\label{sec:closure-methods}
+\index{array!closure methods}\index{map()@\texttt{.map()}}\index{filter()@\texttt{.filter()}}\index{reduce()@\texttt{.reduce()}}
+
+The real power of Lattice's arrays comes from methods that accept closures. These let you express transformations declaratively---saying \emph{what} you want rather than \emph{how} to compute it.
+
+\subsection{map --- Transform Every Element}\label{sec:array-map}
+
+\lstinline|map| applies a closure to each element and collects the results:
+
+\begin{lstlisting}[language=Lattice, caption={Mapping over arrays}]
+let prices = [10.0, 25.0, 7.5, 42.0]
+
+let with_tax = prices.map(|p| p * 1.08)
+print(with_tax) // Output: [10.8, 27.0, 8.1, 45.36]
+
+let labels = prices.map(|p| "$${p}")
+print(labels) // Output: ["$10.0", "$25.0", "$7.5", "$42.0"]
+\end{lstlisting}
+
+The original array is untouched---\lstinline|map| always returns a new array.
+
+\subsection{filter --- Keep Matching Elements}\label{sec:array-filter}
+
+\lstinline|filter| returns a new array containing only elements for which the closure returns \lstinline|true|:
+
+\begin{lstlisting}[language=Lattice, caption={Filtering arrays}]
+let temperatures = [36.5, 37.2, 38.8, 36.9, 39.1, 37.0]
+
+let fevers = temperatures.filter(|t| t > 37.5)
+print(fevers) // Output: [38.8, 39.1]
+
+let words = ["hello", "a", "Lattice", "is", "wonderful"]
+let long_words = words.filter(|w| w.len() > 3)
+print(long_words) // Output: ["hello", "Lattice", "wonderful"]
+\end{lstlisting}
+
+\subsection{reduce --- Collapse to a Single Value}\label{sec:array-reduce}
+
+\lstinline|reduce| folds an array into a single value using an accumulator:
+
+\begin{lstlisting}[language=Lattice, caption={Reducing arrays}]
+let numbers = [1, 2, 3, 4, 5]
+
+// Sum with explicit initial value
+let sum = numbers.reduce(0, |acc, n| acc + n)
+print(sum) // Output: 15
+
+// Product
+let product = numbers.reduce(1, |acc, n| acc * n)
+print(product) // Output: 120
+
+// Build a string
+let words = ["the", "quick", "brown", "fox"]
+let sentence = words.reduce("", |acc, w| {
+  if acc == "" { w } else { "${acc} ${w}" }
+})
+print(sentence) // Output: the quick brown fox
+\end{lstlisting}
+
+The first argument to \lstinline|reduce| is the initial accumulator value. The closure receives two arguments: the current accumulator and the next element. If you omit the initial value, the first element becomes the accumulator and iteration starts from the second.
+
+\subsection{sort\_by --- Custom Sorting}\label{sec:array-sort-by}
+\index{sort\_by()@\texttt{.sort\_by()}}
+
+\lstinline|sort_by| sorts an array using a comparator closure. The closure takes two elements and should return a negative number if the first should come before the second, positive if after, and zero if equal:
+
+\begin{lstlisting}[language=Lattice, caption={Custom sorting}]
+let people = [
+  ["Alice", 30],
+  ["Charlie", 25],
+  ["Bob", 35]
+]
+
+// Sort by age (second element)
+let by_age = people.sort_by(|a, b| a[1] - b[1])
+print(by_age)
+// Output: [["Charlie", 25], ["Alice", 30], ["Bob", 35]]
+
+// Sort by name length, then alphabetically
+let names = ["Alice", "Bob", "Charlie", "Jo", "Eve"]
+let sorted = names.sort_by(|a, b| {
+  let diff = a.len() - b.len()
+  if diff != 0 { diff }
+  else if a < b { -1 }
+  else if a > b { 1 }
+  else { 0 }
+})
+print(sorted) // Output: ["Bo", "Jo", "Eve", "Alice", "Charlie"]  -- wait
+\end{lstlisting}
+
+\subsection{group\_by --- Categorize Elements}\label{sec:array-group-by}
+\index{group\_by()@\texttt{.group\_by()}}
+
+\lstinline|group_by| partitions an array into a map based on a key function:
+
+\begin{lstlisting}[language=Lattice, caption={Grouping elements}]
+let words = ["apple", "avocado", "banana", "blueberry", "cherry", "coconut"]
+
+let by_first_letter = words.group_by(|w| w[0..1])
+print(by_first_letter)
+// Output: {"a": ["apple", "avocado"], "b": ["banana", "blueberry"],
+//          "c": ["cherry", "coconut"]}
+
+let numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let parity = numbers.group_by(|n| if n % 2 == 0 { "even" } else { "odd" })
+print(parity)
+// Output: {"odd": [1, 3, 5, 7, 9], "even": [2, 4, 6, 8, 10]}
+\end{lstlisting}
+
+\subsection{More Closure Methods}\label{sec:more-closure-methods}
+\index{find()@\texttt{.find()}}\index{any()@\texttt{.any()}}\index{all()@\texttt{.all()}}
+
+\begin{lstlisting}[language=Lattice, caption={find, any, all}]
+let inventory = [
+  ["widget", 150],
+  ["gadget", 0],
+  ["doohickey", 42],
+  ["thingamajig", 7]
+]
+
+// find: first matching element
+let out_of_stock = inventory.find(|item| item[1] == 0)
+print(out_of_stock) // Output: ["gadget", 0]
+
+// find_index: index of first match
+let idx = inventory.find_index(|item| item[0] == "doohickey")
+print(idx) // Output: 2
+
+// any: at least one match?
+let has_low_stock = inventory.any(|item| item[1] < 10)
+print(has_low_stock) // Output: true
+
+// all: every element matches?
+let all_in_stock = inventory.all(|item| item[1] > 0)
+print(all_in_stock) // Output: false
+\end{lstlisting}
+
+Both \lstinline|any| and \lstinline|all| short-circuit: \lstinline|any| stops at the first \lstinline|true|, and \lstinline|all| stops at the first \lstinline|false|.
+
+\begin{lstlisting}[language=Lattice, caption={flat\_map, each, and partition}]
+// flat_map: map then flatten one level
+let sentences = ["hello world", "good morning"]
+let words = sentences.flat_map(|s| s.split(" "))
+print(words) // Output: ["hello", "world", "good", "morning"]
+
+// each: side effects only (returns unit)
+[1, 2, 3].each(|n| print("Item: ${n}"))
+// Output: Item: 1 \n Item: 2 \n Item: 3
+
+// partition: split into [matching, non-matching]
+let nums = [1, 2, 3, 4, 5, 6, 7, 8]
+let result = nums.partition(|n| n % 2 == 0)
+print(result) // Output: [[2, 4, 6, 8], [1, 3, 5, 7]]
+\end{lstlisting}
+
+\begin{tipbox}{Chaining Methods}
+You can chain closure methods to build expressive data transformations:
+\begin{lstlisting}[language=Lattice, numbers=none]
+let result = data
+  .filter(|x| x > 0)
+  .map(|x| x * 2)
+  .sort_by(|a, b| a - b)
+  .take(5)
+\end{lstlisting}
+Each method returns a new array, so the chain flows naturally from left to right.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────
+\section{Non-Closure Array Methods Reference}\label{sec:array-reference}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|.len()| & \lstinline|Int| & Number of elements \\
+\lstinline|.contains(v)| & \lstinline|Bool| & Whether array contains \lstinline|v| \\
+\lstinline|.index_of(v)| & \lstinline|Int| & Index of first \lstinline|v|, or \lstinline|-1| \\
+\lstinline|.first()| & \lstinline|Any| & First element (or \lstinline|unit|) \\
+\lstinline|.last()| & \lstinline|Any| & Last element (or \lstinline|unit|) \\
+\lstinline|.reverse()| & \lstinline|Array| & New reversed array \\
+\lstinline|.unique()| & \lstinline|Array| & New array without duplicates \\
+\lstinline|.sort()| & \lstinline|Array| & New sorted array (natural order) \\
+\lstinline|.flatten()| & \lstinline|Array| & Flatten one level of nesting \\
+\lstinline|.join(sep)| & \lstinline|String| & Elements joined by separator \\
+\lstinline|.zip(other)| & \lstinline|Array| & Pairs with another array \\
+\lstinline|.enumerate()| & \lstinline|Array| & \lstinline|[index, value]| pairs \\
+\lstinline|.take(n)| & \lstinline|Array| & First \lstinline|n| elements \\
+\lstinline|.drop(n)| & \lstinline|Array| & Skip first \lstinline|n| elements \\
+\lstinline|.chunk(n)| & \lstinline|Array| & Sub-arrays of size \lstinline|n| \\
+\lstinline|.sum()| & \lstinline|Number| & Sum of numeric elements \\
+\lstinline|.min()| & \lstinline|Number| & Smallest element \\
+\lstinline|.max()| & \lstinline|Number| & Largest element \\
+\lstinline|.push(v)| & \lstinline|Unit| & Append element (mutates) \\
+\lstinline|.pop()| & \lstinline|Any| & Remove and return last (mutates) \\
+\bottomrule
+\end{tabular}
+\caption{Non-closure array methods}\label{tab:array-methods}
+\end{table}
+
+%% ─────────────────────────────────────────────
+\section{The Spread Operator \texttt{...}}\label{sec:spread-operator}
+\index{spread operator}\index{...@\texttt{...} (spread)}
+
+The spread operator \lstinline|...| unpacks an array into another array:
+
+\begin{lstlisting}[language=Lattice, caption={Spread operator basics}]
+let front = [1, 2, 3]
+let back = [7, 8, 9]
+
+let combined = [...front, 4, 5, 6, ...back]
+print(combined) // Output: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+\end{lstlisting}
+
+Under the hood, when the compiler sees a spread expression (\lstinline|EXPR_SPREAD|) inside an array literal, it emits the elements normally, builds the array with \lstinline|OP_BUILD_ARRAY|, and then emits \lstinline|OP_ARRAY_FLATTEN| to flatten one level of nesting. This means spread elements are expanded into the containing array.
+
+\begin{lstlisting}[language=Lattice, caption={Common spread patterns}]
+// Prepending and appending
+let items = [2, 3, 4]
+let with_bookends = [1, ...items, 5]
+print(with_bookends) // Output: [1, 2, 3, 4, 5]
+
+// Merging multiple arrays
+let a = [1, 2]
+let b = [3, 4]
+let c = [5, 6]
+let merged = [...a, ...b, ...c]
+print(merged) // Output: [1, 2, 3, 4, 5, 6]
+
+// Creating a copy with modifications
+let original = ["red", "green", "blue"]
+let extended = [...original, "yellow", "purple"]
+print(extended) // Output: ["red", "green", "blue", "yellow", "purple"]
+\end{lstlisting}
+
+\begin{warnbox}{Spread Only Works in Array Literals}
+The spread operator \lstinline|...| works inside array literal brackets \lstinline|[...]|. It is not a general-purpose operator that can be used in arbitrary expressions. For function arguments, the variadic \lstinline|...| syntax has a different meaning (see \cref{sec:variadic-params}).
+\end{warnbox}
+
+%% ─────────────────────────────────────────────
+\section{Maps}\label{sec:maps}
+\index{maps}\index{Map}
+
+A map (also known as a dictionary or hash table) stores key-value pairs. In Lattice, maps are created with \lstinline|Map::new()| and populated via index assignment:
+
+\begin{lstlisting}[language=Lattice, caption={Creating and populating maps}]
+let user = Map::new()
+user["name"] = "Alice"
+user["age"] = 30
+user["email"] = "alice@example.com"
+
+print(user["name"])  // Output: Alice
+print(user["age"])   // Output: 30
+\end{lstlisting}
+
+\begin{defnbox}{Map Keys}
+Map keys in Lattice are strings internally. When you use a non-string value as a key, it's converted to its string representation. This means \lstinline|m[42]| and \lstinline|m["42"]| refer to the same entry.
+\end{defnbox}
+
+\subsection{Map Methods}\label{sec:map-methods}
+\index{Map!methods}
+
+\begin{lstlisting}[language=Lattice, caption={Core map methods}]
+let config = Map::new()
+config["host"] = "localhost"
+config["port"] = 8080
+config["debug"] = true
+
+// Checking keys
+print(config.has("host"))     // Output: true
+print(config.has("timeout"))  // Output: false
+
+// Safe access with .get()
+print(config.get("host"))     // Output: localhost
+print(config.get("timeout"))  // Output: nil
+
+// Size
+print(config.len()) // Output: 3
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={keys, values, and entries}]
+let scores = Map::new()
+scores["Alice"] = 95
+scores["Bob"] = 82
+scores["Charlie"] = 91
+
+print(scores.keys())    // Output: ["Alice", "Bob", "Charlie"]
+print(scores.values())  // Output: [95, 82, 91]
+print(scores.entries())
+// Output: [["Alice", 95], ["Bob", 82], ["Charlie", 91]]
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Removing keys and merging maps}]
+let defaults = Map::new()
+defaults["theme"] = "light"
+defaults["language"] = "en"
+defaults["font_size"] = 14
+
+let user_prefs = Map::new()
+user_prefs["theme"] = "dark"
+user_prefs["font_size"] = 16
+
+// merge: user preferences override defaults
+defaults.merge(user_prefs)
+print(defaults["theme"])     // Output: dark
+print(defaults["language"])  // Output: en
+print(defaults["font_size"]) // Output: 16
+
+// remove
+defaults.remove("language")
+print(defaults.has("language")) // Output: false
+\end{lstlisting}
+
+\subsection{Iterating Over Maps}\label{sec:map-iteration}
+
+You can iterate over a map's entries, keys, or values:
+
+\begin{lstlisting}[language=Lattice, caption={Iterating over maps}]
+let inventory = Map::new()
+inventory["apples"] = 50
+inventory["oranges"] = 30
+inventory["bananas"] = 45
+
+// Iterate over entries
+for entry in inventory.entries() {
+  let item = entry[0]
+  let count = entry[1]
+  print("${item}: ${count} in stock")
+}
+
+// Iterate over keys
+for key in inventory.keys() {
+  print("We carry: ${key}")
+}
+\end{lstlisting}
+
+\subsection{Maps as Lightweight Objects}\label{sec:maps-as-objects}
+
+Until you learn about structs (\cref{ch:structs}), maps serve as a convenient way to group related data:
+
+\begin{lstlisting}[language=Lattice, caption={Maps as ad-hoc objects}]
+fn create_point(x: Float, y: Float) -> Map {
+  let point = Map::new()
+  point["x"] = x
+  point["y"] = y
+  point
+}
+
+fn distance(p1: Map, p2: Map) -> Float {
+  let dx = p1["x"] - p2["x"]
+  let dy = p1["y"] - p2["y"]
+  (dx * dx + dy * dy)
+}
+
+let origin = create_point(0.0, 0.0)
+let target = create_point(3.0, 4.0)
+print(distance(origin, target)) // Output: 25.0
+\end{lstlisting}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|.len()| & \lstinline|Int| & Number of key-value pairs \\
+\lstinline|.has(key)| & \lstinline|Bool| & Whether key exists \\
+\lstinline|.get(key)| & \lstinline|Any| & Value for key, or \lstinline|nil| \\
+\lstinline|.keys()| & \lstinline|Array| & All keys as array \\
+\lstinline|.values()| & \lstinline|Array| & All values as array \\
+\lstinline|.entries()| & \lstinline|Array| & \lstinline|[key, value]| pairs \\
+\lstinline|.remove(key)| & \lstinline|Unit| & Remove key-value pair \\
+\lstinline|.merge(other)| & \lstinline|Unit| & Merge another map (mutates) \\
+\bottomrule
+\end{tabular}
+\caption{Map methods}\label{tab:map-methods}
+\end{table}
+
+%% ─────────────────────────────────────────────
+\section{Sets}\label{sec:sets}
+\index{sets}\index{Set}
+
+A set is an unordered collection of unique elements. Lattice sets are created from arrays using \lstinline|Set::new()|:
+
+\begin{lstlisting}[language=Lattice, caption={Creating sets}]
+let colors = Set::new()
+colors.add("red")
+colors.add("green")
+colors.add("blue")
+colors.add("red")  // duplicate, ignored
+
+print(colors)      // Output: {red, green, blue}
+print(colors.len()) // Output: 3
+\end{lstlisting}
+
+\subsection{Set Operations}\label{sec:set-operations}
+\index{Set!union}\index{Set!intersection}\index{Set!difference}
+
+Sets support the classic mathematical operations:
+
+\begin{lstlisting}[language=Lattice, caption={Set operations}]
+let frontend = Set::new()
+frontend.add("Alice")
+frontend.add("Bob")
+frontend.add("Charlie")
+
+let backend = Set::new()
+backend.add("Bob")
+backend.add("Diana")
+backend.add("Eve")
+
+// Union: all members of either team
+let all_devs = frontend.union(backend)
+print(all_devs) // Output: {Alice, Bob, Charlie, Diana, Eve}
+
+// Intersection: members of both teams
+let fullstack = frontend.intersection(backend)
+print(fullstack) // Output: {Bob}
+
+// Difference: frontend-only developers
+let frontend_only = frontend.difference(backend)
+print(frontend_only) // Output: {Alice, Charlie}
+
+// Symmetric difference: in one team but not both
+let specialists = frontend.symmetric_difference(backend)
+print(specialists) // Output: {Alice, Charlie, Diana, Eve}
+\end{lstlisting}
+
+\subsection{Subset and Superset Testing}\label{sec:subset-superset}
+\index{Set!is\_subset}\index{Set!is\_superset}
+
+\begin{lstlisting}[language=Lattice, caption={Subset and superset testing}]
+let required_skills = Set::new()
+required_skills.add("Python")
+required_skills.add("SQL")
+
+let candidate_skills = Set::new()
+candidate_skills.add("Python")
+candidate_skills.add("SQL")
+candidate_skills.add("JavaScript")
+candidate_skills.add("Docker")
+
+print(required_skills.is_subset(candidate_skills)) // Output: true
+print(candidate_skills.is_superset(required_skills)) // Output: true
+\end{lstlisting}
+
+\subsection{Converting Between Sets and Arrays}\label{sec:set-conversion}
+
+\begin{lstlisting}[language=Lattice, caption={Set conversion}]
+let duplicates = [1, 2, 2, 3, 3, 3, 4]
+
+// Quick deduplication via Set
+let unique_set = Set::new()
+for item in duplicates {
+  unique_set.add(item)
+}
+let unique_array = unique_set.to_array()
+print(unique_array) // Output: [1, 2, 3, 4]
+\end{lstlisting}
+
+Internally, sets are implemented as maps where the keys are the string representations of elements and the values are the actual \lstinline|LatValue| objects. This means set membership testing is O(1) on average, just like map key lookups.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|.len()| & \lstinline|Int| & Number of elements \\
+\lstinline|.has(v)| & \lstinline|Bool| & Whether \lstinline|v| is in the set \\
+\lstinline|.add(v)| & \lstinline|Unit| & Add element (mutates) \\
+\lstinline|.remove(v)| & \lstinline|Unit| & Remove element (mutates) \\
+\lstinline|.clear()| & \lstinline|Unit| & Remove all elements (mutates) \\
+\lstinline|.to_array()| & \lstinline|Array| & Convert to array \\
+\lstinline|.union(other)| & \lstinline|Set| & Elements in either set \\
+\lstinline|.intersection(other)| & \lstinline|Set| & Elements in both sets \\
+\lstinline|.difference(other)| & \lstinline|Set| & Elements in self but not other \\
+\lstinline|.symmetric_difference(other)| & \lstinline|Set| & Elements in one but not both \\
+\lstinline|.is_subset(other)| & \lstinline|Bool| & All elements in other? \\
+\lstinline|.is_superset(other)| & \lstinline|Bool| & Contains all of other? \\
+\bottomrule
+\end{tabular}
+\caption{Set methods}\label{tab:set-methods}
+\end{table}
+
+%% ─────────────────────────────────────────────
+\section{Tuples}\label{sec:tuples}
+\index{tuples}\index{Tuple}
+
+A tuple is a fixed-length, heterogeneous collection. Unlike arrays, tuples cannot grow or shrink after creation:
+
+\begin{lstlisting}[language=Lattice, caption={Creating tuples}]
+let point = (3.0, 4.0)
+let record = ("Alice", 30, true)
+let singleton = (42,)
+
+print(point)   // Output: (3.0, 4.0)
+print(record)  // Output: ("Alice", 30, true)
+\end{lstlisting}
+
+Note the trailing comma in \lstinline|(42,)|---this distinguishes a one-element tuple from a parenthesized expression.
+
+\subsection{Accessing Tuple Elements}\label{sec:tuple-access}
+
+Tuple elements are accessed by index:
+
+\begin{lstlisting}[language=Lattice, caption={Accessing tuple elements}]
+let person = ("Alice", 30, "alice@example.com")
+
+print(person[0])   // Output: Alice
+print(person[1])   // Output: 30
+print(person[2])   // Output: alice@example.com
+print(person.len()) // Output: 3
+\end{lstlisting}
+
+\subsection{Tuples vs.\ Arrays}\label{sec:tuples-vs-arrays}
+
+When should you use a tuple instead of an array?
+
+\begin{itemize}
+  \item Use \textbf{tuples} for fixed collections where the position carries meaning: coordinates \lstinline|(x, y)|, key-value pairs \lstinline|(key, value)|, function results that return multiple values.
+  \item Use \textbf{arrays} for variable-length collections of similar items: a list of names, a sequence of measurements, a batch of records.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Tuples for multiple return values}]
+fn min_max(numbers: Array) -> Tuple {
+  flux lo = numbers[0]
+  flux hi = numbers[0]
+  for n in numbers {
+    if n < lo { lo = n }
+    if n > hi { hi = n }
+  }
+  (lo, hi)
+}
+
+let result = min_max([38, 12, 45, 7, 91, 23])
+print("Min: ${result[0]}, Max: ${result[1]}")
+// Output: Min: 7, Max: 91
+\end{lstlisting}
+
+Tuples are immutable by nature. You cannot push, pop, or reassign individual elements. If you need to ``update'' a tuple, create a new one.
+
+\begin{lstlisting}[language=Lattice, caption={Tuples are compiled with OP\_BUILD\_TUPLE}]
+// Under the hood, (1, "hello", true) compiles to:
+// push 1, push "hello", push true, OP_BUILD_TUPLE 3
+let metadata = (1, "hello", true)
+print(metadata) // Output: (1, "hello", true)
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{Choosing the Right Collection}\label{sec:choosing-collection}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Need} & \textbf{Use} & \textbf{Why} \\
+\midrule
+Ordered list, may grow & \lstinline|Array| & Push/pop, index access \\
+Key-value storage & \lstinline|Map| & O(1) key lookup \\
+Unique elements only & \lstinline|Set| & Auto-deduplication \\
+Fixed group of values & \lstinline|Tuple| & Position-based meaning \\
+\bottomrule
+\end{tabular}
+\caption{Collection type selection guide}\label{tab:collection-guide}
+\end{table}
+
+Let's see these working together in a realistic scenario:
+
+\begin{lstlisting}[language=Lattice, caption={Collections working together}]
+// Analyzing survey responses
+let responses = [
+  ["Alice", "Lattice", 5],
+  ["Bob", "Python", 4],
+  ["Charlie", "Lattice", 5],
+  ["Diana", "Rust", 4],
+  ["Eve", "Lattice", 3],
+  ["Frank", "Python", 5],
+  ["Grace", "Rust", 5]
+]
+
+// Group by language
+let by_language = responses.group_by(|r| r[1])
+
+// Collect unique languages
+let languages = Set::new()
+for response in responses {
+  languages.add(response[1])
+}
+
+// Compute average rating per language
+let averages = Map::new()
+for lang in languages.to_array() {
+  let group = by_language[lang]
+  let total = group.reduce(0, |acc, r| acc + r[2])
+  averages[lang] = total / group.len()
+}
+
+print("Languages surveyed: ${languages}")
+print("Average ratings:")
+for entry in averages.entries() {
+  print("  ${entry[0]}: ${entry[1]}")
+}
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────
+\section{Exercises}\label{sec:collections-exercises}
+
+\begin{enumerate}
+  \item \textbf{Flatten and Deduplicate.} Given a nested array like \lstinline|[[1, 2], [2, 3], [3, 4]]|, write a one-liner using \lstinline|.flatten()| and \lstinline|.unique()| to produce \lstinline|[1, 2, 3, 4]|.
+
+  \item \textbf{Word Frequency Counter.} Write a function that takes a string, splits it into words, and returns a map of word frequencies. Use \lstinline|group_by| or manual map construction.
+
+  \item \textbf{Inventory System.} Build an inventory system using a map of item names to quantities. Write functions for \lstinline|add_stock|, \lstinline|remove_stock|, and \lstinline|low_stock_report| (items with fewer than 10 units). Use \lstinline|.filter()| and \lstinline|.entries()| in your report function.
+
+  \item \textbf{Set Operations Challenge.} Given three sets representing students enrolled in Math, Science, and English classes, compute: (a) students taking all three, (b) students taking exactly one class, and (c) students taking Math but not Science.
+
+  \item \textbf{Data Pipeline.} Given an array of \lstinline|[name, score]| pairs, write a pipeline using \lstinline|filter|, \lstinline|map|, \lstinline|sort_by|, and \lstinline|take| to produce a ``Top 3 Scorers'' leaderboard with formatted strings like \lstinline|"1. Alice (95)"|.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────
+\vspace{1em}
+\noindent\textbf{What's Next?}
+
+We've toured Lattice's collection types and their rich method vocabularies. In \cref{ch:strings}, we'll zoom in on strings specifically---interpolation, escaping, case transformations, Unicode support, and regular expressions. Strings are Lattice's most method-rich type, and there's a lot to explore.

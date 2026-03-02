@@ -1,0 +1,810 @@
+\chapter{The Three Backends}\label{ch:three-backends}
+\index{backends}
+\index{execution backends}
+
+Every line of Lattice code you write takes the same journey through the front
+end: the \emph{lexer} turns source text into tokens, the \emph{parser} builds
+an abstract syntax tree (AST), and the optional \emph{phase checker} validates
+mutability constraints. What happens \emph{after} that point---how the AST
+actually gets executed---depends on which \textbf{backend} you choose.
+
+Lattice ships with three of them:
+
+\begin{enumerate}
+  \item A \textbf{tree-walk interpreter} that traverses the AST node by node.
+  \item A \textbf{stack-based bytecode VM} that compiles the AST to a stream of
+        one-byte opcodes and executes them against a value stack.
+  \item A \textbf{register-based VM} that compiles to fixed-width 32-bit
+        instructions and operates on virtual registers.
+\end{enumerate}
+
+Why three? Because each backend occupies a different point in the trade-off
+space between implementation complexity, startup latency, and peak throughput.
+In this chapter we will open each one up, see how it works, and learn when to
+reach for it.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Tree-Walk Interpreter}\label{sec:tree-walk}
+\index{tree-walk interpreter}
+\index{evaluator}
+
+\subsection{How It Works}
+
+The tree-walk interpreter is the oldest backend in Lattice. It lives in
+\filename{src/eval.c} and is centred on a single recursive function,
+\lstinline|eval_expr_inner|, that pattern-matches on the AST node type
+and returns an \lstinline|EvalResult|. Statements are handled by
+\lstinline|eval_stmt|; blocks by \lstinline|eval_block_stmts|.
+
+\begin{defnbox}{Tree-Walk Interpretation}
+A \emph{tree-walk interpreter} executes a program by recursively visiting each
+node of the abstract syntax tree produced by the parser. There is no
+compilation step and no intermediate bytecode---the AST \emph{is} the program
+representation at runtime.
+\end{defnbox}
+
+Consider this tiny program:
+
+\begin{lstlisting}[language=Lattice, caption={A value flowing through the tree-walker}]
+let width = 5
+let height = 3
+let area = width * height
+print(area) // 15
+\end{lstlisting}
+
+When the tree-walker encounters the expression \lstinline|width * height|, it:
+
+\begin{enumerate}
+  \item Recognises a \texttt{BINARY\_MUL} expression node.
+  \item Recursively evaluates the left child (\lstinline|width|), looking it up
+        in the current \lstinline|Env| and finding the integer \texttt{5}.
+  \item Recursively evaluates the right child (\lstinline|height|), finding
+        \texttt{3}.
+  \item Multiplies the two values and wraps the result in an
+        \lstinline|EvalResult|.
+\end{enumerate}
+
+\noindent
+Each recursion pushes a native C call frame. That means deeply nested
+expressions or long chains of function calls consume real stack space---the
+\lstinline|Evaluator| struct tracks call depth and caps it at
+\lstinline|max_call_depth| to prevent a segfault.
+
+\subsection{Environment and Scoping}
+
+The tree-walker manages variables through an \lstinline|Env| (environment)
+structure---a hash map of names to \lstinline|LatValue|s with a pointer to the
+enclosing scope. Entering a block pushes a new child \lstinline|Env|; leaving
+it pops the environment, freeing any bindings that went out of scope.
+
+\begin{lstlisting}[language=Lattice, caption={Scoping in the tree-walker}]
+let outer = "hello"
+if true {
+  let inner = "world"
+  print("${outer} ${inner}") // hello world
+}
+// inner is no longer accessible here
+\end{lstlisting}
+
+The tree-walker also tracks a rich set of metadata that the bytecode VMs do
+not carry: struct definitions (\lstinline|struct_defs|), enum declarations
+(\lstinline|enum_defs|), trait and impl registries, phase reactions, bonds,
+seed contracts, pressure constraints, and a full dual-heap garbage collector
+with region support. This makes the tree-walker the most \emph{feature-complete}
+backend---it supports every language feature, including some (like
+\lstinline|--stats| memory profiling) that are exclusive to it.
+
+\subsection{When to Use It}
+
+Invoke the tree-walker with the \lstinline|--tree-walk| flag:
+
+\begin{lstlisting}[language=Lattice, caption={Running with the tree-walk backend}]
+// command line:
+// clat --tree-walk my_program.lat
+\end{lstlisting}
+
+Reach for the tree-walker when you need:
+
+\begin{itemize}
+  \item \textbf{Memory profiling.}  The \lstinline|--stats| flag reports
+        freezes, thaws, deep clones, scope depth, region usage, and GC
+        statistics---data that only the tree-walker collects.
+  \item \textbf{Maximum language coverage.}  Every Lattice feature is supported
+        here first; the bytecode backends sometimes lag behind for newly added
+        syntax.
+  \item \textbf{Debugging unusual behaviour.}  Because execution follows the
+        AST directly, the tree-walker's error messages can reference the exact
+        AST node that failed, which is sometimes more informative than a bytecode
+        offset.
+\end{itemize}
+
+\begin{warnbox}{Tree-Walker Performance}
+The tree-walker is the slowest backend. Every expression evaluation involves
+pointer chasing through AST nodes, C-level recursion overhead, and hash-map
+lookups for every variable access. For compute-heavy programs, the bytecode
+VMs can be 5--20\texttimes\ faster.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Stack-Based Bytecode VM}\label{sec:stack-vm}
+\index{stack VM}
+\index{bytecode}
+
+The stack-based bytecode VM is Lattice's \textbf{default backend}. When you run
+\lstinline|clat my_program.lat| without any flags, this is the engine that
+fires.
+
+\subsection{Compilation}\label{subsec:stack-compilation}
+\index{stack compiler}
+
+Before execution, the stack compiler (\filename{src/stackcompiler.c}) walks the
+AST and emits a flat stream of bytes into a \lstinline|Chunk| structure (defined
+in \filename{include/chunk.h}). A \lstinline|Chunk| holds:
+
+\begin{itemize}
+  \item \lstinline|code| --- a dynamic array of \lstinline|uint8_t| values: the
+        bytecode stream.
+  \item \lstinline|constants| --- a pool of \lstinline|LatValue|s referenced by
+        index from the bytecode.
+  \item \lstinline|lines| --- a parallel array mapping each byte offset to a
+        source line number (used for error messages and debugging).
+  \item \lstinline|local_names| --- debug metadata mapping stack slots to
+        variable names.
+  \item \lstinline|pic| --- a polymorphic inline cache for method dispatch
+        (more on this shortly).
+\end{itemize}
+
+The compiler maintains a \lstinline|Compiler| struct that tracks local
+variables as stack slots, manages scope depth, resolves upvalues for closures,
+and handles break/continue jump patching. Each function body is compiled into
+its own child \lstinline|Chunk|, stored as a closure constant in the parent
+chunk's constant pool.
+
+\begin{lstlisting}[language=Lattice, caption={A function compiled to stack bytecode}]
+fn add(a: Int, b: Int) -> Int {
+  return a + b
+}
+let result = add(10, 20)
+print(result) // 30
+\end{lstlisting}
+
+This compiles roughly to:
+
+\begin{verbatim}
+  ; Top-level chunk:
+  OP_CLOSURE       0       ; Push closure for add()
+  OP_DEFINE_GLOBAL "add"   ; Bind it globally
+  OP_GET_GLOBAL    "add"   ; Push the closure
+  OP_CONSTANT      10      ; Push argument 1
+  OP_CONSTANT      20      ; Push argument 2
+  OP_CALL          2       ; Call with 2 arguments
+  OP_DEFINE_GLOBAL "result"
+  OP_GET_GLOBAL    "result"
+  OP_PRINT         1       ; Print 1 value
+
+  ; Function chunk for add(a, b):
+  OP_GET_LOCAL     1       ; Push a (slot 1; slot 0 = function itself)
+  OP_GET_LOCAL     2       ; Push b
+  OP_ADD                   ; Pop both, push sum
+  OP_RETURN                ; Return TOS
+\end{verbatim}
+
+\subsection{Opcodes}\label{subsec:stack-opcodes}
+\index{opcodes!stack VM}
+
+The full opcode set is defined in \filename{include/stackopcode.h}. Opcodes are
+single bytes (0--255), giving the stack VM a compact instruction stream. Here are
+the major families:
+
+\begin{table}[h]
+\centering
+\caption{Stack VM opcode families}\label{tab:stack-opcode-families}
+\begin{tabular}{@{} l l p{5.5cm} @{}}
+\toprule
+\textbf{Family} & \textbf{Examples} & \textbf{Purpose} \\
+\midrule
+Stack manipulation & \texttt{OP\_CONSTANT}, \texttt{OP\_POP}, \texttt{OP\_DUP} &
+  Load values, discard or duplicate the top of stack \\
+Arithmetic/logic & \texttt{OP\_ADD}, \texttt{OP\_MUL}, \texttt{OP\_NOT} &
+  Pop operands, push result \\
+Comparison & \texttt{OP\_EQ}, \texttt{OP\_LT}, \texttt{OP\_GTEQ} &
+  Pop two values, push boolean \\
+Variables & \texttt{OP\_GET\_LOCAL}, \texttt{OP\_SET\_GLOBAL} &
+  Read/write locals (by slot) and globals (by name) \\
+Control flow & \texttt{OP\_JUMP}, \texttt{OP\_LOOP}, \texttt{OP\_JUMP\_IF\_FALSE} &
+  Conditional and unconditional jumps \\
+Functions & \texttt{OP\_CALL}, \texttt{OP\_CLOSURE}, \texttt{OP\_RETURN} &
+  Call, create closures, return \\
+Data structures & \texttt{OP\_BUILD\_ARRAY}, \texttt{OP\_BUILD\_STRUCT} &
+  Construct compound values from stack elements \\
+Phase system & \texttt{OP\_FREEZE}, \texttt{OP\_THAW}, \texttt{OP\_CLONE} &
+  Phase transitions and deep cloning \\
+Optimised paths & \texttt{OP\_ADD\_INT}, \texttt{OP\_INC\_LOCAL}, \texttt{OP\_LOAD\_INT8} &
+  Fast paths for integer arithmetic \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Some opcodes use one-byte operands (e.g.\ \lstinline|OP_GET_LOCAL| takes a slot
+index); some use two-byte big-endian operands for larger ranges
+(\lstinline|OP_JUMP|, \lstinline|OP_LOOP|). When the constant pool exceeds 255
+entries, wide variants like \lstinline|OP_CONSTANT_16| kick in with 16-bit
+indices.
+
+\begin{tipbox}{Exploring Opcodes}
+For a complete listing of every opcode with its encoding and semantics, see
+\cref{appB:opcode-reference}. You can also call the C function
+\lstinline|opcode_name()| (from \filename{include/stackopcode.h}) to get the
+human-readable name of any opcode byte.
+\end{tipbox}
+
+\subsection{The Value Stack}\label{subsec:value-stack}
+\index{value stack}
+
+At the heart of the stack VM is a fixed-size array of 4{,}096
+\lstinline|LatValue| slots:
+
+\begin{verbatim}
+  LatValue stack[STACKVM_STACK_MAX];   // 4096 slots
+  LatValue *stack_top;                  // points past the last used slot
+\end{verbatim}
+
+Every computation goes through this stack. To add two numbers, the VM pushes
+both onto the stack, then the \lstinline|OP_ADD| handler pops them, adds them,
+and pushes the result. Local variables live directly in the stack---each call
+frame records a \lstinline|slots| pointer marking the base of its window into
+the value stack.
+
+\begin{lstlisting}[language=Lattice, caption={Visualising the value stack}]
+fn multiply(x: Int, y: Int) -> Int {
+  let product = x * y
+  return product
+}
+let answer = multiply(6, 7)
+print(answer) // 42
+\end{lstlisting}
+
+When \lstinline|multiply| is executing, the stack looks roughly like this:
+
+\begin{verbatim}
+  slot 0: <multiply closure>     <-- frame->slots
+  slot 1: 6                      (x)
+  slot 2: 7                      (y)
+  slot 3: 42                     (product)
+                                 <-- stack_top
+\end{verbatim}
+
+\subsection{Call Frames}
+
+The VM maintains up to 512 call frames (\lstinline|STACKVM_FRAMES_MAX|), each
+a \lstinline|StackCallFrame| containing:
+
+\begin{itemize}
+  \item \lstinline|chunk| --- the \lstinline|Chunk| being executed in this
+        frame.
+  \item \lstinline|ip| --- the instruction pointer, pointing into the chunk's
+        bytecode.
+  \item \lstinline|slots| --- the base of this frame's region on the value
+        stack.
+  \item \lstinline|upvalues| --- pointers to closed-over variables for
+        closures.
+\end{itemize}
+
+When a function returns via \lstinline|OP_RETURN|, the VM pops the frame,
+restores the caller's instruction pointer, and pushes the return value onto
+the caller's stack.
+
+\subsection{The Dispatch Loop}\label{subsec:stack-dispatch}
+\index{dispatch loop!stack VM}
+\index{computed goto}
+
+The workhorse of the stack VM is the dispatch loop in
+\filename{src/stackvm.c}---function \lstinline|stackvm_run|. It reads one
+opcode at a time and branches to the handler for that opcode.
+
+On compilers that support it (\texttt{GCC}, \texttt{Clang}), the dispatch loop
+uses \textbf{computed gotos}: a table of label addresses indexed by opcode value.
+After each handler finishes, it jumps directly to the next handler through the
+table, avoiding the overhead of a \lstinline|switch| statement's bounds check
+and indirect branch prediction penalty. This is defined under the
+\lstinline|VM_USE_COMPUTED_GOTO| preprocessor guard.
+
+\begin{notebox}{Computed Gotos}
+Computed gotos (\texttt{gcc}'s ``labels as values'' extension) let the VM
+replace a central \lstinline|switch| with a dispatch table of
+\lstinline|void*| pointers. Each handler ends with
+\lstinline|goto *dispatch_table[next_opcode]|, which modern CPUs can predict
+more accurately than a single indirect branch. The result is typically a
+10--20\% speed improvement on tight loops.
+\end{notebox}
+
+\subsection{Exception Handling and Defer}
+\index{exception handling!stack VM}
+\index{defer!stack VM}
+
+The stack VM implements \lstinline|try|/\lstinline|catch| with an exception
+handler stack (\lstinline|STACKVM_HANDLER_MAX| = 64 entries). When the compiler
+encounters a \lstinline|try| block, it emits
+\lstinline|OP_PUSH_EXCEPTION_HANDLER| with a jump offset to the catch body.
+If \lstinline|OP_THROW| fires, the VM unwinds frames back to the handler,
+builds a structured error map (with \lstinline|message|, \lstinline|line|, and
+\lstinline|stack| fields), and pushes it onto the value stack for the catch
+clause.
+
+\lstinline|defer| works similarly: \lstinline|OP_DEFER_PUSH| records the defer
+body's bytecode offset and scope depth. When execution leaves the scope (via
+\lstinline|OP_DEFER_RUN|, return, or exception unwinding), deferred blocks
+execute in LIFO order, sharing the parent frame's stack slots.
+
+\begin{lstlisting}[language=Lattice, caption={Exception handling and defer in action}]
+fn read_config(path: String) -> String {
+  let file = open(path)
+  defer { file.close() }
+
+  try {
+    return file.read_all()
+  } catch err {
+    print("Failed to read config: ${err["message"]}")
+    return "{}"
+  }
+}
+\end{lstlisting}
+
+\subsection{Upvalues and Closures}
+\index{upvalues}
+\index{closures!stack VM implementation}
+
+When a closure captures a variable from an enclosing scope, the compiler
+creates an \lstinline|ObjUpvalue|. While the captured variable is still on the
+stack (i.e.\ the enclosing function has not returned), the upvalue's
+\lstinline|location| pointer points directly into the stack slot. When the
+enclosing scope ends, \lstinline|OP_CLOSE_UPVALUE| copies the value into the
+upvalue's \lstinline|closed| field and redirects \lstinline|location| to point
+there. This ``open $\to$ closed'' transition lets closures survive their
+parent's return without dangling pointers.
+
+\begin{lstlisting}[language=Lattice, caption={Closures capture variables via upvalues}]
+fn make_counter() -> fn() -> Int {
+  flux count = 0
+  return || {
+    count = count + 1
+    return count
+  }
+}
+
+let counter = make_counter()
+print(counter()) // 1
+print(counter()) // 2
+print(counter()) // 3
+\end{lstlisting}
+
+After \lstinline|make_counter| returns, the local \lstinline|count| is closed
+into the upvalue. Each call to the returned closure reads and writes through the
+same \lstinline|ObjUpvalue.closed| field.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Register-Based VM}\label{sec:reg-vm}
+\index{register VM}
+\index{register-based bytecode}
+
+The register-based VM is Lattice's newest backend. Invoke it with the
+\lstinline|--regvm| flag. Where the stack VM manipulates an implicit operand
+stack, the register VM names its operands explicitly in each instruction---more
+like a physical CPU.
+
+\subsection{Instruction Encoding}\label{subsec:reg-encoding}
+\index{instruction encoding!register VM}
+
+Every register VM instruction is a fixed-width \textbf{32-bit word}, defined as
+\lstinline|typedef uint32_t RegInstr| in \filename{include/regopcode.h}. The
+encoding packs an 8-bit opcode and up to three operand fields:
+
+\begin{table}[h]
+\centering
+\caption{Register VM instruction formats}\label{tab:reg-formats}
+\begin{tabular}{@{} l l p{5.8cm} @{}}
+\toprule
+\textbf{Format} & \textbf{Layout (bits)} & \textbf{Use} \\
+\midrule
+ABC   & \texttt{[op:8][A:8][B:8][C:8]}   & Three-address ops:
+  \lstinline|R[A] = R[B] + R[C]| \\
+ABx   & \texttt{[op:8][A:8][Bx:16]}      & Load constant:
+  \lstinline|R[A] = K[Bx]| \\
+AsBx  & \texttt{[op:8][A:8][sBx:16]}     & Conditional jump:
+  \lstinline|if !R[A]: ip += sBx| \\
+sBx   & \texttt{[op:8][sBx:24]}          & Unconditional jump \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Encoding and decoding use bit-manipulation macros:
+
+\begin{verbatim}
+  // Encode: ROP_ADD into register 3, from registers 1 and 2
+  REG_ENCODE_ABC(ROP_ADD, 3, 1, 2)
+  //  => 0x02010308  (C=2, B=1, A=3, op=ROP_ADD)
+
+  // Decode:
+  REG_GET_OP(instr)   // opcode byte
+  REG_GET_A(instr)    // destination register
+  REG_GET_B(instr)    // first source
+  REG_GET_C(instr)    // second source
+\end{verbatim}
+
+Fixed-width instructions mean the VM can index into the code array by
+instruction number rather than scanning variable-length byte sequences. This
+gives better instruction-cache behaviour and eliminates the need for ``wide''
+opcode variants.
+
+\subsection{Register Windows}\label{subsec:reg-windows}
+\index{register windows}
+
+Each call frame in the register VM gets its own \textbf{register window}---a
+contiguous slice of 256 \lstinline|LatValue| slots carved from the global
+register stack:
+
+\begin{verbatim}
+  LatValue reg_stack[REGVM_REG_MAX * REGVM_FRAMES_MAX];
+  // = 256 * 64 = 16,384 register slots
+\end{verbatim}
+
+When a function is called, the VM advances \lstinline|reg_stack_top| by
+\lstinline|REGVM_REG_MAX| (256) and points the new frame's \lstinline|regs|
+pointer there. Function arguments are placed into the callee's low registers
+by the caller; the return value is written back to a register in the
+\emph{caller's} window designated by \lstinline|caller_result_reg|.
+
+\begin{lstlisting}[language=Lattice, caption={Register allocation for a function call}]
+fn distance(x1: Float, y1: Float, x2: Float, y2: Float) -> Float {
+  let dx = x2 - x1
+  let dy = y2 - y1
+  return (dx * dx + dy * dy).sqrt()
+}
+
+let d = distance(0.0, 0.0, 3.0, 4.0)
+print(d) // 5.0
+\end{lstlisting}
+
+Inside \lstinline|distance|, the register compiler assigns:
+
+\begin{verbatim}
+  R[0] = <distance closure>
+  R[1] = x1 (0.0)
+  R[2] = y1 (0.0)
+  R[3] = x2 (3.0)
+  R[4] = y2 (4.0)
+  R[5] = dx  (3.0, result of ROP_SUB R[5], R[3], R[1])
+  R[6] = dy  (4.0, result of ROP_SUB R[6], R[4], R[2])
+  R[7] = dx*dx (9.0)
+  R[8] = dy*dy (16.0)
+  R[9] = sum   (25.0)
+\end{verbatim}
+
+Notice the three-address style: \lstinline|ROP_SUB R[5], R[3], R[1]| computes
+the subtraction and writes the result directly to R[5] without touching a stack.
+Intermediate values stay in registers instead of being pushed and popped,
+reducing memory traffic.
+
+\subsection{The Register Compiler}\label{subsec:reg-compiler}
+\index{register compiler}
+
+The register compiler (\filename{src/regcompiler.c}) maintains a
+\lstinline|RegCompiler| struct that is structurally similar to the stack
+compiler, but with a critical addition: a \textbf{register allocator}. Two
+functions manage the register file:
+
+\begin{itemize}
+  \item \lstinline|alloc_reg()| returns the next available register and advances
+        the \lstinline|next_reg| pointer (also updating a high-water mark
+        \lstinline|max_reg| used for bounded initialisation).
+  \item \lstinline|free_reg()| releases a register when its value is no longer
+        needed (temporary expression results).
+\end{itemize}
+
+Local variables are assigned a permanent register for their entire lifetime
+within a scope. Temporary values get registers that are freed as soon as the
+value is consumed. This means the compiler must decide \emph{at compile time}
+where every value lives---a more complex task than the stack compiler, which
+just pushes and pops.
+
+\subsection{Inline Caches}\label{subsec:inline-caches}
+\index{inline cache}
+\index{polymorphic inline cache}
+
+Both VMs use \textbf{polymorphic inline caches} (PICs) to speed up method
+dispatch, but they are especially important for the register VM. The PIC
+system is defined in \filename{include/inline\_cache.h}.
+
+When the VM encounters a method call like \lstinline|arr.push(42)|, it must
+determine the receiver's type, hash the method name, and search a dispatch
+table. A PIC short-circuits this:
+
+\begin{enumerate}
+  \item On the first call, the full lookup runs and the result is cached in a
+        4-entry \lstinline|PICSlot| keyed by \texttt{(type\_tag, method\_hash)}.
+  \item On subsequent calls, the VM checks the cache first. A hit returns the
+        \lstinline|handler_id| directly---an integer that indexes into a
+        jump table, skipping the hash and string comparison entirely.
+  \item If the cache has four entries and a new type appears (megamorphic site),
+        the oldest entry is evicted in FIFO order.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={A polymorphic call site}]
+fn describe(items: Array) -> String {
+  // items could contain mixed types
+  flux parts = []
+  for item in items {
+    // item.to_string() is polymorphic: Int, Float, String, etc.
+    parts.push(item.to_string())
+  }
+  return parts.join(", ")
+}
+
+print(describe([1, 2.5, "three"])) // 1, 2.5, three
+\end{lstlisting}
+
+The PIC table uses a direct-mapped scheme with 64 slots per chunk, indexed by
+\lstinline|ip_offset & 0x3F|. Collisions between different call sites in the
+same chunk are benign---they simply cause cache misses that trigger the slow
+path.
+
+\begin{notebox}{Handler IDs}
+Handler IDs are small integers defined as \lstinline|#define| constants in
+\filename{include/inline\_cache.h}: \lstinline|PIC_ARRAY_PUSH = 2|,
+\lstinline|PIC_STRING_SPLIT = 32|, and so on. The special value
+\lstinline|PIC_NOT_BUILTIN = 255| tells the VM to fall through to struct, map,
+or impl-block lookup.
+\end{notebox}
+
+\subsection{RegChunk: The Register VM's Code Container}
+\index{RegChunk}
+
+Where the stack VM stores bytecode in a \lstinline|Chunk| of
+\lstinline|uint8_t|, the register VM uses a \lstinline|RegChunk| containing
+\lstinline|uint32_t| instructions:
+
+\begin{itemize}
+  \item \lstinline|code| --- array of \lstinline|RegInstr| (32-bit words).
+  \item \lstinline|constants| --- the same constant-pool design as the stack
+        VM's \lstinline|Chunk|.
+  \item \lstinline|magic| --- the four bytes \texttt{0x524C4154} (``RLAT''),
+        used to distinguish register chunks from stack chunks during
+        serialisation.
+  \item \lstinline|max_reg| --- the high-water register count, so the VM only
+        needs to initialise that many registers per frame instead of all 256.
+  \item \lstinline|pic| --- a \lstinline|PICTable| for inline caching, same as
+        the stack VM's \lstinline|Chunk|.
+\end{itemize}
+
+Constant deduplication runs at compile time: the compiler scans the existing
+pool for matching strings, integers, and floats before adding a new entry. This
+keeps the pool compact and reduces memory pressure.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Choosing a Backend}\label{sec:choosing-backend}
+\index{choosing a backend}
+
+\subsection{Command-Line Flags}
+
+\begin{table}[h]
+\centering
+\caption{Backend selection flags}\label{tab:backend-flags}
+\begin{tabular}{@{} l l l @{}}
+\toprule
+\textbf{Flag} & \textbf{Backend} & \textbf{When to use} \\
+\midrule
+\emph{(none)} & Stack VM & General-purpose (default) \\
+\lstinline|--tree-walk| & Tree-walk interpreter & Memory profiling, full feature coverage \\
+\lstinline|--regvm| & Register VM & Performance-sensitive code \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[language=Lattice, caption={Selecting a backend from the command line}]
+// Stack VM (default):
+// clat my_program.lat
+
+// Tree-walk interpreter:
+// clat --tree-walk my_program.lat
+
+// Register VM:
+// clat --regvm my_program.lat
+\end{lstlisting}
+
+\subsection{Feature Support}\label{subsec:feature-matrix}
+
+Not every feature is available on every backend. Here is a summary:
+
+\begin{table}[h]
+\centering
+\caption{Feature availability by backend}\label{tab:feature-matrix}
+\begin{tabular}{@{} l c c c @{}}
+\toprule
+\textbf{Feature} & \textbf{Tree-Walk} & \textbf{Stack VM} & \textbf{Reg VM} \\
+\midrule
+Core language (variables, functions, closures) & \checkmark & \checkmark & \checkmark \\
+Structs, enums, traits, impls & \checkmark & \checkmark & \checkmark \\
+Phase system (freeze, thaw, clone) & \checkmark & \checkmark & \checkmark \\
+Concurrency (scope/spawn, channels) & \checkmark & \checkmark & \checkmark \\
+Try/catch, defer & \checkmark & \checkmark & \checkmark \\
+Interactive debugger (\lstinline|--debug|) & --- & \checkmark & --- \\
+DAP protocol (\lstinline|--dap|) & --- & \checkmark & --- \\
+Memory stats (\lstinline|--stats|) & \checkmark & --- & --- \\
+GC modes (\lstinline|--gc|, \lstinline|--gc-stress|) & \checkmark & \checkmark & --- \\
+Pre-compiled bytecode (\lstinline|.latc|/\lstinline|.rlat|) & --- & \checkmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The Execution Pipeline}
+
+Regardless of the backend you choose, the front end is shared. The pipeline
+in \filename{src/main.c} looks like this:
+
+\begin{enumerate}
+  \item \textbf{Lex}: \lstinline|lexer_tokenize()| produces a vector of tokens.
+  \item \textbf{Parse}: \lstinline|parser_parse()| produces a \lstinline|Program|
+        (the AST).
+  \item \textbf{Phase check} (strict mode): \lstinline|phase_check()| validates
+        phase annotations.
+  \item \textbf{Match check}: \lstinline|check_match_exhaustiveness()| warns
+        about non-exhaustive matches.
+  \item \textbf{Execute}:
+    \begin{itemize}
+      \item Tree-walk: \lstinline|evaluator_run(ev, &prog)|
+      \item Stack VM: \lstinline|stack_compile(&prog, ...)| then
+            \lstinline|stackvm_run(&vm, chunk, ...)|
+      \item Register VM: \lstinline|reg_compile(&prog, ...)| then
+            \lstinline|regvm_run(&vm, chunk, ...)|
+    \end{itemize}
+\end{enumerate}
+
+\begin{tipbox}{Pre-Compiled Bytecode}
+You can skip steps 1--4 entirely by pre-compiling to \lstinline|.latc| or
+\lstinline|.rlat| files. We cover this in \cref{ch:bytecode-serialization}.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Performance Characteristics}\label{sec:backend-performance}
+\index{performance!backends}
+
+\subsection{Where the Time Goes}
+
+The three backends differ fundamentally in how they spend CPU cycles:
+
+\begin{description}
+  \item[Tree-walker:] dominated by pointer chasing (AST node traversal),
+    hash-map lookups for variable access, and C-level recursion overhead. Each
+    expression evaluation requires multiple function calls and dynamic dispatch
+    on node types.
+
+  \item[Stack VM:] dominated by the dispatch loop's opcode fetch-decode-execute
+    cycle. With computed gotos, the branch predictor handles the dispatch well,
+    but every operation still requires pushing to and popping from the value
+    stack---each a memory write and read.
+
+  \item[Register VM:] dominated by instruction decoding (bit shifts and masks)
+    and direct register access. Because operands are named in the instruction
+    itself, there is no push/pop overhead. The fixed-width encoding also means
+    the instruction pointer advances by a predictable amount, improving
+    prefetch behaviour.
+\end{description}
+
+\subsection{Microbenchmark: Fibonacci}
+
+A classic (if imperfect) benchmark is recursive Fibonacci:
+
+\begin{lstlisting}[language=Lattice, caption={Fibonacci benchmark}]
+fn fib(n: Int) -> Int {
+  if n <= 1 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+
+print(fib(35))
+\end{lstlisting}
+
+On a typical machine, the relative performance looks roughly like this:
+
+\begin{table}[h]
+\centering
+\caption{Relative Fibonacci performance (lower is better)}\label{tab:fib-perf}
+\begin{tabular}{@{} l r @{}}
+\toprule
+\textbf{Backend} & \textbf{Relative Time} \\
+\midrule
+Register VM & 1.0\texttimes \\
+Stack VM & 1.2--1.5\texttimes \\
+Tree-walk interpreter & 5--20\texttimes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The register VM wins because it avoids the stack VM's push/pop traffic and
+because its three-address instructions express the computation more densely.
+The tree-walker falls far behind due to per-node recursion and hash-map variable
+lookups.
+
+\begin{warnbox}{Benchmarks Are Not the Whole Story}
+Fibonacci is function-call heavy and computation heavy, which exaggerates the
+dispatch overhead difference. For I/O-bound programs (web servers, file
+processing), the backend difference may be negligible because the bottleneck
+is the operating system, not the VM.
+\end{warnbox}
+
+\subsection{Startup Time}
+
+The tree-walker has the lowest startup time: it runs immediately from the AST
+with no compilation step. The stack VM and register VM both pay a compilation
+cost before the first instruction executes. For small scripts (a few dozen
+lines), this compilation overhead can exceed the total execution time.
+
+If startup latency matters---say, for a CLI tool that runs and exits
+quickly---consider pre-compiling to bytecode (see
+\cref{ch:bytecode-serialization}).
+
+\subsection{Memory Usage}
+
+\begin{description}
+  \item[Tree-walker:] keeps the full AST in memory throughout execution, plus
+    the environment chain (hash maps). Memory usage scales with program size
+    and scope depth.
+
+  \item[Stack VM:] the AST is freed after compilation; only the bytecode chunks
+    and the value stack remain. The fixed-size value stack (4{,}096 slots) puts
+    a ceiling on per-frame memory, though deep recursion can exhaust it.
+
+  \item[Register VM:] uses a fixed register stack of 16{,}384 slots (256
+    registers $\times$ 64 frames). The 32-bit instructions use 4\texttimes\
+    more bytes per instruction than the stack VM's byte stream, but there are
+    typically \emph{fewer} instructions because three-address ops replace
+    sequences of push/pop operations.
+\end{description}
+
+\subsection{Which One Should You Choose?}
+
+For most users, the answer is: \textbf{use the default} (stack VM). It has
+the best balance of features, performance, and stability. It supports the
+interactive debugger, pre-compiled bytecode, garbage collection, and has been
+the most thoroughly tested backend since Lattice v0.2.
+
+Choose \lstinline|--regvm| when you have a compute-heavy workload and want
+maximum throughput. Choose \lstinline|--tree-walk| when you need memory
+profiling (\lstinline|--stats|) or you are debugging a language feature that
+is not yet implemented in the bytecode backends.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:backends-exercises}
+
+\begin{enumerate}
+  \item Write a Lattice program that computes the sum of integers from 1 to
+        1{,}000{,}000 using a \lstinline|for| loop. Run it with all three
+        backends and compare the execution times using your operating system's
+        time utility (e.g.\ \lstinline|time clat --regvm sum.lat|).
+
+  \item Modify the Fibonacci benchmark to use memoisation (store previously
+        computed values in a \lstinline|Map|). How does memoisation affect the
+        relative performance of the three backends? Why?
+
+  \item Using the \lstinline|--tree-walk --stats| flags, profile a program
+        that creates and freezes several structs. Examine the output to
+        understand how many freezes, deep clones, and scope pushes/pops
+        occurred.
+
+  \item Read the opcode listing in \cref{appB:opcode-reference}. Pick any
+        ``optimised'' stack VM opcode (like \lstinline|OP_ADD_INT| or
+        \lstinline|OP_INC_LOCAL|) and explain why a specialised opcode for
+        integers is faster than the generic \lstinline|OP_ADD|.
+
+  \item (Challenge) The register VM's \lstinline|RegChunk| stores a
+        \lstinline|max_reg| field. Why is this useful? What would happen if the
+        VM always initialised all 256 registers per frame?
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\vspace{1em}
+\noindent\textbf{What's Next}\quad
+Now that we know how Lattice code gets compiled and executed, the natural
+next question is: can we \emph{save} that compiled form to disk? In
+\cref{ch:bytecode-serialization}, we will explore the \lstinline|.latc| and
+\lstinline|.rlat| file formats, learn how to pre-compile programs for faster
+startup, and meet Lattice's self-hosted compiler.

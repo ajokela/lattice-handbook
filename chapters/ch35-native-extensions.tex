@@ -1,0 +1,488 @@
+\chapter{Native Extensions}\label{ch:native-extensions}
+
+\index{native extensions}
+\index{extensions}
+\index{.dylib}
+\index{.so}
+
+Lattice's standard library covers a broad range of tasks---files, networking, JSON, cryptography.
+But eventually you will hit a wall: a C library for image processing, a database driver, or a hardware interface that does not exist in pure Lattice.
+Native extensions bridge that gap.
+They let you write performance-critical or platform-specific code in C, compile it into a shared library, and call it seamlessly from Lattice.
+
+In this chapter we will learn the extension API, build an extension from scratch, survey the extensions that ship with Lattice, and understand how the runtime discovers and loads shared libraries.
+
+\section{The Extension API}\label{sec:ext-api}
+\index{extension API}
+\index{lattice\_ext.h}
+\index{lat\_ext\_init}
+\index{lat\_ext\_register}
+
+\subsection{The Contract}
+
+Every native extension is a shared library (\lstinline|.dylib| on macOS, \lstinline|.so| on Linux, \lstinline|.dll| on Windows) that exports exactly one symbol: \lstinline|lat_ext_init|.
+When Lattice loads your extension, it calls this function, passing an opaque \lstinline|LatExtContext|.
+Your job is to call \lstinline|lat_ext_register| to register each function you want to expose:
+
+\begin{defnbox}{Extension Initialization}
+Every Lattice extension must export a function with the signature
+\lstinline|void lat_ext_init(LatExtContext *ctx)|.
+Inside this function, call \lstinline|lat_ext_register(ctx, name, fn)| once for each function you want to make available to Lattice code.
+\end{defnbox}
+
+The entire public API lives in a single header: \filename{include/lattice\_ext.h}.
+Extensions compile against this header only---the internal \lstinline|LatValue| layout is hidden behind opaque \lstinline|LatExtValue| pointers, so your extension code never depends on Lattice internals.
+
+\subsection{Loading an Extension from Lattice}
+
+From Lattice code, you load an extension with \lstinline|require_ext()|:
+
+\begin{lstlisting}[language=Lattice, caption={Loading a native extension}]
+let db = require_ext("sqlite")
+
+let conn = db["open"]("my_database.db")
+let rows = db["query"](conn, "SELECT name, age FROM users WHERE age > ?", [21])
+
+for row in rows {
+  print("${row["name"]} is ${row["age"]} years old")
+}
+
+db["close"](conn)
+\end{lstlisting}
+
+The call \lstinline|require_ext("sqlite")| returns a \lstinline|Map| where each key is a function name (like \lstinline|"open"|, \lstinline|"query"|, \lstinline|"close"|) and each value is a callable native closure.
+You call these functions exactly like any other Lattice function.
+
+\begin{tipbox}{Map-Based Namespacing}
+Extensions return a \lstinline|Map| rather than injecting globals.
+This keeps the global namespace clean and makes it explicit which extension a function came from.
+If you prefer dot-syntax, you can assign the map to a variable and use bracket notation: \lstinline|db["query"](conn, sql)|.
+\end{tipbox}
+
+\subsection{The LatExtFn Signature}
+
+Every registered extension function has the same C signature:
+
+\begin{verbatim}
+  typedef LatExtValue *(*LatExtFn)(LatExtValue **args, size_t argc);
+\end{verbatim}
+
+The function receives an array of \lstinline|LatExtValue| pointers (one per argument) and the argument count.
+It returns a heap-allocated \lstinline|LatExtValue|, or \lstinline|NULL| to return \lstinline|nil|.
+
+Here is a minimal extension function:
+
+\begin{verbatim}
+  static LatExtValue *my_add(LatExtValue **args, size_t argc) {
+      if (argc < 2) return lat_ext_error("add() expects 2 arguments");
+      int64_t a = lat_ext_as_int(args[0]);
+      int64_t b = lat_ext_as_int(args[1]);
+      return lat_ext_int(a + b);
+  }
+\end{verbatim}
+
+\section{Value Constructors and Accessors}\label{sec:ext-values}
+\index{LatExtValue}
+\index{extension!value constructors}
+\index{extension!value accessors}
+
+The extension API provides a complete set of constructors and accessors for working with Lattice values from C.
+All values are wrapped in an opaque \lstinline|LatExtValue| pointer---you never touch raw \lstinline|LatValue| structs.
+
+\subsection{Constructors}
+
+\begin{table}[h]
+\centering
+\caption{Extension value constructors}\label{tab:ext-constructors}
+\begin{tabular}{@{} l l p{5.5cm} @{}}
+\toprule
+\textbf{Function} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|lat_ext_int(v)| & \lstinline|LatExtValue*| & Create an integer value \\
+\lstinline|lat_ext_float(v)| & \lstinline|LatExtValue*| & Create a float value \\
+\lstinline|lat_ext_bool(v)| & \lstinline|LatExtValue*| & Create a boolean value \\
+\lstinline|lat_ext_string(s)| & \lstinline|LatExtValue*| & Create a string (copies the input) \\
+\lstinline|lat_ext_nil()| & \lstinline|LatExtValue*| & Create a nil value \\
+\lstinline|lat_ext_array(elems, len)| & \lstinline|LatExtValue*| & Create an array from an element array \\
+\lstinline|lat_ext_map_new()| & \lstinline|LatExtValue*| & Create an empty map \\
+\lstinline|lat_ext_error(msg)| & \lstinline|LatExtValue*| & Create an error value (triggers a Lattice error) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All constructors return a heap-allocated \lstinline|LatExtValue*|.
+The Lattice runtime deep-clones the value when receiving it, so you do not need to worry about the original being freed.
+
+\begin{notebox}{Error Handling}
+Returning \lstinline|lat_ext_error("message")| from an extension function causes Lattice to raise a runtime error.
+The error message is available in \lstinline|try|/\lstinline|catch| blocks just like any other error.
+\end{notebox}
+
+\subsection{Type Queries}
+
+Before accessing a value's contents, check its type:
+
+\begin{verbatim}
+  LatExtType lat_ext_type(const LatExtValue *v);
+\end{verbatim}
+
+The \lstinline|LatExtType| enum includes: \lstinline|LAT_EXT_INT|, \lstinline|LAT_EXT_FLOAT|, \lstinline|LAT_EXT_BOOL|, \lstinline|LAT_EXT_STRING|, \lstinline|LAT_EXT_ARRAY|, \lstinline|LAT_EXT_MAP|, \lstinline|LAT_EXT_NIL|, and \lstinline|LAT_EXT_OTHER| for types not directly representable (like closures or structs).
+
+\subsection{Accessors}
+
+\begin{table}[h]
+\centering
+\caption{Extension value accessors}\label{tab:ext-accessors}
+\begin{tabular}{@{} l l p{5cm} @{}}
+\toprule
+\textbf{Function} & \textbf{Returns} & \textbf{Description} \\
+\midrule
+\lstinline|lat_ext_as_int(v)| & \lstinline|int64_t| & Extract integer value \\
+\lstinline|lat_ext_as_float(v)| & \lstinline|double| & Extract float value \\
+\lstinline|lat_ext_as_bool(v)| & \lstinline|bool| & Extract boolean value \\
+\lstinline|lat_ext_as_string(v)| & \lstinline|const char*| & Extract string pointer (borrowed) \\
+\lstinline|lat_ext_array_len(v)| & \lstinline|size_t| & Get array length \\
+\lstinline|lat_ext_array_get(v, i)| & \lstinline|LatExtValue*| & Get array element (deep clone) \\
+\lstinline|lat_ext_map_get(v, key)| & \lstinline|LatExtValue*| & Get map value by key \\
+\lstinline|lat_ext_map_set(m, k, v)| & \lstinline|void| & Set a map entry \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{warnbox}{Memory Management}
+Values returned by \lstinline|lat_ext_array_get| and \lstinline|lat_ext_map_get| are heap-allocated deep clones.
+You must call \lstinline|lat_ext_free(v)| on them when you are done.
+The string returned by \lstinline|lat_ext_as_string| is borrowed---do \emph{not} free it.
+\end{warnbox}
+
+\subsection{Cleanup}
+
+Always free extension values you create for intermediate use:
+
+\begin{verbatim}
+  void lat_ext_free(LatExtValue *v);
+\end{verbatim}
+
+The return value of your extension function is freed automatically by the runtime after it has been cloned into the VM's value space.
+But any intermediate values you create (e.g., when iterating over an array argument) must be freed by your code.
+
+
+\section{Building a .dylib/.so Extension}\label{sec:building-ext}
+\index{extension!building}
+\index{Makefile!extension}
+
+Let us build a complete extension from scratch.
+We will create a \lstinline|"math_extra"| extension that provides a fast integer exponentiation function.
+
+\subsection{Step 1: Write the C Code}
+
+Create a file called \lstinline|math_extra.c|:
+
+\begin{verbatim}
+  #include "lattice_ext.h"
+
+  void lat_ext_init(LatExtContext *ctx);
+
+  static LatExtValue *math_pow(LatExtValue **args, size_t argc) {
+      if (argc < 2)
+          return lat_ext_error("pow() expects 2 arguments");
+      if (lat_ext_type(args[0]) != LAT_EXT_INT ||
+          lat_ext_type(args[1]) != LAT_EXT_INT)
+          return lat_ext_error("pow() expects integer arguments");
+
+      int64_t base = lat_ext_as_int(args[0]);
+      int64_t exp  = lat_ext_as_int(args[1]);
+      int64_t result = 1;
+
+      for (int64_t i = 0; i < exp; i++) {
+          result *= base;
+      }
+      return lat_ext_int(result);
+  }
+
+  static LatExtValue *math_is_prime(LatExtValue **args, size_t argc) {
+      if (argc < 1)
+          return lat_ext_error("is_prime() expects 1 argument");
+      int64_t n = lat_ext_as_int(args[0]);
+      if (n < 2) return lat_ext_bool(false);
+      for (int64_t i = 2; i * i <= n; i++) {
+          if (n % i == 0) return lat_ext_bool(false);
+      }
+      return lat_ext_bool(true);
+  }
+
+  void lat_ext_init(LatExtContext *ctx) {
+      lat_ext_register(ctx, "pow",      math_pow);
+      lat_ext_register(ctx, "is_prime", math_is_prime);
+  }
+\end{verbatim}
+
+\subsection{Step 2: Write a Makefile}
+
+The build process is straightforward---compile the C file into a shared library, linking against the Lattice extension header:
+
+\begin{verbatim}
+  CC     = cc
+  CFLAGS = -std=c11 -Wall -Wextra -fPIC -I../../include
+
+  UNAME_S := $(shell uname -s)
+  ifeq ($(UNAME_S),Darwin)
+      SHARED_EXT = .dylib
+      SHARED_FLAGS = -dynamiclib -undefined dynamic_lookup
+  else
+      SHARED_EXT = .so
+      SHARED_FLAGS = -shared
+  endif
+
+  TARGET = math_extra$(SHARED_EXT)
+
+  all: $(TARGET)
+
+  $(TARGET): math_extra.c
+  	$(CC) $(CFLAGS) $(SHARED_FLAGS) -o $@ $<
+
+  install: $(TARGET)
+  	@mkdir -p $(HOME)/.lattice/ext
+  	cp $(TARGET) $(HOME)/.lattice/ext/
+
+  clean:
+  	rm -f $(TARGET)
+\end{verbatim}
+
+Key details:
+\begin{itemize}
+  \item \lstinline|-fPIC| generates position-independent code required for shared libraries.
+  \item \lstinline|-I../../include| points to the Lattice include directory where \filename{lattice\_ext.h} lives.
+  \item On macOS, \lstinline|-dynamiclib -undefined dynamic_lookup| creates a \lstinline|.dylib| that resolves Lattice symbols at load time (they are provided by the \lstinline|clat| binary).
+  \item On Linux, \lstinline|-shared| creates a \lstinline|.so|.
+\end{itemize}
+
+\subsection{Step 3: Build and Install}
+
+\begin{lstlisting}[language=Lattice, caption={Building and installing an extension}]
+// From the extension directory:
+// make
+// make install   (copies to ~/.lattice/ext/)
+\end{lstlisting}
+
+\subsection{Step 4: Use It from Lattice}
+
+\begin{lstlisting}[language=Lattice, caption={Using the math\_extra extension}]
+let math = require_ext("math_extra")
+
+print(math["pow"](2, 10))       // 1024
+print(math["pow"](3, 5))        // 243
+print(math["is_prime"](17))     // true
+print(math["is_prime"](100))    // false
+\end{lstlisting}
+
+\begin{tipbox}{Returning Compound Values}
+Extensions can return arrays and maps, not just scalars.
+Use \lstinline|lat_ext_map_new()| and \lstinline|lat_ext_map_set()| to build structured results---database rows, image metadata, or configuration objects.
+\end{tipbox}
+
+
+\section{Available Extensions}\label{sec:available-extensions}
+\index{extensions!available}
+
+Lattice ships with six extensions in the \filename{extensions/} directory.
+Each is a self-contained C project with its own \lstinline|Makefile|.
+
+\subsection{ffi --- Foreign Function Interface}
+\index{ffi extension}
+
+The FFI extension lets you call functions from arbitrary shared libraries at runtime---no C code required.
+It supports struct marshalling, callback trampolines, memory operations, and type signatures.
+
+\begin{lstlisting}[language=Lattice, caption={Using the FFI extension}]
+let ffi = require_ext("ffi")
+
+// Open the C math library
+let libm = ffi["open"]("/usr/lib/libm.dylib")
+
+// Define a function signature: takes double, returns double
+let sqrt_fn = ffi["sym"](libm, "sqrt", "d:d")
+
+// Call it
+let result = ffi["call"](sqrt_fn, 144.0)
+print(result) // 12.0
+
+ffi["close"](libm)
+\end{lstlisting}
+
+Core functions include \lstinline|open|, \lstinline|close|, \lstinline|sym|, \lstinline|call|, \lstinline|addr|, \lstinline|errno|, and \lstinline|strerror|.
+Struct marshalling is available via \lstinline|struct_define|, \lstinline|struct_alloc|, \lstinline|struct_get|, \lstinline|struct_set|, and \lstinline|struct_to_map|.
+Memory operations include \lstinline|alloc|, \lstinline|free|, \lstinline|read_i32|, \lstinline|write_i32|, and friends.
+
+\subsection{sqlite --- SQLite Database}
+\index{sqlite extension}
+
+A complete SQLite client with parameterized queries, transactions, and metadata:
+
+\begin{lstlisting}[language=Lattice, caption={Using the SQLite extension}]
+let db = require_ext("sqlite")
+
+let conn = db["open"]("app.db")
+db["exec"](conn, "CREATE TABLE IF NOT EXISTS users (name TEXT, age INT)")
+db["exec"](conn, "INSERT INTO users VALUES (?, ?)", ["Alice", 30])
+db["exec"](conn, "INSERT INTO users VALUES (?, ?)", ["Bob", 25])
+
+let rows = db["query"](conn, "SELECT * FROM users WHERE age > ?", [20])
+for row in rows {
+  print("${row["name"]}: ${row["age"]}")
+}
+// Alice: 30
+// Bob: 25
+
+db["close"](conn)
+\end{lstlisting}
+
+Functions: \lstinline|open|, \lstinline|close|, \lstinline|query|, \lstinline|exec|, \lstinline|status|, \lstinline|last_insert_rowid|.
+
+\subsection{pg --- PostgreSQL}
+\index{pg extension}
+
+A PostgreSQL client built on \lstinline|libpq|:
+
+\begin{lstlisting}[language=Lattice, caption={Using the PostgreSQL extension}]
+let pg = require_ext("pg")
+
+let conn = pg["connect"]("host=localhost dbname=myapp")
+let rows = pg["query"](conn, "SELECT id, email FROM accounts LIMIT 10")
+
+for row in rows {
+  print("${row["id"]}: ${row["email"]}")
+}
+
+pg["close"](conn)
+\end{lstlisting}
+
+\subsection{redis --- Redis Client}
+\index{redis extension}
+
+A minimal Redis client that implements the RESP protocol over raw TCP sockets---no external dependencies:
+
+\begin{lstlisting}[language=Lattice, caption={Using the Redis extension}]
+let redis = require_ext("redis")
+
+let conn = redis["connect"]("127.0.0.1", 6379)
+redis["set"](conn, "greeting", "Hello from Lattice!")
+let val = redis["get"](conn, "greeting")
+print(val) // Hello from Lattice!
+
+redis["incr"](conn, "counter")
+redis["incr"](conn, "counter")
+print(redis["get"](conn, "counter")) // 2
+
+redis["close"](conn)
+\end{lstlisting}
+
+Functions: \lstinline|connect|, \lstinline|close|, \lstinline|command|, \lstinline|get|, \lstinline|set|, \lstinline|del|, \lstinline|exists|, \lstinline|expire|, \lstinline|keys|, \lstinline|incr|, \lstinline|lpush|, \lstinline|lrange|, \lstinline|publish|, \lstinline|ping|.
+
+\subsection{image --- Image Metadata and Operations}
+\index{image extension}
+
+Reads image headers directly (PNG, JPEG, GIF, BMP, WebP) without external library dependencies.
+Uses macOS \lstinline|sips| for resize, convert, and thumbnail operations:
+
+\begin{lstlisting}[language=Lattice, caption={Using the image extension}]
+let img = require_ext("image")
+
+let info = img["info"]("photo.jpg")
+print("Format: ${info["format"]}")   // jpeg
+print("Size: ${info["width"]}x${info["height"]}")
+
+// Resize (macOS only, uses sips):
+img["resize"]("photo.jpg", 800, 600, "photo_small.jpg")
+\end{lstlisting}
+
+\subsection{websocket --- WebSocket Client and Server}
+\index{websocket extension}
+
+Implements RFC 6455 WebSocket framing with support for both client and server roles, ping/pong, fragmented messages, and timeouts:
+
+\begin{lstlisting}[language=Lattice, caption={Using the WebSocket extension}]
+let ws = require_ext("websocket")
+
+// Client connection
+let conn = ws["connect"]("ws://echo.websocket.org")
+ws["send"](conn, "Hello, WebSocket!")
+let response = ws["recv"](conn)
+print(response) // Hello, WebSocket!
+ws["close"](conn)
+\end{lstlisting}
+
+Functions include \lstinline|connect|, \lstinline|connect_auto| (auto-reconnect), \lstinline|listen|, \lstinline|accept|, \lstinline|send|, \lstinline|recv|, \lstinline|recv_timeout|, \lstinline|send_binary|, \lstinline|close|, \lstinline|status|, \lstinline|ping|, and \lstinline|set_timeout|.
+
+
+\section{Extension Search Paths}\label{sec:ext-search-paths}
+\index{extension!search paths}
+\index{LATTICE\_EXT\_PATH}
+
+When you call \lstinline|require_ext("name")|, the runtime searches for the shared library in the following order:
+
+\begin{enumerate}
+  \item \lstinline|./extensions/name.dylib| (or \lstinline|.so| or \lstinline|.dll|) --- the local project's extensions directory.
+  \item \lstinline|./extensions/name/name.dylib| --- a subdirectory within the local extensions directory (the default layout for extensions that ship with the repository).
+  \item \lstinline|~/.lattice/ext/name.dylib| --- the user's global extension directory.
+  \item \lstinline|$LATTICE_EXT_PATH/name.dylib| --- a custom path set via the \lstinline|LATTICE_EXT_PATH| environment variable.
+\end{enumerate}
+
+The first match wins. If no library is found, \lstinline|require_ext| raises an error listing all the paths that were searched.
+
+\begin{lstlisting}[language=Lattice, caption={Extension search path behavior}]
+// If you have an extension in your project:
+//   ./extensions/sqlite/sqlite.dylib   <-- found at path #2
+
+// If you installed globally:
+//   ~/.lattice/ext/sqlite.dylib        <-- found at path #3
+
+// If you set a custom path:
+//   LATTICE_EXT_PATH=/opt/lattice/ext clat my_program.lat
+//   /opt/lattice/ext/sqlite.dylib      <-- found at path #4
+\end{lstlisting}
+
+\begin{tipbox}{Global Installation}
+Each extension's \lstinline|Makefile| includes a \lstinline|make install| target that copies the built library to \lstinline|~/.lattice/ext/|. This makes the extension available to all your Lattice projects without copying files:
+\begin{verbatim}
+  cd extensions/sqlite && make && make install
+\end{verbatim}
+\end{tipbox}
+
+\subsection{Security Considerations}
+\index{extension!security}
+
+Native extensions execute arbitrary C code with full process permissions.
+The runtime validates that the extension name does not contain path separators (\lstinline|/| or \lstinline|\|) to prevent path traversal attacks, but it does not sandbox the loaded code.
+
+\begin{warnbox}{Trust Your Extensions}
+Only load extensions from sources you trust.
+A malicious extension has the same access as the Lattice process itself---it can read files, make network connections, or modify memory.
+\end{warnbox}
+
+\subsection{WASM Limitation}
+
+When Lattice is compiled to WebAssembly (via Emscripten), native extensions are not available.
+The \lstinline|require_ext| function returns an error explaining that dynamic loading is unsupported in the WASM environment.
+
+
+\section*{Exercises}
+
+\begin{enumerate}
+  \item Build the \lstinline|math_extra| extension described in \cref{sec:building-ext}. Load it from a Lattice program and verify that \lstinline|pow(2, 20)| returns \lstinline|1048576|.
+
+  \item Add a \lstinline|gcd| function to the \lstinline|math_extra| extension that computes the greatest common divisor of two integers using Euclid's algorithm. Register it in \lstinline|lat_ext_init| and test it from Lattice.
+
+  \item Write an extension function that accepts a Lattice array of strings and returns them sorted alphabetically using C's \lstinline|qsort|. Use \lstinline|lat_ext_array_len|, \lstinline|lat_ext_array_get|, and \lstinline|lat_ext_as_string| to extract the strings, sort them, and return a new array via \lstinline|lat_ext_array|.
+
+  \item The extension API uses opaque \lstinline|LatExtValue| pointers to hide the internal \lstinline|LatValue| layout. What are the advantages of this design over exposing the raw struct? What are the disadvantages (hint: think about performance)?
+
+  \item (Challenge) Write an extension that wraps a third-party C library of your choice (e.g., \lstinline|zlib| for compression, \lstinline|curl| for HTTP requests). Include proper error handling for all failure cases.
+\end{enumerate}
+
+\bigskip
+\begin{center}\rule{0.5\linewidth}{0.4pt}\end{center}
+
+\textbf{What's Next}\quad
+We have seen how to extend Lattice with C code. But Lattice also provides powerful tools for inspecting and manipulating programs from \emph{within} the language itself.
+In \cref{ch:metaprogramming}, we explore runtime code introspection, the \lstinline|tokenize()| function, struct reflection, and the dynamic features that make Lattice a surprisingly flexible metaprogramming platform.

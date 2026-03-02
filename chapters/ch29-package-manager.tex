@@ -1,0 +1,764 @@
+\chapter{The Package Manager}\label{ch:package-manager}
+
+\index{package manager}\index{clat!package manager}
+
+In the previous chapter, we learned how to split our own code across modules and import them.
+But programming does not happen in isolation.
+Eventually, you will want to use a library someone else wrote---a JSON schema validator, a CLI argument parser, a color formatting toolkit.
+That is where the package manager comes in.
+
+Lattice's package manager is built directly into \texttt{clat}\index{clat}, the same binary you use to run programs.
+There is no separate tool to install, no Node.js-style global package manager that updates independently from the language.
+Everything lives in one place: your manifest, your lock file, and a \filename{lat\_modules/}\index{lat\_modules} directory that works much like you would expect if you have used \texttt{npm} or \texttt{cargo}.
+
+Let's start by creating a project.
+
+%% ───────────────────────────────────────────────────────────
+\section{Initializing a Project with \texttt{clat init}}\label{sec:clat-init}
+\index{clat init}\index{lattice.toml!creating}
+
+Every managed Lattice project begins with a \filename{lattice.toml}\index{lattice.toml} file.
+You can create one by hand, but the fastest way is:
+
+\begin{lstlisting}[language=bash, numbers=none]
+mkdir weather-app && cd weather-app
+clat init
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Created lattice.toml
+\end{lstlisting}
+
+Open the generated file and you will see:
+
+\begin{lstlisting}[language=bash, numbers=none, caption={A freshly generated lattice.toml}]
+[package]
+name = "weather-app"
+version = "0.1.0"
+\end{lstlisting}
+
+Three things to notice:
+
+\begin{enumerate}
+  \item The \texttt{name} is derived from the current directory name.
+  \item The \texttt{version} starts at \texttt{0.1.0}, following semantic versioning conventions.
+  \item There is no explicit \texttt{entry} field---when omitted, Lattice defaults to \filename{main.lat} as the entry point.
+\end{enumerate}
+
+If you run \lstinline|clat init| in a directory that already has a \filename{lattice.toml}, it refuses and prints an error.
+It will never overwrite an existing manifest.
+
+\begin{tipbox}{Custom Entry Points}
+If your project's main file is not called \filename{main.lat}, add an \texttt{entry} field to the \texttt{[package]} section:
+
+\begin{lstlisting}[language=bash, numbers=none]
+[package]
+name = "weather-app"
+version = "0.1.0"
+entry = "src/app.lat"
+\end{lstlisting}
+
+This tells both the package manager and importers where to find the project's primary module.
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{The \texttt{lattice.toml} Manifest}\label{sec:lattice-toml}
+\index{lattice.toml}\index{manifest}
+
+The \filename{lattice.toml} file is the single source of truth for your project's metadata and dependencies.
+It uses TOML\index{TOML} syntax---the same format Rust uses for \texttt{Cargo.toml} and Python uses for \texttt{pyproject.toml}.
+
+Here is a complete manifest for a project with dependencies:
+
+\begin{lstlisting}[language=bash, numbers=none, caption={A lattice.toml with metadata and dependencies}]
+[package]
+name = "weather-app"
+version = "1.2.0"
+description = "A weather monitoring application"
+license = "MIT"
+entry = "main.lat"
+
+[dependencies]
+http-client = "^1.0.0"
+json-schema = "~0.3.2"
+cli-args = "2.1.0"
+color-fmt = "*"
+\end{lstlisting}
+
+\subsection{The \texttt{[package]} Section}\label{subsec:package-section}
+\index{lattice.toml!package section}
+
+The \texttt{[package]} table contains your project's metadata:
+
+\begin{table}[h]
+\centering
+\caption{Fields in the \texttt{[package]} section}\label{tab:package-fields}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Field} & \textbf{Required} & \textbf{Description} \\
+\midrule
+\texttt{name}        & Yes & The package name (derived from directory by \texttt{clat init}) \\
+\texttt{version}     & Yes & Semantic version string (e.g., \texttt{"1.2.3"}) \\
+\texttt{description} & No  & A short description of the package \\
+\texttt{license}     & No  & SPDX license identifier (e.g., \texttt{"MIT"}, \texttt{"Apache-2.0"}) \\
+\texttt{entry}       & No  & Entry point file (defaults to \texttt{"main.lat"}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The \texttt{[dependencies]} Section}\label{subsec:dependencies-section}
+\index{lattice.toml!dependencies}\index{dependencies}
+
+The \texttt{[dependencies]} table maps package names to version constraints.
+Each key is a package name, and each value is a string specifying which versions are acceptable:
+
+\begin{lstlisting}[language=bash, numbers=none]
+[dependencies]
+http-client = "^1.0.0"
+json-schema = "~0.3.2"
+cli-args = "2.1.0"
+color-fmt = "*"
+\end{lstlisting}
+
+We will break down what those version strings mean in \cref{sec:semver}.
+
+%% ───────────────────────────────────────────────────────────
+\section{Adding, Removing, and Installing Packages}\label{sec:add-remove-install}
+\index{clat add}\index{clat remove}\index{clat install}
+
+The package manager provides three commands for managing dependencies.
+
+\subsection{\texttt{clat add}}\label{subsec:clat-add}
+\index{clat add}
+
+To add a dependency to your project:
+
+\begin{lstlisting}[language=bash, numbers=none]
+clat add http-client ^1.0.0
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Added http-client@^1.0.0 to dependencies
+  Installing http-client@^1.0.0... ok
+
+All dependencies installed.
+\end{lstlisting}
+
+This does two things:
+
+\begin{enumerate}
+  \item Adds \lstinline|http-client = "^1.0.0"| to the \texttt{[dependencies]} section of your \filename{lattice.toml}.
+  \item Runs \texttt{clat install} to fetch and install the package.
+\end{enumerate}
+
+If you omit the version constraint, it defaults to \lstinline|"*"| (any version):
+
+\begin{lstlisting}[language=bash, numbers=none]
+clat add color-fmt
+\end{lstlisting}
+
+If the package is already a dependency, \texttt{clat add} updates its version constraint instead of adding a duplicate.
+
+\begin{notebox}{No \texttt{lattice.toml} Yet?}
+If you run \texttt{clat add} before running \texttt{clat init}, the package manager creates a minimal \filename{lattice.toml} for you automatically, deriving the package name from the current directory.
+You do not need a separate initialization step if you start by adding dependencies.
+\end{notebox}
+
+\subsection{\texttt{clat install}}\label{subsec:clat-install}
+\index{clat install}
+
+To install all dependencies listed in your manifest:
+
+\begin{lstlisting}[language=bash, numbers=none]
+clat install
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+  Installing http-client@^1.0.0... ok
+  Installing json-schema@~0.3.2... ok
+  Installing cli-args@2.1.0... ok
+  Installing color-fmt@*... ok
+
+All dependencies installed.
+\end{lstlisting}
+
+For each dependency, the installer follows this resolution strategy:
+
+\begin{enumerate}
+  \item \textbf{Check \texttt{lat\_modules/}.}\index{lat\_modules}
+  If the package directory already exists, verify that the installed version satisfies the constraint.
+  If it does, skip the download.
+
+  \item \textbf{Check the lock file.}
+  If \filename{lattice.lock}\index{lattice.lock} exists, prefer the locked version (as long as it still satisfies the manifest constraint).
+  This ensures reproducible builds.
+
+  \item \textbf{Check the local file registry.}
+  If the \texttt{LATTICE\_REGISTRY}\index{LATTICE\_REGISTRY} environment variable is set to a \lstinline|file://| URL, try copying the package from that directory.
+
+  \item \textbf{Fetch from the HTTP registry.}\index{registry}
+  Query the registry for available versions, find the best match, download it to the global cache, and copy it into \filename{lat\_modules/}.
+\end{enumerate}
+
+After all dependencies are installed, \texttt{clat install} builds a dependency graph\index{dependency graph} and checks for circular dependencies\index{circular dependencies}.
+If a cycle is detected, it reports the full cycle path and fails:
+
+\begin{lstlisting}[language=bash, numbers=none]
+error: circular dependency detected: alpha -> beta -> gamma -> alpha
+\end{lstlisting}
+
+Finally, it writes (or updates) the \filename{lattice.lock} file.
+
+\subsection{\texttt{clat remove}}\label{subsec:clat-remove}
+\index{clat remove}
+
+To remove a dependency:
+
+\begin{lstlisting}[language=bash, numbers=none]
+clat remove color-fmt
+\end{lstlisting}
+
+Output:
+
+\begin{lstlisting}[language=bash, numbers=none]
+Removed color-fmt
+\end{lstlisting}
+
+This does three things:
+
+\begin{enumerate}
+  \item Removes the package from \filename{lattice.toml}.
+  \item Deletes \filename{lat\_modules/color-fmt/} from disk.
+  \item Removes the entry from \filename{lattice.lock}.
+\end{enumerate}
+
+If the package is not listed as a dependency, \texttt{clat remove} prints an error and does nothing.
+
+%% ───────────────────────────────────────────────────────────
+\section{Semantic Versioning and Dependency Resolution}\label{sec:semver}
+\index{semantic versioning}\index{semver}
+
+Lattice uses semantic versioning (semver) for all version strings.
+A version has three numeric components:
+
+\begin{defnbox}{Semantic Version}
+\index{semver!definition}
+A version string \texttt{MAJOR.MINOR.PATCH} communicates intent:
+
+\begin{itemize}[nosep]
+  \item \textbf{MAJOR} --- incremented for breaking, incompatible changes.
+  \item \textbf{MINOR} --- incremented for backward-compatible new features.
+  \item \textbf{PATCH} --- incremented for backward-compatible bug fixes.
+\end{itemize}
+
+For example, \texttt{2.3.1} means major version 2, minor version 3, patch level 1.
+\end{defnbox}
+
+\subsection{Version Constraints}\label{subsec:version-constraints}
+\index{semver!constraints}\index{version constraints}
+
+When you list a dependency in \filename{lattice.toml}, the version string is a \emph{constraint}, not an exact version.
+Lattice supports six constraint types:
+
+\begin{table}[h]
+\centering
+\caption{Semver constraint types}\label{tab:semver-constraints}
+\begin{tabular}{@{}llp{7cm}@{}}
+\toprule
+\textbf{Syntax} & \textbf{Name} & \textbf{Meaning} \\
+\midrule
+\texttt{"*"}       & Wildcard & Any version. Useful during early development. \\
+\texttt{"1.2.3"}   & Exact    & Exactly version 1.2.3 and nothing else. \\
+\texttt{"\^{}1.2.3"} & Caret (Compatible) & Same major version, at least 1.2.3. Matches \texttt{1.2.3}, \texttt{1.3.0}, \texttt{1.99.0}, but not \texttt{2.0.0}. \\
+\texttt{"\~{}1.2.3"} & Tilde (Approximate) & Same major \emph{and} minor version, at least patch 3. Matches \texttt{1.2.3}, \texttt{1.2.9}, but not \texttt{1.3.0}. \\
+\texttt{">=1.2.3"} & Minimum  & Version 1.2.3 or newer. No upper bound. \\
+\texttt{"<=1.2.3"} & Maximum  & Version 1.2.3 or older. No lower bound. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Caret vs.\ Tilde}\label{subsec:caret-vs-tilde}
+\index{semver!caret}\index{semver!tilde}
+
+The most commonly used constraints are caret (\texttt{\^{}}) and tilde (\texttt{\~{}}).
+Here is how they differ in practice:
+
+\begin{lstlisting}[language=bash, numbers=none, caption={Caret vs.\ tilde constraints}]
+# Caret: ^1.2.3
+#   Allows: 1.2.3, 1.2.4, 1.3.0, 1.99.0
+#   Blocks: 2.0.0 (different major)
+
+# Tilde: ~1.2.3
+#   Allows: 1.2.3, 1.2.4, 1.2.99
+#   Blocks: 1.3.0 (different minor)
+\end{lstlisting}
+
+\textbf{When to use caret:} You trust the package author to maintain backward compatibility within a major version.
+This is the default choice for most dependencies.
+
+\textbf{When to use tilde:} You want only bug fixes for a specific feature set.
+This is more conservative and useful when a minor version introduced a behavior you depend on.
+
+\begin{tipbox}{Default to Caret}
+If you are unsure which constraint to use, start with caret (\texttt{\^{}}).
+It gives package authors room to ship new features without breaking your code, while still protecting you from major-version breaking changes.
+\end{tipbox}
+
+\subsection{How Resolution Works}\label{subsec:resolution-algorithm}
+\index{dependency resolution}
+
+When \texttt{clat install} needs to resolve a version constraint, it follows this process:
+
+\begin{enumerate}
+  \item \textbf{Query the registry}\index{registry} for all published versions of the package.
+  The registry endpoint is \texttt{GET /packages/\textlangle{}name\textrangle{}/versions}, which returns a JSON array.
+
+  \item \textbf{Filter} the version list against the constraint using \lstinline|pkg_semver_satisfies()| (implemented in \filename{src/package.c}).
+
+  \item \textbf{Select the highest} matching version.
+  Lattice always prefers the newest compatible version, following the common ``maximal version'' strategy.
+\end{enumerate}
+
+For example, if the registry has versions \texttt{[1.0.0, 1.1.0, 1.2.0, 2.0.0]} and your constraint is \texttt{\^{}1.0.0}, the resolver picks \texttt{1.2.0}---the highest version that shares the same major version.
+
+%% ───────────────────────────────────────────────────────────
+\section{The Lock File and Reproducible Builds}\label{sec:lock-file}
+\index{lattice.lock}\index{lock file}\index{reproducible builds}
+
+Every time \texttt{clat install} succeeds, it writes a \filename{lattice.lock} file.
+This file records the \emph{exact} versions that were installed, so that future installs produce identical results.
+
+\subsection{What the Lock File Looks Like}\label{subsec:lock-format}
+\index{lattice.lock!format}
+
+\begin{lstlisting}[language=bash, numbers=none, caption={A typical lattice.lock}]
+# This file is auto-generated by clat. Do not edit manually.
+
+[[package]]
+name = "http-client"
+version = "1.2.0"
+source = "registry"
+checksum = ""
+
+[[package]]
+name = "json-schema"
+version = "0.3.5"
+source = "registry"
+checksum = ""
+
+[[package]]
+name = "cli-args"
+version = "2.1.0"
+source = "local"
+checksum = ""
+\end{lstlisting}
+
+Each \texttt{[[package]]}\index{lattice.lock!package entry} entry records:
+
+\begin{itemize}[nosep]
+  \item \textbf{\texttt{name}} --- the package name.
+  \item \textbf{\texttt{version}} --- the exact resolved version.
+  \item \textbf{\texttt{source}} --- where the package came from: \texttt{"registry"} (HTTP registry), \texttt{"local"} (already in \filename{lat\_modules/}), or \texttt{"path"} (file-based registry).
+  \item \textbf{\texttt{checksum}} --- a SHA-256 hash for integrity verification (reserved for future use).
+\end{itemize}
+
+\subsection{How the Lock File Ensures Reproducibility}\label{subsec:lock-reproducibility}
+
+When \texttt{clat install} finds an existing \filename{lattice.lock}, it prefers the locked version for each dependency---\emph{as long as it still satisfies the constraint in \filename{lattice.toml}}.
+This means:
+
+\begin{itemize}
+  \item \textbf{Same machine, next week:} Running \lstinline|clat install| again installs the same versions, even if newer versions have been published.
+
+  \item \textbf{Different machine, same lock file:} A teammate clones your repository, runs \lstinline|clat install|, and gets the exact same dependency versions.
+
+  \item \textbf{Updating the constraint:} If you change a version constraint in \filename{lattice.toml} so that the locked version no longer satisfies it, the next \lstinline|clat install| fetches a new version and updates the lock file.
+\end{itemize}
+
+\begin{warnbox}{Commit Your Lock File}
+Always commit \filename{lattice.lock} to version control.
+This is how you guarantee reproducible builds across machines and over time.
+The \filename{lat\_modules/} directory, on the other hand, should be in your \filename{.gitignore}---it can always be reconstructed from the lock file.
+\end{warnbox}
+
+\subsection{When Lock Entries Are Updated}\label{subsec:lock-updates}
+
+The lock file is regenerated in these situations:
+
+\begin{enumerate}
+  \item \texttt{clat install} runs and resolves new or changed dependencies.
+  \item \texttt{clat add} adds a new dependency and triggers an install.
+  \item \texttt{clat remove} removes a dependency and strips its entry from the lock file.
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section{The Package Registry and Cache}\label{sec:registry-cache}
+\index{registry}\index{package cache}
+
+\subsection{The Lattice Registry}\label{subsec:registry}
+\index{registry!HTTP}
+
+Lattice's default package registry\index{registry!default} lives at:
+
+\begin{lstlisting}[language=bash, numbers=none]
+https://registry.lattice-lang.org/v1
+\end{lstlisting}
+
+The package manager communicates with the registry using two HTTP endpoints:
+
+\begin{table}[h]
+\centering
+\caption{Registry API endpoints}\label{tab:registry-endpoints}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Endpoint} & \textbf{Purpose} \\
+\midrule
+\texttt{GET /packages/\textlangle{}name\textrangle{}/versions} & List available versions (JSON) \\
+\texttt{GET /packages/\textlangle{}name\textrangle{}/\textlangle{}version\textrangle{}} & Download package source \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The versions endpoint returns JSON like \lstinline|\{"versions":["1.0.0","1.1.0","2.0.0"]\}|.
+The download endpoint returns either a single \texttt{main.lat} file or a TOML bundle, depending on the package.
+
+\subsection{Overriding the Registry}\label{subsec:registry-override}
+\index{LATTICE\_REGISTRY}\index{registry!override}
+
+You can point the package manager at a different registry using the \texttt{LATTICE\_REGISTRY} environment variable:
+
+\begin{lstlisting}[language=bash, numbers=none]
+# Use a private registry
+export LATTICE_REGISTRY=https://packages.mycompany.com/v1
+clat install
+
+# Use a local directory as a registry (great for testing)
+export LATTICE_REGISTRY=file:///home/user/my-packages
+clat install
+\end{lstlisting}
+
+The \lstinline|file://| protocol is particularly useful for development.
+If you set \lstinline|LATTICE_REGISTRY=file:///path/to/packages|, the package manager copies packages directly from that directory into \filename{lat\_modules/} without any HTTP requests.
+
+\subsection{The Global Package Cache}\label{subsec:global-cache}
+\index{package cache!global}\index{\textasciitilde/.lattice/packages}
+
+When a package is downloaded from the registry, it is stored in a global cache before being copied into your project's \filename{lat\_modules/}:
+
+\begin{lstlisting}[language=bash, numbers=none]
+~/.lattice/packages/<name>/<version>/
+\end{lstlisting}
+
+For example, \texttt{http-client} version \texttt{1.2.0} would be cached at:
+
+\begin{lstlisting}[language=bash, numbers=none]
+~/.lattice/packages/http-client/1.2.0/
+\end{lstlisting}
+
+The next time any project on your machine needs that same package at that same version, the package manager copies it from the cache instead of downloading it again.
+You will see the message \texttt{(cached http-client@1.2.0)} in the install output when this happens.
+
+\begin{tipbox}{Clearing the Cache}
+If you ever need to force a fresh download, delete the cached package directory:
+
+\begin{lstlisting}[language=bash, numbers=none]
+rm -rf ~/.lattice/packages/http-client/1.2.0
+clat install
+\end{lstlisting}
+
+Or clear the entire cache:
+
+\begin{lstlisting}[language=bash, numbers=none]
+rm -rf ~/.lattice/packages
+\end{lstlisting}
+\end{tipbox}
+
+\subsection{The \texttt{lat\_modules/} Directory}\label{subsec:lat-modules-dir}
+\index{lat\_modules!structure}
+
+After installation, your project's dependency tree lives in \filename{lat\_modules/}:
+
+\begin{lstlisting}[language=bash, numbers=none]
+my-project/
+  lattice.toml
+  lattice.lock
+  main.lat
+  lat_modules/
+    http-client/
+      lattice.toml
+      main.lat
+    json-schema/
+      lattice.toml
+      src/
+        main.lat
+    cli-args/
+      lattice.toml
+      main.lat
+\end{lstlisting}
+
+Each package directory contains at minimum a \filename{lattice.toml} and one or more \filename{.lat} source files.
+The module resolution system (described in \cref{sec:module-resolution}) knows how to find the entry point for each package.
+
+To use an installed package in your code, import it by its package name:
+
+\begin{lstlisting}[language=Lattice, caption={Importing installed packages}]
+import "http-client" as http
+import { validate } from "json-schema"
+import "cli-args" as args
+
+let response = http.get("https://api.weather.gov/points/44.9,-93.2")
+let data = validate(response.body, schema)
+\end{lstlisting}
+
+The import system tries the built-in modules first, then falls back to \filename{lat\_modules/}---exactly as described in \cref{sec:module-resolution}.
+
+%% ───────────────────────────────────────────────────────────
+\section{Dependency Graphs and Cycle Detection}\label{sec:dep-graph}
+\index{dependency graph}\index{circular dependencies}
+
+When packages depend on other packages, those dependencies form a directed graph.
+Lattice builds this graph after installation and checks it for cycles.
+
+\subsection{How the Graph Is Built}\label{subsec:graph-construction}
+
+The dependency graph is constructed by reading each installed package's \filename{lattice.toml}:
+
+\begin{enumerate}
+  \item Your project is the root node.
+  \item Each of your direct dependencies becomes a node with an edge from the root.
+  \item For each dependency, the package manager reads \emph{its} \filename{lattice.toml} and adds edges for its dependencies.
+  \item This continues via breadth-first search\index{breadth-first search} until all transitive dependencies have been discovered.
+\end{enumerate}
+
+For example, if your project depends on \texttt{alpha}, and \texttt{alpha} depends on \texttt{beta} and \texttt{gamma}, the graph looks like:
+
+\begin{center}
+\begin{tikzpicture}[
+  node distance=1.8cm,
+  every node/.style={draw, rounded corners, fill=purple!5, minimum width=2cm, minimum height=0.7cm, font=\small},
+  arrow/.style={-{Stealth[length=3mm]}, thick, color=latticepurple}
+]
+  \node (root) {my-project};
+  \node (alpha) [below=of root] {alpha};
+  \node (beta) [below left=of alpha] {beta};
+  \node (gamma) [below right=of alpha] {gamma};
+
+  \draw[arrow] (root) -- (alpha);
+  \draw[arrow] (alpha) -- (beta);
+  \draw[arrow] (alpha) -- (gamma);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Cycle Detection}\label{subsec:cycle-detection}
+\index{circular dependencies!detection}
+
+Circular dependencies---where \texttt{A} depends on \texttt{B}, \texttt{B} depends on \texttt{C}, and \texttt{C} depends on \texttt{A}---are a serious problem.
+They make it impossible to determine a safe installation and loading order.
+
+Lattice detects cycles using a depth-first search (DFS)\index{depth-first search} algorithm.
+Each node is colored during traversal:
+
+\begin{itemize}[nosep]
+  \item \textbf{White}: not yet visited.
+  \item \textbf{Gray}: currently being explored (on the DFS stack).
+  \item \textbf{Black}: fully explored (all descendants processed).
+\end{itemize}
+
+If the DFS encounters a gray node---meaning we have followed a path back to a node that is still being explored---a cycle has been found.
+The algorithm then traces back through the DFS stack to produce a human-readable cycle path:
+
+\begin{lstlisting}[language=bash, numbers=none]
+error: circular dependency detected: alpha -> beta -> gamma -> alpha
+\end{lstlisting}
+
+You can see this implementation in \filename{src/package.c}, in the \lstinline|dfs_visit()| and \lstinline|pkg_dep_graph_has_cycle()| functions.
+
+\begin{warnbox}{Circular Dependencies Are Fatal}
+If a circular dependency is detected, \texttt{clat install} fails and does not write a lock file.
+You must resolve the cycle---typically by refactoring one of the packages to remove the circular relationship---before installation can succeed.
+\end{warnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Under the Hood: The Install Pipeline}\label{sec:install-pipeline}
+\index{clat install!internals}
+
+For readers who want the full picture, here is what happens when you run \texttt{clat install}, step by step.
+
+\begin{enumerate}
+  \item \textbf{Read \filename{lattice.toml}.}
+  Parse the TOML into a \lstinline|PkgManifest| structure containing the project metadata and dependency list.
+  If the file does not exist, print an error suggesting \texttt{clat init}.
+
+  \item \textbf{Check for an existing lock file.}
+  If \filename{lattice.lock} exists, parse it into a \lstinline|PkgLock| structure.
+  The locked versions will be preferred during resolution.
+
+  \item \textbf{Create \filename{lat\_modules/}.}
+  If the directory does not exist, create it.
+
+  \item \textbf{Resolve each dependency.}
+  For each entry in \texttt{[dependencies]}:
+  \begin{itemize}[nosep]
+    \item If the lock file has an entry for this package, and the locked version satisfies the manifest constraint, use the locked version.
+    \item Check if \filename{lat\_modules/\textlangle{}name\textrangle{}} already exists. If so, verify its version.
+    \item If not installed: try a \lstinline|file://| registry (if configured), then fall back to the HTTP registry.
+    \item On the HTTP registry: query available versions, select the best match, check the global cache (\filename{\textasciitilde/.lattice/packages/}), download if needed, copy to \filename{lat\_modules/}.
+  \end{itemize}
+
+  \item \textbf{Build the dependency graph.}
+  Read each installed package's \filename{lattice.toml} to discover transitive dependencies.
+  Construct a directed graph using BFS\@.
+
+  \item \textbf{Check for cycles.}
+  Run DFS-based cycle detection on the graph.
+  If a cycle is found, report it and abort.
+
+  \item \textbf{Write \filename{lattice.lock}.}
+  Serialize the resolved versions, sources, and checksums to TOML\@.
+\end{enumerate}
+
+\begin{notebox}{Flat Installation}
+\index{flat installation}
+Lattice uses a \emph{flat} dependency layout: all packages live directly under \filename{lat\_modules/}, not nested inside each other.
+This means that if two packages depend on the same third package, there is only one copy.
+The trade-off is that version conflicts between transitive dependencies are not yet automatically resolved---this is a known limitation that will be addressed in a future version of the package manager.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:package-workflow}
+
+Let's walk through a complete workflow from project creation to running with dependencies.
+
+\begin{lstlisting}[language=bash, numbers=none, caption={Complete project workflow}]
+# Create a new project
+mkdir sensor-dashboard && cd sensor-dashboard
+clat init
+
+# Add dependencies
+clat add json-utils ^1.0.0
+clat add http-server ^0.5.0
+clat add template-engine ~2.1.0
+\end{lstlisting}
+
+Your \filename{lattice.toml} now looks like:
+
+\begin{lstlisting}[language=bash, numbers=none]
+[package]
+name = "sensor-dashboard"
+version = "0.1.0"
+
+[dependencies]
+json-utils = "^1.0.0"
+http-server = "^0.5.0"
+template-engine = "~2.1.0"
+\end{lstlisting}
+
+Write your application:
+
+\begin{lstlisting}[language=Lattice, caption={main.lat --- using installed packages}]
+import "json-utils" as json
+import "http-server" as server
+import { render } from "template-engine"
+
+import "sensors/temperature" as temp
+import "sensors/humidity" as humid
+
+fn handle_dashboard(req: any) -> any {
+    let readings = [
+        temp.read_sensor(),
+        humid.read_sensor()
+    ]
+    let body = render("dashboard.html", json.stringify(readings))
+    return server.response(200, body)
+}
+
+let app = server.create(8080)
+server.route(app, "/", handle_dashboard)
+server.start(app)
+print("Dashboard running on http://localhost:8080")
+\end{lstlisting}
+
+Notice how third-party packages (from \filename{lat\_modules/}) and your own modules (from \filename{sensors/}) are imported with the same syntax.
+The module system handles the resolution transparently.
+
+Run the program:
+
+\begin{lstlisting}[language=bash, numbers=none]
+clat main.lat
+\end{lstlisting}
+
+Share the project with a colleague:
+
+\begin{lstlisting}[language=bash, numbers=none]
+# In .gitignore:
+lat_modules/
+
+# Commit everything else:
+git add lattice.toml lattice.lock main.lat sensors/
+git commit -m "Initial sensor dashboard"
+git push
+\end{lstlisting}
+
+When your colleague clones the repository, they run:
+
+\begin{lstlisting}[language=bash, numbers=none]
+clat install
+clat main.lat
+\end{lstlisting}
+
+The lock file ensures they get the exact same dependency versions you used.
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch29-exercises}
+
+\begin{enumerate}
+  \item \textbf{Initialize and explore.}
+  Run \lstinline|clat init| in a new directory.
+  Examine the generated \filename{lattice.toml}.
+  Try running \lstinline|clat init| again---what happens?
+  Now manually add a \texttt{description} and \texttt{license} field to the manifest.
+
+  \item \textbf{Semver reasoning.}
+  Given the available versions \texttt{[1.0.0, 1.1.0, 1.2.3, 1.3.0, 2.0.0, 2.1.0]}, which version does each constraint select?
+  \begin{itemize}[nosep]
+    \item \lstinline|"*"|
+    \item \lstinline|"^1.1.0"|
+    \item \lstinline|"~1.2.0"|
+    \item \lstinline|">=1.3.0"|
+    \item \lstinline|"<=1.2.3"|
+    \item \lstinline|"1.2.3"|
+  \end{itemize}
+
+  \item \textbf{Local file registry.}
+  Create a directory called \filename{my-registry} containing a subdirectory \filename{greetings} with a \filename{main.lat} that exports a \lstinline|hello| function.
+  Set \lstinline|LATTICE_REGISTRY=file:///path/to/my-registry| and run \lstinline|clat add greetings|.
+  Verify that the package appears in \filename{lat\_modules/} and can be imported.
+
+  \item \textbf{Lock file investigation.}
+  Add a dependency with a caret constraint.
+  Examine the generated \filename{lattice.lock}.
+  Change the version constraint in \filename{lattice.toml} to a tilde constraint for the same minor version.
+  Run \lstinline|clat install| again.
+  Does the lock file change?
+  Why or why not?
+
+  \item \textbf{Circular dependency detection.}
+  Create three packages (\filename{alpha}, \filename{beta}, \filename{gamma}) in a local file registry.
+  Make \texttt{alpha} depend on \texttt{beta}, \texttt{beta} depend on \texttt{gamma}, and \texttt{gamma} depend on \texttt{alpha}.
+  Create a project that depends on \texttt{alpha} and run \lstinline|clat install|.
+  Observe the error message.
+  Then fix the cycle by removing one of the dependency edges and verify that the install succeeds.
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section*{What's Next}
+
+With modules, imports, and packages under your belt, you have everything you need to build and share Lattice projects of any size.
+But writing code is only half the story---maintaining it is the other half.
+In \cref{ch:formatter-docgen}, we will explore Lattice's built-in code formatter and documentation generator, tools that help keep your codebase consistent and well-documented as it grows.

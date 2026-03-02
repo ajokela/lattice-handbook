@@ -1,0 +1,589 @@
+\chapter{Opcode Reference}\label{ch:opcode-reference}
+
+This appendix is the authoritative listing of every bytecode instruction
+for both the Stack VM and Register VM backends.
+Opcodes are grouped by category and listed in their enum order.
+
+%% ════════════════════════════════════════════════════════════════
+\section{Stack VM Opcodes}
+
+The Stack VM uses variable-length instructions: a one-byte opcode followed
+by zero or more operand bytes (typically one- or two-byte unsigned
+indices). All arithmetic pops its operands from the stack and pushes the
+result.
+
+\subsection{Stack Manipulation}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_CONSTANT}      & idx (1B)  & Push \texttt{constants[idx]} onto the stack. \\
+\texttt{OP\_CONSTANT\_16}  & idx (2B)  & Wide variant---16-bit big-endian constant index. \\
+\texttt{OP\_NIL}           & ---       & Push \texttt{nil}. \\
+\texttt{OP\_TRUE}          & ---       & Push \texttt{true}. \\
+\texttt{OP\_FALSE}         & ---       & Push \texttt{false}. \\
+\texttt{OP\_UNIT}          & ---       & Push \texttt{unit}. \\
+\texttt{OP\_POP}           & ---       & Discard top of stack. \\
+\texttt{OP\_DUP}           & ---       & Duplicate top of stack. \\
+\texttt{OP\_SWAP}          & ---       & Swap the top two stack values. \\
+\texttt{OP\_LOAD\_INT8}    & int8 (1B) & Push small integer literal from instruction stream. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Arithmetic and Logic}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_ADD}     & --- & Pop two values, push their sum (\texttt{+}). \\
+\texttt{OP\_SUB}     & --- & Subtraction (\texttt{-}). \\
+\texttt{OP\_MUL}     & --- & Multiplication (\texttt{*}). \\
+\texttt{OP\_DIV}     & --- & Division (\texttt{/}). \\
+\texttt{OP\_MOD}     & --- & Modulo (\texttt{\%}). \\
+\texttt{OP\_NEG}     & --- & Negate top of stack. \\
+\texttt{OP\_NOT}     & --- & Logical NOT (\texttt{!}). \\
+\texttt{OP\_CONCAT}  & --- & String concatenation. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Bitwise Operations}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_BIT\_AND} & --- & Bitwise AND (\texttt{\&}). \\
+\texttt{OP\_BIT\_OR}  & --- & Bitwise OR (\texttt|}). \\
+\texttt{OP\_BIT\_XOR} & --- & Bitwise XOR (\texttt{\^{}}). \\
+\texttt{OP\_BIT\_NOT} & --- & Bitwise NOT (\texttt{\~{}}). \\
+\texttt{OP\_LSHIFT}   & --- & Left shift (\texttt{<<}). \\
+\texttt{OP\_RSHIFT}   & --- & Right shift (\texttt{>>}). \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Comparison}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_EQ}   & --- & Pop two values, push \texttt{true} if equal. \\
+\texttt{OP\_NEQ}  & --- & Not equal. \\
+\texttt{OP\_LT}   & --- & Less than. \\
+\texttt{OP\_GT}   & --- & Greater than. \\
+\texttt{OP\_LTEQ} & --- & Less than or equal. \\
+\texttt{OP\_GTEQ} & --- & Greater than or equal. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Variables and Upvalues}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_GET\_LOCAL}        & slot (1B)  & Push local from stack slot. \\
+\texttt{OP\_SET\_LOCAL}        & slot (1B)  & Set local at slot; keep value on stack. \\
+\texttt{OP\_SET\_LOCAL\_POP}   & slot (1B)  & Set local at slot and pop value. \\
+\texttt{OP\_GET\_GLOBAL}       & idx (1B)   & Push \texttt{globals[constants[idx]]}. \\
+\texttt{OP\_GET\_GLOBAL\_16}   & idx (2B)   & Wide variant. \\
+\texttt{OP\_SET\_GLOBAL}       & idx (1B)   & Set global named by \texttt{constants[idx]}. \\
+\texttt{OP\_SET\_GLOBAL\_16}   & idx (2B)   & Wide variant. \\
+\texttt{OP\_DEFINE\_GLOBAL}    & idx (1B)   & Define new global, pop value. \\
+\texttt{OP\_DEFINE\_GLOBAL\_16}& idx (2B)   & Wide variant. \\
+\texttt{OP\_GET\_UPVALUE}      & idx (1B)   & Push captured upvalue. \\
+\texttt{OP\_SET\_UPVALUE}      & idx (1B)   & Set captured upvalue from TOS. \\
+\texttt{OP\_CLOSE\_UPVALUE}    & ---        & Close upvalue on top of stack. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Control Flow}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_JUMP}              & off (2B) & Unconditional forward jump. \\
+\texttt{OP\_JUMP\_IF\_FALSE}   & off (2B) & Jump if TOS is falsy (does not pop). \\
+\texttt{OP\_JUMP\_IF\_TRUE}    & off (2B) & Jump if TOS is truthy (does not pop). \\
+\texttt{OP\_JUMP\_IF\_NOT\_NIL}& off (2B) & Jump if TOS is not nil (does not pop). \\
+\texttt{OP\_LOOP}              & off (2B) & Unconditional backward jump. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Functions and Closures}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_CALL}       & argc (1B)  & Call function on stack with \texttt{argc} arguments. \\
+\texttt{OP\_CLOSURE}    & idx (1B)   & Create closure from function constant. \\
+\texttt{OP\_CLOSURE\_16}& idx (2B)   & Wide variant---16-bit function constant index. \\
+\texttt{OP\_RETURN}     & ---        & Return TOS (or unit). \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Iterators}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_ITER\_INIT} & ---        & Convert range/array to iterator state. \\
+\texttt{OP\_ITER\_NEXT} & off (2B)   & Push next value or jump if exhausted. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Data Structures}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_BUILD\_ARRAY}  & count (1B)         & Pop \textit{count} values, build array. \\
+\texttt{OP\_ARRAY\_FLATTEN} & ---               & Flatten one level of nested arrays (spread). \\
+\texttt{OP\_BUILD\_MAP}    & count (1B)         & Pop \textit{count}$\times$2 values (key/val pairs), build map. \\
+\texttt{OP\_BUILD\_TUPLE}  & count (1B)         & Pop \textit{count} values, build tuple. \\
+\texttt{OP\_BUILD\_STRUCT} & name, fields (2B)  & Pop field values, build struct. \\
+\texttt{OP\_BUILD\_RANGE}  & ---                & Pop end, start; push range. \\
+\texttt{OP\_BUILD\_ENUM}   & enum, var, argc (3B) & Build enum with payload. \\
+\texttt{OP\_INDEX}         & ---                & Pop index \& object; push \texttt{object[index]}. \\
+\texttt{OP\_INDEX\_LOCAL}  & slot (1B)          & Pop index; push \texttt{local[index]}. \\
+\texttt{OP\_SET\_INDEX}    & ---                & Pop value, index, object; set \texttt{object[index]}. \\
+\texttt{OP\_SET\_INDEX\_LOCAL} & slot (1B)      & Pop value, index; mutate local in-place. \\
+\texttt{OP\_GET\_FIELD}    & idx (1B)           & Pop object; push named field. \\
+\texttt{OP\_GET\_FIELD\_LOCAL} & slot, idx (2B) & Push field from local without popping. \\
+\texttt{OP\_SET\_FIELD}    & idx (1B)           & Pop value, pop object; set named field. \\
+\texttt{OP\_SET\_SLICE}    & ---                & Splice \texttt{obj[start..end] = val}. \\
+\texttt{OP\_SET\_SLICE\_LOCAL} & slot (1B)      & In-place splice on local. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Method Invocation}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_INVOKE}           & name, argc (2B)          & Invoke method on TOS with args. \\
+\texttt{OP\_INVOKE\_LOCAL}    & slot, name, argc (3B)    & Invoke method on local; mutate in-place. \\
+\texttt{OP\_INVOKE\_LOCAL\_16}& slot, name16, argc (4B)  & Wide method-name variant. \\
+\texttt{OP\_INVOKE\_GLOBAL}   & gname, mname, argc (3B)  & Invoke method on global; write back. \\
+\texttt{OP\_INVOKE\_GLOBAL\_16}& gname16, mname16, argc (5B) & Wide variant. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Exception Handling and Defer}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_PUSH\_EXCEPTION\_HANDLER} & off (2B) & Push handler; catch block at \texttt{ip+off}. \\
+\texttt{OP\_POP\_EXCEPTION\_HANDLER}  & ---      & Pop handler on success. \\
+\texttt{OP\_THROW}       & ---      & Pop error value; unwind to nearest handler. \\
+\texttt{OP\_TRY\_UNWRAP} & ---      & \texttt{?} operator: unwrap ok or propagate error. \\
+\texttt{OP\_DEFER\_PUSH} & off (2B) & Register defer body; skip past it. \\
+\texttt{OP\_DEFER\_RUN}  & ---      & Execute deferred blocks in LIFO order. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Phase System}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_FREEZE}          & ---                     & Pop value; push frozen (crystal) copy. \\
+\texttt{OP\_THAW}            & ---                     & Pop value; push thawed (fluid) copy. \\
+\texttt{OP\_CLONE}           & ---                     & Pop value; push deep clone. \\
+\texttt{OP\_MARK\_FLUID}     & ---                     & Set TOS phase to \textsc{fluid}. \\
+\texttt{OP\_SUBLIMATE}       & ---                     & Set TOS phase to \textsc{sublimated}. \\
+\texttt{OP\_FREEZE\_VAR}     & name, loc, slot (3B)    & Freeze variable; fire reactions. \\
+\texttt{OP\_THAW\_VAR}       & name, loc, slot (3B)    & Thaw variable; fire reactions. \\
+\texttt{OP\_SUBLIMATE\_VAR}  & name, loc, slot (3B)    & Sublimate variable. \\
+\texttt{OP\_IS\_CRYSTAL}     & ---                     & Pop value; push bool (is crystal?). \\
+\texttt{OP\_IS\_FLUID}       & ---                     & Pop value; push bool (is fluid?). \\
+\texttt{OP\_FREEZE\_FIELD}   & name, loc, slot (3B)    & Freeze single struct field. \\
+\texttt{OP\_FREEZE\_EXCEPT}  & name, loc, slot, n (4B) & Freeze all fields except listed ones. \\
+\texttt{OP\_REACT}           & name (1B)               & Register reaction callback. \\
+\texttt{OP\_UNREACT}         & name (1B)               & Remove reaction. \\
+\texttt{OP\_BOND}            & target (1B)             & Create dependency bond. \\
+\texttt{OP\_UNBOND}          & target (1B)             & Remove bond. \\
+\texttt{OP\_SEED}            & name (1B)               & Register seed contract. \\
+\texttt{OP\_UNSEED}          & name (1B)               & Remove seed contract. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Builtins, I/O, and Modules}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_PRINT}            & argc (1B) & Pop \textit{argc} values; print them. \\
+\texttt{OP\_IMPORT}           & idx (1B)  & Import module at \texttt{constants[idx]}. \\
+\texttt{OP\_APPEND\_STR\_LOCAL} & slot (1B) & Pop string; append to \texttt{local[slot]} in-place. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Concurrency}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_SCOPE}  & variable-length & Spawn count, sync index, per-spawn offsets. \\
+\texttt{OP\_SELECT} & variable-length & Arm count, per-arm flags/channel/body/binding. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Optimization Fast-Path}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_ADD\_INT}    & --- & Integer-only add (no type check). \\
+\texttt{OP\_SUB\_INT}    & --- & Integer-only subtract. \\
+\texttt{OP\_MUL\_INT}    & --- & Integer-only multiply. \\
+\texttt{OP\_LT\_INT}     & --- & Integer-only less-than. \\
+\texttt{OP\_LTEQ\_INT}   & --- & Integer-only less-than-or-equal. \\
+\texttt{OP\_INC\_LOCAL}  & slot (1B) & Increment integer local by 1 in-place. \\
+\texttt{OP\_DEC\_LOCAL}  & slot (1B) & Decrement integer local by 1 in-place. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Type Checking and Miscellaneous}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}llp{6.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Operands} & \textbf{Description} \\
+\midrule
+\texttt{OP\_CHECK\_TYPE}        & slot, type, err (3B) & Throw if local's type does not match. \\
+\texttt{OP\_CHECK\_RETURN\_TYPE}& type, err (2B)       & Throw if TOS type does not match. \\
+\texttt{OP\_RESET\_EPHEMERAL}   & ---                  & Reset ephemeral bump arena. \\
+\texttt{OP\_HALT}               & ---                  & Stop execution. \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Register VM Opcodes}
+
+The Register VM uses fixed-width 32-bit instructions with three encoding
+formats:
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}lll@{}}
+\toprule
+\textbf{Format} & \textbf{Layout (bits)} & \textbf{Use} \\
+\midrule
+ABC   & \texttt{[op:8][A:8][B:8][C:8]}     & Three-address operations \\
+ABx   & \texttt{[op:8][A:8][Bx:16]}        & Constant/global access (unsigned) \\
+AsBx  & \texttt{[op:8][A:8][sBx:16]}       & Conditional jumps (signed offset) \\
+sBx   & \texttt{[op:8][sBx:24]}            & Unconditional jumps (signed) \\
+\bottomrule
+\end{booktabs}
+\caption{Register VM instruction encoding formats.}\label{tab:reg-encoding}
+\end{table}
+
+\noindent Notation: \texttt{R[x]} = register \texttt{x};
+\texttt{K[x]} = constant pool entry \texttt{x}.
+
+\subsection{Data Movement}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Format} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{MOVE}      & ABC  & A, B      & \texttt{R[A] = R[B]} \\
+\texttt{LOADK}     & ABx  & A, Bx     & \texttt{R[A] = K[Bx]} \\
+\texttt{LOADI}     & AsBx & A, sBx    & \texttt{R[A] = int(sBx)} \\
+\texttt{LOADNIL}   & A    & A         & \texttt{R[A] = nil} \\
+\texttt{LOADTRUE}  & A    & A         & \texttt{R[A] = true} \\
+\texttt{LOADFALSE} & A    & A         & \texttt{R[A] = false} \\
+\texttt{LOADUNIT}  & A    & A         & \texttt{R[A] = unit} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Arithmetic}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{ADD}    & ABC & A, B, C & \texttt{R[A] = R[B] + R[C]} \\
+\texttt{SUB}    & ABC & A, B, C & \texttt{R[A] = R[B] - R[C]} \\
+\texttt{MUL}    & ABC & A, B, C & \texttt{R[A] = R[B] * R[C]} \\
+\texttt{DIV}    & ABC & A, B, C & \texttt{R[A] = R[B] / R[C]} \\
+\texttt{MOD}    & ABC & A, B, C & \texttt{R[A] = R[B] \% R[C]} \\
+\texttt{NEG}    & ABC & A, B    & \texttt{R[A] = -R[B]} \\
+\texttt{ADDI}   & ABC & A, B, C & \texttt{R[A] = R[B] + signext(C)} \\
+\texttt{CONCAT} & ABC & A, B, C & \texttt{R[A] = str(R[B]) ++ str(R[C])} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Comparison and Logic}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{EQ}   & ABC & A, B, C & \texttt{R[A] = (R[B] == R[C])} \\
+\texttt{NEQ}  & ABC & A, B, C & \texttt{R[A] = (R[B] != R[C])} \\
+\texttt{LT}   & ABC & A, B, C & \texttt{R[A] = (R[B] < R[C])} \\
+\texttt{LTEQ} & ABC & A, B, C & \texttt{R[A] = (R[B] <= R[C])} \\
+\texttt{GT}   & ABC & A, B, C & \texttt{R[A] = (R[B] > R[C])} \\
+\texttt{GTEQ} & ABC & A, B, C & \texttt{R[A] = (R[B] >= R[C])} \\
+\texttt{NOT}  & ABC & A, B    & \texttt{R[A] = !R[B]} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Bitwise Operations}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{BIT\_AND} & ABC & A, B, C & \texttt{R[A] = R[B] \& R[C]} \\
+\texttt{BIT\_OR}  & ABC & A, B, C & \texttt{R[A] = R[B] | R[C]} \\
+\texttt{BIT\_XOR} & ABC & A, B, C & \texttt{R[A] = R[B] \^{} R[C]} \\
+\texttt{BIT\_NOT} & ABC & A, B    & \texttt{R[A] = \~{}R[B]} \\
+\texttt{LSHIFT}   & ABC & A, B, C & \texttt{R[A] = R[B] << R[C]} \\
+\texttt{RSHIFT}   & ABC & A, B, C & \texttt{R[A] = R[B] >> R[C]} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Control Flow}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{JMP}       & sBx   & sBx(24) & \texttt{ip += sBx} \\
+\texttt{JMPFALSE}  & AsBx  & A, sBx  & If \texttt{!R[A]}: \texttt{ip += sBx} \\
+\texttt{JMPTRUE}   & AsBx  & A, sBx  & If \texttt{R[A]}: \texttt{ip += sBx} \\
+\texttt{JMPNOTNIL} & AsBx  & A, sBx  & If \texttt{R[A] != nil}: \texttt{ip += sBx} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Variables, Fields, and Upvalues}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{GETGLOBAL}    & ABx & A, Bx    & \texttt{R[A] = globals[K[Bx]]} \\
+\texttt{SETGLOBAL}    & ABx & A, Bx    & \texttt{globals[K[Bx]] = R[A]} \\
+\texttt{DEFINEGLOBAL} & ABx & A, Bx    & Define \texttt{globals[K[Bx]] = R[A]} \\
+\texttt{GETFIELD}     & ABC & A, B, C  & \texttt{R[A] = R[B].field[K[C]]} \\
+\texttt{SETFIELD}     & ABC & A, B, C  & \texttt{R[A].field[K[B]] = R[C]} \\
+\texttt{GETINDEX}     & ABC & A, B, C  & \texttt{R[A] = R[B][R[C]]} \\
+\texttt{SETINDEX}     & ABC & A, B, C  & \texttt{R[A][R[B]] = R[C]} \\
+\texttt{SETINDEX\_LOCAL} & ABC & A, B, C & In-place \texttt{R[A][R[B]] = R[C]} \\
+\texttt{GETUPVALUE}   & ABC & A, B     & \texttt{R[A] = Upvalue[B]} \\
+\texttt{SETUPVALUE}   & ABC & A, B     & \texttt{Upvalue[B] = R[A]} \\
+\texttt{CLOSEUPVALUE} & A   & A        & Close upvalue at \texttt{R[A]} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Functions}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{CALL}    & ABC & A, B, C & Call \texttt{R[A]} with args \texttt{R[A+1..A+B]}; results in \texttt{R[A..A+C-1]} \\
+\texttt{RETURN}  & ABC & A, B    & Return \texttt{R[A..A+B-1]} \\
+\texttt{CLOSURE} & ABx & A, Bx   & \texttt{R[A] = closure(K[Bx])} \\
+\texttt{COLLECT\_VARARGS} & ABC & A, B & Collect excess args $\geq$ B into array at \texttt{R[A]} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Data Structures}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5.2cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{NEWARRAY}       & ABC & A, B, C & \texttt{R[A] = [R[B..B+C-1]]} \\
+\texttt{NEWTUPLE}       & ABC & A, B, C & \texttt{R[A] = tuple(R[B..B+C-1])} \\
+\texttt{NEWSTRUCT}      & ABC & A, B, C & \texttt{R[A] = struct K[B]} with C fields \\
+\texttt{NEWENUM}        & ABC & A, B, C & \texttt{R[A] = enum(base=B, argc=C)} \\
+\texttt{BUILDRANGE}     & ABC & A, B, C & \texttt{R[A] = range(R[B], R[C])} \\
+\texttt{LEN}            & ABC & A, B    & \texttt{R[A] = len(R[B])} \\
+\texttt{ARRAY\_FLATTEN} & ABC & A, B    & \texttt{R[A] = flatten(R[B])} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Builtins and Method Invocation}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{4.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{PRINT}          & ABC    & A, B   & Print \texttt{R[A..A+B-1]} \\
+\texttt{INVOKE}         & ABC    & A, B, C & Invoke method \texttt{K[B]} on \texttt{R[A]} \\
+\texttt{INVOKE\_GLOBAL} & 2-word & dst, name, argc, method, base & Invoke on global \\
+\texttt{INVOKE\_LOCAL}  & 2-word & dst, reg, argc, method, base  & Invoke on local \\
+\texttt{FREEZE}         & ABC    & A, B   & \texttt{R[A] = freeze(R[B])} \\
+\texttt{THAW}           & ABC    & A, B   & \texttt{R[A] = thaw(R[B])} \\
+\texttt{CLONE}          & ABC    & A, B   & \texttt{R[A] = clone(R[B])} \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Iterators, Phase, Exceptions, and Defer}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{4.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{ITERINIT}      & ABC  & A, B     & Init iterator from \texttt{R[B]}; index at \texttt{R[A+1]} \\
+\texttt{ITERNEXT}      & ABC  & A, B, sBx & Next value or jump \\
+\texttt{MARKFLUID}     & A    & A        & \texttt{R[A].phase = FLUID} \\
+\texttt{SUBLIMATE}     & A    & A        & \texttt{R[A].phase = SUBLIMATED} \\
+\texttt{PUSH\_HANDLER} & AsBx & A, sBx   & Push handler; catch at \texttt{ip+sBx} \\
+\texttt{POP\_HANDLER}  & ---  & ---      & Pop handler on success \\
+\texttt{THROW}         & A    & A        & Throw \texttt{R[A]} \\
+\texttt{TRY\_UNWRAP}   & A    & A        & Unwrap ok or propagate error \\
+\texttt{DEFER\_PUSH}   & sBx  & sBx      & Register defer body \\
+\texttt{DEFER\_RUN}    & ---  & ---      & Execute defers in LIFO order \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Advanced Phase, Concurrency, and Modules}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{4.8cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{FREEZE\_VAR}    & ABC & A, B, C & Freeze var \texttt{K[A]}, location B:C \\
+\texttt{THAW\_VAR}      & ABC & A, B, C & Thaw var \texttt{K[A]} \\
+\texttt{SUBLIMATE\_VAR} & ABC & A, B, C & Sublimate var \texttt{K[A]} \\
+\texttt{REACT}          & ABC & A, B    & Register reaction \texttt{R[A]} on \texttt{R[B]} \\
+\texttt{UNREACT}        & A   & A       & Remove reaction \texttt{R[A]} \\
+\texttt{BOND}           & ABC & A, B    & Bond \texttt{R[A]} depends on \texttt{R[B]} \\
+\texttt{UNBOND}         & A   & A       & Remove bond \texttt{R[A]} \\
+\texttt{SEED}           & ABC & A, B    & Register seed contract \\
+\texttt{UNSEED}         & A   & A       & Remove seed \\
+\texttt{IS\_CRYSTAL}    & ABC & A, B    & \texttt{R[A] = (R[B].phase == CRYSTAL)} \\
+\texttt{IS\_FLUID}      & ABC & A, B    & \texttt{R[A] = (R[B].phase == FLUID)} \\
+\texttt{FREEZE\_FIELD}  & ABC & A, B, C & Freeze \texttt{R[A].field[K[B]]} \\
+\texttt{THAW\_FIELD}    & ABC & A, B, C & Thaw \texttt{R[A].field[K[B]]} \\
+\texttt{FREEZE\_EXCEPT} & 2-word & A, B, C, base, count & Freeze all except listed \\
+\texttt{CHECK\_TYPE}    & ABx & A, Bx   & Throw if \texttt{type(R[A]) != K[Bx]} \\
+\texttt{IMPORT}         & ABx & A, Bx   & \texttt{R[A] = import(K[Bx])} \\
+\texttt{REQUIRE}        & ABx & A, Bx   & \texttt{R[A] = require(K[Bx])} \\
+\texttt{SCOPE}          & var & ---      & Spawn concurrent tasks \\
+\texttt{SELECT}         & var & ---      & Channel select \\
+\texttt{SETSLICE}       & ABC & A, B, C & Splice \texttt{R[A][R[B]..] = R[C]} \\
+\texttt{SETSLICE\_LOCAL}& ABC & A, B, C & In-place splice \\
+\texttt{RESET\_EPHEMERAL} & --- & ---   & Reset bump arena \\
+\bottomrule
+\end{booktabs}
+\end{table}
+
+\subsection{Optimization Fast-Path}
+
+\begin{table}[h]
+\small
+\begin{booktabs}{@{}lllp{5cm}@{}}
+\toprule
+\textbf{Opcode} & \textbf{Fmt} & \textbf{Operands} & \textbf{Semantics} \\
+\midrule
+\texttt{ADD\_INT}  & ABC & A, B, C & \texttt{R[A] = R[B].int + R[C].int} (no check) \\
+\texttt{SUB\_INT}  & ABC & A, B, C & \texttt{R[A] = R[B].int - R[C].int} \\
+\texttt{MUL\_INT}  & ABC & A, B, C & \texttt{R[A] = R[B].int * R[C].int} \\
+\texttt{LT\_INT}   & ABC & A, B, C & \texttt{R[A] = R[B].int < R[C].int} \\
+\texttt{LTEQ\_INT} & ABC & A, B, C & \texttt{R[A] = R[B].int <= R[C].int} \\
+\texttt{INC\_REG}  & A   & A       & \texttt{R[A]++} (assumes int) \\
+\texttt{DEC\_REG}  & A   & A       & \texttt{R[A]-{}-} (assumes int) \\
+\texttt{HALT}      & --- & ---     & Stop execution \\
+\bottomrule
+\end{booktabs}
+\end{table}

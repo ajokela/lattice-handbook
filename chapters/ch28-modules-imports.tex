@@ -1,0 +1,687 @@
+\chapter{Modules and Imports}\label{ch:modules-imports}
+
+\index{modules}\index{imports}
+
+As your programs grow beyond a single file, you face a fundamental organizational question: how do you split code into manageable pieces without losing the ability to share functionality between them?
+Most languages answer this with a module system, and Lattice is no different---except that Lattice's approach is deliberately minimal.
+There are no package declarations at the top of each file, no directory-based namespaces, no visibility modifiers beyond a single keyword.
+A file is a module.
+An \keyword{export} makes something public.
+An \keyword{import} brings it into scope.
+
+Let's see how it works.
+
+%% ───────────────────────────────────────────────────────────
+\section{Your First Import}\label{sec:first-import}
+\index{import!basic}
+
+Suppose you have a utility file called \filename{math\_utils.lat} that defines a couple of functions:
+
+\begin{lstlisting}[language=Lattice, caption={math\_utils.lat --- a utility module}]
+fn add(x: Int, y: Int) -> Int {
+    return x + y
+}
+
+fn sub(x: Int, y: Int) -> Int {
+    return x - y
+}
+
+let PI = 3.14159
+\end{lstlisting}
+
+Notice that this file has no \keyword{export} keywords.
+We will talk about what that means in a moment.
+For now, the important thing is that every top-level binding---\lstinline|add|, \lstinline|sub|, and \lstinline|PI|---is visible to importers.
+
+To use these from another file, you write:
+
+\begin{lstlisting}[language=Lattice, caption={main.lat --- importing a module}]
+import "math_utils" as math
+
+print(math.add(2, 3))   // 5
+print(math.sub(10, 4))  // 6
+print(math.PI)           // 3.14159
+\end{lstlisting}
+
+The \lstinline|import "math_utils" as math| statement does three things:
+
+\begin{enumerate}
+  \item Locates the file \filename{math\_utils.lat} (appending the \texttt{.lat} extension automatically).
+  \item Executes that file's top-level code in an isolated scope.
+  \item Bundles the module's exported bindings into a map and assigns it to the name \lstinline|math|.
+\end{enumerate}
+
+You then access individual members with dot notation: \lstinline|math.add|, \lstinline|math.PI|, and so on.
+
+\begin{tipbox}{File Extensions Are Optional}
+When you write \lstinline|import "math_utils"|, Lattice automatically appends \texttt{.lat} if the path does not already end with it.
+You can also write \lstinline|import "math_utils.lat"| explicitly---both forms resolve to the same file.
+\end{tipbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Import Styles}\label{sec:import-styles}
+\index{import!styles}
+
+Lattice supports two import syntaxes, each suited to different situations.
+
+\subsection{Aliased Import: \texttt{import ... as}}\label{subsec:import-as}
+\index{import!aliased}
+
+The form we already saw brings in the entire module under a name you choose:
+
+\begin{lstlisting}[language=Lattice, caption={Aliased import}]
+import "geometry/shapes" as shapes
+
+let circle = shapes.make_circle(5.0)
+let area = shapes.circle_area(circle)
+\end{lstlisting}
+
+This is the preferred style when you use many things from a module, or when you want the reader to see \emph{where} each symbol comes from.
+The alias can be anything you like---\lstinline|import "geometry/shapes" as geo| works too.
+
+\subsection{Selective Import: \texttt{import \{...\} from}}\label{subsec:import-from}
+\index{import!selective}\index{from}
+
+When you only need a few specific symbols, you can pull them directly into your local scope:
+
+\begin{lstlisting}[language=Lattice, caption={Selective import}]
+import { add, PI } from "math_utils"
+
+print(add(2, 3))  // 5
+print(PI)          // 3.14159
+\end{lstlisting}
+
+Each name listed inside the braces becomes a local binding.
+You do not prefix them with a module name---\lstinline|add| is \lstinline|add|, not \lstinline|math.add|.
+
+This style is great when you need a handful of specific functions and want to keep your code concise.
+The trade-off is that the reader cannot immediately tell which module a function came from without scrolling back to the import.
+
+\begin{warnbox}{Missing Exports Are Runtime Errors}
+If you try to selectively import a name that the module does not export, Lattice throws an error at runtime.
+For example, if \filename{math\_utils.lat} does not define \lstinline|multiply|, then \lstinline|import \{ multiply \} from "math_utils"| will fail with:
+
+\medskip
+\texttt{module 'math\_utils' does not export 'multiply'}
+\medskip
+
+The compiler generates a runtime check for each selectively imported name, validating that the field exists in the module map before binding it.
+\end{warnbox}
+
+\subsection{Bare Import}\label{subsec:bare-import}
+\index{import!bare}
+
+There is a third form you will see less often: a bare import with no alias and no selective names.
+
+\begin{lstlisting}[language=Lattice, caption={Bare import --- side effects only}]
+import "setup"
+\end{lstlisting}
+
+This executes the module's top-level code but discards the resulting module map.
+It is useful for modules that exist purely for their side effects---initializing a global configuration, registering plugins, or running setup code.
+
+\begin{defnbox}{Module}
+\index{module!definition}
+A \emph{module} in Lattice is a single \texttt{.lat} source file.
+When imported, the file is compiled and executed in an isolated scope.
+The module's top-level bindings (functions, values, structs, enums) are collected into a map that the importer can access.
+There is no separate ``module declaration'' syntax---the file \emph{is} the module.
+\end{defnbox}
+
+%% ───────────────────────────────────────────────────────────
+\section{The Export System}\label{sec:export-system}
+\index{export}\index{export!keyword}
+
+So far, our example modules have had no \keyword{export} keywords.
+In that case, Lattice uses \emph{legacy mode}\index{export!legacy mode}: every top-level binding is exported.
+This is convenient for small scripts and quick experiments, but for real projects you want explicit control over your module's public API\@.
+
+\subsection{Explicit Exports}\label{subsec:explicit-exports}
+\index{export!explicit}
+
+Add the \keyword{export} keyword before any top-level declaration to mark it as public:
+
+\begin{lstlisting}[language=Lattice, caption={export\_explicit.lat --- explicit exports}]
+export fn add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+export let PI = 3.14159
+
+fn internal_helper() -> Int {
+    42
+}
+
+let secret = "hidden"
+\end{lstlisting}
+
+In this module, only \lstinline|add| and \lstinline|PI| are visible to importers.
+The function \lstinline|internal_helper| and the value \lstinline|secret| are private---they exist inside the module for its own use, but they do not appear in the module map.
+
+\begin{defnbox}{Legacy vs.\ Explicit Export Mode}
+\index{export!modes}
+When the parser encounters at least one \keyword{export} keyword in a file, it switches to \emph{explicit mode}: only names marked with \keyword{export} are included in the module map.
+If a file contains \emph{no} \keyword{export} keywords at all, it operates in \emph{legacy mode}, where all top-level bindings are exported.
+
+This two-mode system lets quick scripts ``work'' without ceremony, while larger projects get proper encapsulation.
+\end{defnbox}
+
+The \keyword{export} keyword can precede:
+
+\begin{itemize}[nosep]
+  \item Functions: \lstinline|export fn calculate(...)|
+  \item Variables: \lstinline|export let MAX_SIZE = 256| or \lstinline|export fix THRESHOLD = 100|
+  \item Structs: \lstinline|export struct Point { ... }|
+  \item Enums: \lstinline|export enum Color { ... }|
+  \item Traits: \lstinline|export trait Drawable { ... }|
+\end{itemize}
+
+\subsection{Exporting Structs and Enums}\label{subsec:export-structs-enums}
+\index{export!structs}\index{export!enums}
+
+When you export a struct, importers can create instances of it and use its constructor function.
+When you export an enum, importers can access its variants:
+
+\begin{lstlisting}[language=Lattice, caption={geometry.lat --- exporting structs and enums}]
+export struct Point {
+    x: Int,
+    y: Int
+}
+
+export fn make_point(x: Int, y: Int) -> Point {
+    return Point { x: x, y: y }
+}
+
+export enum Direction { North, South, East, West }
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Using exported structs and enums}]
+import { Point, make_point, Direction } from "geometry"
+
+let origin = make_point(0, 0)
+print(origin.x)  // 0
+
+let heading = Direction::North
+\end{lstlisting}
+
+\subsection{What Gets Filtered Out}\label{subsec:export-filtering}
+\index{export!filtering}
+
+Regardless of export mode, Lattice always hides two categories of names:
+
+\begin{enumerate}
+  \item Names starting with double underscores (\lstinline|__|)---these are internal metadata used by the runtime.
+  \item Names containing a colon (\lstinline|:|)---these are namespaced internal keys used for struct method dispatch and trait implementations.
+\end{enumerate}
+
+You can see this filtering logic in \filename{src/ast.c}, in the \lstinline|module_should_export| function.
+It runs on every name in the module scope before adding it to the module map.
+
+\subsection{Re-exporting from Other Modules}\label{subsec:re-exporting}
+\index{export!re-exporting}
+
+A common pattern in larger projects is to create a ``facade'' module that imports from several internal modules and re-exports a curated public API\@:
+
+\begin{lstlisting}[language=Lattice, caption={api.lat --- re-exporting a clean interface}]
+import { double, BASE_CONST } from "internal/base_utils"
+
+export fn double_it(x: Int) -> Int {
+    return double(x)
+}
+
+export let REEXPORTED_CONST = BASE_CONST
+\end{lstlisting}
+
+The consumer of \filename{api.lat} sees only \lstinline|double_it| and \lstinline|REEXPORTED_CONST|.
+They never need to know about \filename{internal/base\_utils.lat} at all.
+
+%% ───────────────────────────────────────────────────────────
+\section{Built-in Modules}\label{sec:builtin-modules}
+\index{modules!built-in}\index{standard library modules}
+
+Lattice ships with a set of built-in modules that are always available, regardless of where your script lives or whether you have any \filename{lat\_modules/} directory.
+These are implemented directly in the runtime (you can find the registration logic in \filename{src/runtime.c}) and are loaded without touching the filesystem.
+
+Here are the built-in modules:
+
+\begin{table}[h]
+\centering
+\caption{Lattice's built-in modules}\label{tab:builtin-modules}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Module} & \textbf{Description} \\
+\midrule
+\texttt{math}    & Mathematical functions and constants \\
+\texttt{fs}      & File system operations (read, write, stat, mkdir) \\
+\texttt{path}    & Path manipulation (join, basename, dirname, extension) \\
+\texttt{json}    & JSON parsing and serialization \\
+\texttt{toml}    & TOML parsing and serialization \\
+\texttt{yaml}    & YAML parsing and serialization \\
+\texttt{crypto}  & Cryptographic hashing (SHA-256, MD5, Base64) \\
+\texttt{http}    & HTTP client (GET, POST, PUT, DELETE) \\
+\texttt{net}     & Low-level networking (TCP sockets, DNS) \\
+\texttt{os}      & Operating system interface (env vars, exec, platform) \\
+\texttt{time}    & Time and date functions \\
+\texttt{regex}   & Regular expression matching \\
+\texttt{progress} & Terminal progress bars \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+To use a built-in module, import it by its bare name:
+
+\begin{lstlisting}[language=Lattice, caption={Using built-in modules}]
+import "math" as math
+import "json" as json
+import "fs" as fs
+
+let angle = math.PI / 4.0
+print(math.sin(angle))  // 0.7071...
+
+let data = json.parse("{\"name\": \"Lattice\"}")
+print(data["name"])  // Lattice
+
+let contents = fs.read("config.toml")
+print(contents)
+\end{lstlisting}
+
+You can also use the selective import form with built-in modules:
+
+\begin{lstlisting}[language=Lattice, caption={Selective import from built-in modules}]
+import { sin, cos, PI } from "math"
+
+let x = cos(PI / 3.0)
+let y = sin(PI / 3.0)
+print("x=${x}, y=${y}")
+\end{lstlisting}
+
+\begin{notebox}{How Built-in Modules Are Detected}
+When the VM encounters an \keyword{import} statement, it first checks whether the path is a bare name (no directory separators, no leading dot).
+If so, it calls \lstinline|rt_try_builtin_import()| to look up the name in a table of built-in module factories.
+If the name matches, the module map is constructed in C and returned directly---no file is read from disk.
+Only if this check fails does Lattice proceed to file-based module resolution.
+You can trace this logic in \filename{src/stackvm.c}, in the \lstinline|OP_IMPORT| handler.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Module Resolution}\label{sec:module-resolution}
+\index{module resolution}\index{module resolution!order}
+
+When you write \lstinline|import "something"|, how does Lattice find the right file?
+The resolution algorithm follows a predictable sequence.
+Understanding it will save you from mysterious ``module not found'' errors.
+
+\subsection{The Resolution Order}\label{subsec:resolution-order}
+
+For a given import path, Lattice tries these strategies in order:
+
+\begin{enumerate}
+  \item \textbf{Built-in modules.}\index{module resolution!built-in} If the path is a bare name (like \lstinline|"math"| or \lstinline|"json"|), check the built-in module table.
+  If found, return immediately.
+
+  \item \textbf{Package resolution.}\index{module resolution!packages} If the path is still a bare name and step 1 did not match, try the \filename{lat\_modules/}\index{lat\_modules} directory.
+  This looks for the module in several locations (detailed below).
+
+  \item \textbf{Relative file path.}\index{module resolution!relative} Treat the path as a file path relative to the importing script's directory.
+  Append \texttt{.lat} if the path does not already end with it.
+  Resolve to an absolute path using \lstinline|realpath()|.
+\end{enumerate}
+
+\subsection{Package Resolution Strategies}\label{subsec:package-resolution}
+\index{module resolution!lat\_modules}
+
+When resolving a bare module name through \filename{lat\_modules/}, Lattice tries four paths in order (implemented in \lstinline|pkg_resolve_module()| in \filename{src/package.c}):
+
+\begin{enumerate}
+  \item \filename{lat\_modules/\textlangle{}name\textrangle{}/main.lat} --- a package with a standard entry point.
+  \item \filename{lat\_modules/\textlangle{}name\textrangle{}/src/main.lat} --- a package using a \filename{src/} subdirectory.
+  \item The \texttt{entry} field from \filename{lat\_modules/\textlangle{}name\textrangle{}/lattice.toml} --- a package with a custom entry point defined in its manifest.
+  \item \filename{lat\_modules/\textlangle{}name\textrangle{}.lat} --- a single-file package.
+\end{enumerate}
+
+If the project directory does not yield a result, Lattice also tries these same four strategies relative to the current working directory.
+
+\begin{lstlisting}[language=Lattice, caption={Importing a third-party package}]
+// If you have lat_modules/leftpad/main.lat installed:
+import "leftpad" as lp
+
+let padded = lp.pad("hello", 10)
+print(padded)  // "     hello"
+\end{lstlisting}
+
+\subsection{Relative and Nested Imports}\label{subsec:relative-imports}
+\index{import!relative paths}
+
+For your own project files, use relative paths:
+
+\begin{lstlisting}[language=Lattice, caption={Relative path imports}]
+// Import a file in the same directory
+import "utils" as utils
+
+// Import a file in a subdirectory
+import "models/user" as user_model
+
+// Import a file in a parent directory
+import "../shared/config" as config
+\end{lstlisting}
+
+Paths are resolved relative to the directory of the file containing the import statement, not relative to where you ran \texttt{clat}.
+
+\begin{tipbox}{Use Consistent Project Structure}
+A good convention is to keep your project's main entry point at the root and organize supporting modules in subdirectories:
+
+\medskip
+\begin{lstlisting}[language=bash, numbers=none]
+my_project/
+  main.lat
+  models/
+    user.lat
+    post.lat
+  utils/
+    validation.lat
+    formatting.lat
+  lattice.toml
+\end{lstlisting}
+
+\medskip
+Then your imports read naturally: \lstinline|import "models/user" as user|, \lstinline|import "utils/validation" as valid|.
+\end{tipbox}
+
+\subsection{Module Caching}\label{subsec:module-caching}
+\index{module caching}\index{import!caching}
+
+Lattice caches modules by their \emph{resolved absolute path}.
+If two different files both import \lstinline|"utils"|, the module is compiled and executed only once.
+Subsequent imports receive a deep clone of the cached module map.
+
+This has two important consequences:
+
+\begin{enumerate}
+  \item \textbf{Side effects run once.} If a module's top-level code prints a message or opens a file, that happens during the first import.
+  Later imports skip execution entirely and use the cached result.
+
+  \item \textbf{Each importer gets its own copy.} Because the cache returns a deep clone, modifying a value obtained from a module does not affect other importers.
+  The phase system still applies---if you import a frozen value, you get a frozen copy.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={Module caching in action}]
+// counter.lat
+let count = 0
+print("counter module loaded!")  // printed only once
+
+export fn get_count() -> Int {
+    return count
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Two files importing the same module}]
+// file_a.lat
+import "counter" as c
+// prints: "counter module loaded!"
+print(c.get_count())  // 0
+
+// file_b.lat (if imported after file_a.lat in the same program)
+import "counter" as c
+// nothing printed --- cached
+print(c.get_count())  // 0
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{Organizing Multi-File Projects}\label{sec:multi-file-projects}
+\index{project structure}\index{multi-file projects}
+
+Now that we understand the mechanics, let's look at how to organize a real project.
+
+\subsection{A Minimal Project}\label{subsec:minimal-project}
+
+The smallest structured Lattice project looks like this:
+
+\begin{lstlisting}[language=bash, numbers=none]
+my_app/
+  lattice.toml
+  main.lat
+\end{lstlisting}
+
+The \filename{lattice.toml}\index{lattice.toml} file declares your project's metadata and dependencies (we will cover it in detail in the next chapter).
+The \filename{main.lat}\index{main.lat} file is the entry point.
+
+\subsection{Growing Beyond One File}\label{subsec:growing-beyond}
+
+As the project grows, extract cohesive functionality into modules:
+
+\begin{lstlisting}[language=bash, numbers=none]
+weather_station/
+  lattice.toml
+  main.lat
+  sensors/
+    temperature.lat
+    humidity.lat
+    pressure.lat
+  alerts/
+    thresholds.lat
+    notifier.lat
+  utils/
+    formatting.lat
+    logging.lat
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={weather\_station/main.lat --- tying it all together}]
+import "sensors/temperature" as temp
+import "sensors/humidity" as humid
+import "alerts/thresholds" as thresh
+import "alerts/notifier" as notify
+import "utils/formatting" as fmt
+
+let reading = temp.read_sensor()
+let humidity = humid.read_sensor()
+
+if reading > thresh.HIGH_TEMP {
+    notify.send_alert(fmt.format_reading(reading, "F"))
+}
+
+print(fmt.format_reading(reading, "F"))
+print(fmt.format_reading(humidity, "%"))
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={sensors/temperature.lat}]
+export fn read_sensor() -> Float {
+    // In a real application, this would read from hardware
+    return 72.4
+}
+
+export fn to_celsius(fahrenheit: Float) -> Float {
+    return (fahrenheit - 32.0) * 5.0 / 9.0
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={alerts/thresholds.lat}]
+export let HIGH_TEMP = 100.0
+export let LOW_TEMP = 32.0
+export let HIGH_HUMIDITY = 80.0
+export let LOW_HUMIDITY = 20.0
+\end{lstlisting}
+
+\subsection{Facade Modules}\label{subsec:facade-modules}
+\index{facade module}
+
+When a subsystem has many internal modules, create a facade that presents a clean interface:
+
+\begin{lstlisting}[language=Lattice, caption={sensors/mod.lat --- a facade module}]
+import { read_sensor, to_celsius } from "sensors/temperature"
+import { read_sensor } from "sensors/humidity"
+import { read_sensor } from "sensors/pressure"
+
+// Re-export a curated API
+export fn read_temperature() -> Float {
+    return read_sensor()
+}
+
+export fn read_temperature_celsius() -> Float {
+    return to_celsius(read_sensor())
+}
+\end{lstlisting}
+
+\begin{notebox}{No Implicit Index Files}
+Unlike Node.js, Lattice does not automatically look for an \filename{index.lat} or \filename{mod.lat} when you import a directory name.
+If you write \lstinline|import "sensors"|, Lattice looks for \filename{sensors.lat}, not \filename{sensors/index.lat}.
+To use a facade, import it explicitly: \lstinline|import "sensors/mod" as sensors|.
+\end{notebox}
+
+\subsection{Namespacing with Aliased Imports}\label{subsec:namespacing}
+\index{namespacing}\index{import!avoiding collisions}
+
+When two modules export the same name, aliased imports prevent collisions:
+
+\begin{lstlisting}[language=Lattice, caption={Avoiding name collisions}]
+import "models/user" as user_mod
+import "models/admin" as admin_mod
+
+// Both modules export make_record, but there is no conflict
+let regular = user_mod.make_record("alice", "alice@example.com")
+let admin = admin_mod.make_record("bob", "admin")
+\end{lstlisting}
+
+With selective imports, you would have a conflict---two different \lstinline|make_record| bindings fighting for the same name.
+Aliased imports sidestep this entirely.
+
+\subsection{Scoped Imports}\label{subsec:scoped-imports}
+\index{import!scoped}
+
+Import statements are not limited to the top of a file.
+You can import inside a function body, which makes the module available only within that scope:
+
+\begin{lstlisting}[language=Lattice, caption={Scoped import inside a function}]
+fn generate_report(data: Array) -> String {
+    import "json" as json
+    import "utils/formatting" as fmt
+
+    let formatted = fmt.tabulate(data)
+    return json.stringify(formatted)
+}
+// json and fmt are not visible here
+\end{lstlisting}
+
+Scoped imports are compiled to local variable definitions rather than globals.
+The module is still cached globally, so there is no performance penalty for importing inside a function that gets called many times.
+
+%% ───────────────────────────────────────────────────────────
+\section{Under the Hood: How Imports Work}\label{sec:import-internals}
+\index{import!internals}\index{OP\_IMPORT}
+
+For readers who want to understand the machinery, here is what happens when Lattice encounters an import statement.
+
+\subsection{Parsing}\label{subsec:import-parsing}
+
+The parser (in \filename{src/parser.c}) recognizes two syntactic forms and creates a \lstinline|STMT_IMPORT|\index{STMT\_IMPORT} AST node.
+The node stores three fields:
+
+\begin{itemize}[nosep]
+  \item \lstinline|module_path| --- the string literal from the import (always present).
+  \item \lstinline|alias| --- the identifier after \keyword{as} (null if not provided).
+  \item \lstinline|selective_names| --- an array of identifiers from the \lstinline|\{...\}| list (null for aliased or bare imports).
+\end{itemize}
+
+\subsection{Compilation}\label{subsec:import-compilation}
+
+The compiler (\filename{src/stackcompiler.c}) turns the AST node into bytecode.
+The core instruction is \lstinline|OP_IMPORT|, which takes a single operand: the index of the module path in the chunk's constant pool.
+
+For an aliased import like \lstinline|import "utils" as u|:
+
+\begin{enumerate}[nosep]
+  \item Emit \lstinline|OP_IMPORT| with the path constant index.
+  \item Emit \lstinline|OP_DEFINE_GLOBAL| (or add a local, if inside a function) with the alias name.
+\end{enumerate}
+
+For a selective import like \lstinline|import \{ add, PI \} from "math_utils"|, the compiler generates a more elaborate sequence for each name:
+
+\begin{enumerate}[nosep]
+  \item Emit \lstinline|OP_DUP| to copy the module map on the stack.
+  \item Emit \lstinline|OP_GET_FIELD| to extract the named export.
+  \item Emit \lstinline|OP_DUP| and \lstinline|OP_JUMP_IF_NOT_NIL| to validate the export exists.
+  \item If nil, emit \lstinline|OP_THROW| with an error message like \texttt{"module 'math\_utils' does not export 'multiply'"}.
+  \item Otherwise, emit \lstinline|OP_DEFINE_GLOBAL| (or add local) for that name.
+\end{enumerate}
+
+After processing all selective names, a final \lstinline|OP_POP| discards the module map from the stack.
+
+\subsection{Runtime Execution}\label{subsec:import-runtime}
+
+When the VM hits \lstinline|OP_IMPORT| at runtime (in \filename{src/stackvm.c}), it:
+
+\begin{enumerate}
+  \item \textbf{Reads the path} from the constant pool.
+  \item \textbf{Checks built-in modules} via \lstinline|rt_try_builtin_import()|.
+  If the path matches a stdlib module, the C implementation constructs a module map and pushes it onto the stack.
+  Done.
+
+  \item \textbf{Resolves the file path.}
+  Tries \lstinline|pkg_resolve_module()| for bare names (checking \filename{lat\_modules/}), then falls back to appending \texttt{.lat} and resolving relative to the script directory.
+
+  \item \textbf{Checks the cache.}
+  The VM maintains a hash map (\lstinline|vm->module_cache|) keyed by absolute path.
+  If the module has been loaded before, a deep clone of the cached module map is pushed and execution continues.
+
+  \item \textbf{Reads and compiles the source file.}
+  The source is lexed, parsed, and compiled into a module chunk.
+  Module chunks are compiled without an auto-call to \lstinline|main()|.
+
+  \item \textbf{Executes in an isolated scope.}
+  The VM pushes a new scope with \lstinline|env_push_scope()|, runs the module's bytecode, then pops the scope.
+  This ensures the module's internal variables do not leak into the caller's environment.
+
+  \item \textbf{Builds the module map.}
+  After execution, the VM iterates over the module scope's bindings.
+  Each binding passes through \lstinline|module_should_export()| to determine visibility.
+  Exported bindings are deep-cloned into a new map.
+
+  \item \textbf{Caches and returns.}
+  The module map is stored in the cache and pushed onto the stack for the caller to use.
+\end{enumerate}
+
+\begin{notebox}{Closures Capture the Module Environment}
+When a module exports a function, that function is a closure that captures the module's environment.
+This means exported functions can call other functions defined in the same module---even ones that are not exported.
+The VM copies all module bindings into the base scope before popping the module's scope, ensuring that closure environments remain valid.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch28-exercises}
+
+\begin{enumerate}
+  \item \textbf{Split and import.}
+  Take any program you have written so far that is longer than 50 lines.
+  Extract at least two cohesive groups of functions into separate module files.
+  Use explicit \keyword{export} to control what each module exposes.
+  Verify that the program still works after the split.
+
+  \item \textbf{Selective vs.\ aliased.}
+  Write a module called \filename{colors.lat} that exports at least five functions (\lstinline|to_hex|, \lstinline|to_rgb|, \lstinline|lighten|, \lstinline|darken|, \lstinline|mix|).
+  Write two consumer files: one that uses an aliased import and another that uses selective imports.
+  Which style do you prefer for this module?
+  Why?
+
+  \item \textbf{The facade pattern.}
+  Create a \filename{database/} directory with three modules: \filename{connection.lat}, \filename{query.lat}, and \filename{migration.lat}.
+  Each should export at least two functions.
+  Then create \filename{database/mod.lat} that re-exports a curated subset of the combined API\@.
+  Write a \filename{main.lat} that imports only from the facade.
+
+  \item \textbf{Built-in module explorer.}
+  Write a program that imports the \texttt{math}, \texttt{json}, and \texttt{os} built-in modules.
+  Use \lstinline|math.sin| and \lstinline|math.cos| to compute points on a unit circle, serialize them to JSON with \lstinline|json.stringify|, and print the current platform with \lstinline|os.platform()|.
+
+  \item \textbf{Module caching investigation.}
+  Create a module called \filename{counter.lat} that prints \lstinline|"loaded!"| at the top level and exports a function.
+  Import it from two different modules in the same program.
+  Verify that \lstinline|"loaded!"| is printed only once.
+  Then modify one of the importers to use the module inside a function body (scoped import).
+  Does the caching behavior change?
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section*{What's Next}
+
+Now that we can split code across files and control what each module exposes, the next question is: how do we manage \emph{other people's} code?
+In \cref{ch:package-manager}, we will explore Lattice's built-in package manager---\texttt{clat init}, \filename{lattice.toml}, semantic versioning, dependency resolution, and the \filename{lat\_modules/} directory that we've already been referencing.
+The module system you just learned is the foundation; the package manager builds the ecosystem on top of it.

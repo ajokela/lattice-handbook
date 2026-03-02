@@ -1,0 +1,993 @@
+\chapter{Time, Crypto, OS, and Everything Else}\label{ch:time-crypto-os}
+
+\index{time module}
+\index{crypto module}
+\index{os module}
+\index{math module}
+\index{regex module}
+
+This chapter is a grand tour of the remaining standard library modules---the
+functions that do not fit neatly into files, formats, or networking, but that
+you will reach for constantly in real programs. We will cover timestamps and
+date arithmetic, cryptographic hashing and encoding, UUID generation,
+operating-system interaction, mathematics, and regular expressions. Each
+section is self-contained, so feel free to jump to whichever module you need
+right now and come back to the others later.
+
+% ---------------------------------------------------------------------------
+\section{The time Module}\label{sec:time-module}
+% ---------------------------------------------------------------------------
+
+\index{time}
+\index{sleep}
+\index{time\_format}
+\index{time\_parse}
+\index{datetime}
+
+Time in Lattice is represented as a single integer: the number of
+milliseconds since the Unix epoch (January~1, 1970, 00:00:00 UTC). This is
+the same convention used by JavaScript's \texttt{Date.now()}, making it
+straightforward to exchange timestamps with web APIs.
+
+\subsection{Getting the Current Time}\label{sec:time-now}
+
+\begin{lstlisting}[language=Lattice, caption={Getting the current timestamp}]
+let now = time()
+print(now)  // e.g., 1703456789012
+
+// Measure execution time
+let start = time()
+// ... some computation ...
+let elapsed = time() - start
+print("Took " + to_string(elapsed) + " ms")
+\end{lstlisting}
+
+\lstinline|time()| returns the current wall-clock time as an \lstinline|Int|
+in milliseconds. Under the hood, it calls \texttt{clock\_gettime} with
+\texttt{CLOCK\_REALTIME} (see \filename{src/time\_ops.c}).
+
+\subsection{Sleeping}\label{sec:sleep}
+
+\begin{lstlisting}[language=Lattice, caption={Pausing execution}]
+print("Starting...")
+sleep(1000)  // Sleep for 1 second
+print("Done!")
+
+// Short delay for polling
+sleep(100)  // 100 milliseconds
+\end{lstlisting}
+
+\lstinline|sleep| takes a duration in milliseconds. It uses
+\texttt{nanosleep} for precise timing and handles \texttt{EINTR} gracefully.
+
+\begin{warnbox}{sleep Is Not Available in WASM}
+In the browser (Emscripten) build, \lstinline|sleep| raises a runtime error
+because it would block the single-threaded event loop. If you need
+time-delayed behavior in WASM, use callbacks or an async pattern instead.
+\end{warnbox}
+
+\subsection{Formatting Timestamps}\label{sec:time-format}
+
+\begin{lstlisting}[language=Lattice, caption={Formatting a timestamp as a human-readable string}]
+let now = time()
+
+let readable = time_format(now, "%Y-%m-%d %H:%M:%S")
+print(readable)  // "2024-12-25 14:30:45"
+
+let date_only = time_format(now, "%B %d, %Y")
+print(date_only)  // "December 25, 2024"
+
+let time_only = time_format(now, "%I:%M %p")
+print(time_only)  // "02:30 PM"
+\end{lstlisting}
+
+\lstinline|time_format| takes a timestamp (in epoch milliseconds) and a
+format string using the standard \texttt{strftime} specifiers:
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+\textbf{Specifier} & \textbf{Meaning} & \textbf{Specifier} & \textbf{Meaning} \\
+\midrule
+\texttt{\%Y} & 4-digit year & \texttt{\%H} & Hour (00--23) \\
+\texttt{\%m} & Month (01--12) & \texttt{\%I} & Hour (01--12) \\
+\texttt{\%d} & Day (01--31) & \texttt{\%M} & Minute (00--59) \\
+\texttt{\%B} & Full month name & \texttt{\%S} & Second (00--59) \\
+\texttt{\%b} & Abbreviated month & \texttt{\%p} & AM/PM \\
+\texttt{\%A} & Full weekday name & \texttt{\%Z} & Timezone abbreviation \\
+\texttt{\%a} & Abbreviated weekday & \texttt{\%\%} & Literal \% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Parsing Timestamps}\label{sec:time-parse}
+
+\begin{lstlisting}[language=Lattice, caption={Parsing a date string into a timestamp}]
+let timestamp = time_parse("2024-12-25 14:30:00", "%Y-%m-%d %H:%M:%S")
+print(timestamp)  // epoch milliseconds
+
+let formatted = time_format(timestamp, "%B %d, %Y")
+print(formatted)  // "December 25, 2024"
+\end{lstlisting}
+
+\lstinline|time_parse| is the inverse of \lstinline|time_format|. It takes a
+date string and a format pattern, and returns the corresponding epoch
+timestamp in milliseconds. The format specifiers are the same as for
+\lstinline|time_format|.
+
+\begin{notebox}{Local Time}
+Both \lstinline|time_format| and \lstinline|time_parse| work in the
+system's local timezone by default. The underlying C functions
+(\texttt{localtime\_r} and \texttt{mktime}) handle timezone conversions
+and daylight saving time adjustments automatically.
+\end{notebox}
+
+\subsection{Extracting Date Components}\label{sec:time-components}
+
+\index{time\_year}
+\index{time\_month}
+\index{time\_day}
+\index{time\_hour}
+\index{time\_minute}
+\index{time\_second}
+\index{time\_weekday}
+
+For quick access to individual components without constructing a format
+string, Lattice provides dedicated extraction functions:
+
+\begin{lstlisting}[language=Lattice, caption={Extracting date and time components}]
+let now = time()
+
+print(time_year(now))     // 2024
+print(time_month(now))    // 12 (1-based)
+print(time_day(now))      // 25
+print(time_hour(now))     // 14
+print(time_minute(now))   // 30
+print(time_second(now))   // 45
+print(time_weekday(now))  // 3 (0=Sunday, 1=Monday, ..., 6=Saturday)
+\end{lstlisting}
+
+\subsection{Date Arithmetic}\label{sec:date-arithmetic}
+
+\index{time\_add}
+
+Since timestamps are just integers in milliseconds, date arithmetic is
+straightforward:
+
+\begin{lstlisting}[language=Lattice, caption={Date arithmetic with timestamps}]
+let now = time()
+
+// Add 7 days
+let next_week = time_add(now, 7 * 24 * 60 * 60 * 1000)
+print("Next week: " + time_format(next_week, "%Y-%m-%d"))
+
+// Subtract 30 days
+let last_month = time_add(now, -30 * 24 * 60 * 60 * 1000)
+print("30 days ago: " + time_format(last_month, "%Y-%m-%d"))
+
+// Useful constants (in milliseconds)
+let SECOND = 1000
+let MINUTE = 60 * SECOND
+let HOUR = 60 * MINUTE
+let DAY = 24 * HOUR
+
+let deadline = time_add(now, 3 * HOUR + 30 * MINUTE)
+print("Deadline: " + time_format(deadline, "%H:%M:%S"))
+\end{lstlisting}
+
+\lstinline|time_add| simply adds a delta in milliseconds to a timestamp.
+You can also use plain addition (\lstinline|now + delta|), but
+\lstinline|time_add| makes the intent clearer.
+
+\subsection{The datetime Functions}\label{sec:datetime}
+
+\index{datetime\_now}
+\index{datetime\_from\_iso}
+\index{datetime\_to\_iso}
+\index{datetime\_from\_epoch}
+\index{datetime\_to\_epoch}
+\index{datetime\_format}
+\index{datetime\_add\_duration}
+\index{datetime\_sub}
+\index{datetime\_to\_utc}
+\index{datetime\_to\_local}
+\index{timezone\_offset}
+
+For more structured date/time work---especially when dealing with ISO\,8601
+strings and UTC conversions---Lattice provides a family of
+\lstinline|datetime_*| functions. These work with epoch \emph{seconds} (not
+milliseconds) and return Maps with structured fields.
+
+\begin{lstlisting}[language=Lattice, caption={Working with ISO 8601 dates}]
+// Get current datetime as a Map
+let now = datetime_now()
+print(now)  // Map with year, month, day, hour, minute, second, etc.
+
+// Parse an ISO 8601 string
+let dt = datetime_from_iso("2024-12-25T14:30:00Z")
+print(dt)
+
+// Convert back to ISO 8601
+let iso_str = datetime_to_iso(dt)
+print(iso_str)  // "2024-12-25T14:30:00Z"
+
+// Format with a custom pattern
+let formatted = datetime_format(dt, "%B %d, %Y at %H:%M")
+print(formatted)  // "December 25, 2024 at 14:30"
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Duration arithmetic with datetime}]
+let start = datetime_from_iso("2024-01-15T09:00:00Z")
+
+// Add a duration (in seconds)
+let meeting_end = datetime_add_duration(start, 90 * 60)  // 90 minutes
+
+// Compute the difference between two datetimes (in seconds)
+let end = datetime_from_iso("2024-01-15T10:30:00Z")
+let diff = datetime_sub(end, start)
+print("Duration: " + to_string(diff / 60) + " minutes")  // 90 minutes
+\end{lstlisting}
+
+The \lstinline|datetime_to_utc| and \lstinline|datetime_to_local| functions
+convert between UTC and local time. \lstinline|timezone_offset()| returns the
+local timezone offset from UTC in seconds.
+
+\begin{tipbox}{Which Time API to Use?}
+For simple timing and logging, the \lstinline|time()| / \lstinline|time_format()|
+functions are sufficient. For applications that exchange dates with APIs,
+store them in databases, or perform calendar arithmetic across timezones,
+use the \lstinline|datetime_*| family with ISO\,8601 strings.
+\end{tipbox}
+
+% ---------------------------------------------------------------------------
+\section{The crypto Module}\label{sec:crypto-module}
+% ---------------------------------------------------------------------------
+
+\index{sha256}
+\index{sha512}
+\index{md5}
+\index{hmac\_sha256}
+\index{base64\_encode}
+\index{base64\_decode}
+\index{random\_bytes}
+
+Lattice provides cryptographic primitives for hashing, message
+authentication, encoding, and random number generation. When built with
+OpenSSL support (\texttt{LATTICE\_HAS\_TLS}), these functions use OpenSSL's
+optimized implementations. Without OpenSSL, Lattice falls back to pure-C
+implementations that produce identical results---just more slowly.
+
+\subsection{Hashing: sha256, sha512, md5}\label{sec:hashing}
+
+\begin{lstlisting}[language=Lattice, caption={Computing cryptographic hashes}]
+let message = "Hello, Lattice!"
+
+let hash = sha256(message)
+print(hash)  // 64-character hex string
+// e.g., "a1b2c3d4e5f6..."
+
+let long_hash = sha512(message)
+print(long_hash)  // 128-character hex string
+
+let legacy_hash = md5(message)
+print(legacy_hash)  // 32-character hex string
+\end{lstlisting}
+
+All hash functions take a \lstinline|String| and return a lowercase
+hexadecimal string. \lstinline|sha256| produces a 256-bit (64 hex character)
+digest. \lstinline|sha512| produces a 512-bit (128 hex character) digest.
+\lstinline|md5| produces a 128-bit (32 hex character) digest.
+
+\begin{warnbox}{MD5 Is Not Secure}
+MD5 is cryptographically broken and should never be used for security
+purposes (password hashing, digital signatures, integrity verification of
+untrusted data). It is included for backward compatibility with legacy
+systems. Use \lstinline|sha256| or \lstinline|sha512| for new applications.
+\end{warnbox}
+
+\begin{lstlisting}[language=Lattice, caption={File integrity checking with sha256}]
+fn file_checksum(path: String) -> String {
+    let contents = read_file(path)
+    return sha256(contents)
+}
+
+let expected = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+let actual = file_checksum("important_data.txt")
+
+if actual == expected {
+    print("File integrity verified")
+} else {
+    print("WARNING: File has been modified!")
+}
+\end{lstlisting}
+
+\subsection{HMAC: hmac\_sha256}\label{sec:hmac}
+
+\index{hmac\_sha256}
+
+HMAC (Hash-based Message Authentication Code) combines a secret key with a
+hash function to verify both the integrity and authenticity of a message:
+
+\begin{lstlisting}[language=Lattice, caption={Computing an HMAC}]
+let secret_key = "my-secret-key"
+let message = "user=alice&amount=100"
+
+let mac = hmac_sha256(secret_key, message)
+print(mac)  // 64-character hex string
+
+// Verify by recomputing
+let expected_mac = hmac_sha256(secret_key, message)
+if mac == expected_mac {
+    print("Message is authentic")
+}
+\end{lstlisting}
+
+\lstinline|hmac_sha256| takes a key and a message, both as strings, and
+returns a hex-encoded MAC. This is the standard way to sign API requests and
+verify webhook payloads.
+
+\subsection{Base64 Encoding and Decoding}\label{sec:base64}
+
+\index{base64\_encode}
+\index{base64\_decode}
+
+Base64 converts arbitrary binary data into a text-safe ASCII representation:
+
+\begin{lstlisting}[language=Lattice, caption={Base64 encoding and decoding}]
+let original = "Hello, World!"
+
+let encoded = base64_encode(original)
+print(encoded)  // "SGVsbG8sIFdvcmxkIQ=="
+
+let decoded = base64_decode(encoded)
+print(decoded)  // "Hello, World!"
+\end{lstlisting}
+
+Base64 is commonly used for embedding binary data in JSON, passing data in
+URL parameters, and encoding credentials for HTTP Basic authentication:
+
+\begin{lstlisting}[language=Lattice, caption={HTTP Basic authentication with Base64}]
+let username = "admin"
+let password = "s3cret"
+let credentials = base64_encode(username + ":" + password)
+
+let options = Map::new()
+options["headers"] = Map::new()
+options["headers"]["Authorization"] = "Basic " + credentials
+
+let response = http_get("https://api.example.com/admin")
+\end{lstlisting}
+
+\subsection{Random Bytes}\label{sec:random-bytes}
+
+\index{random\_bytes}
+
+For cryptographically secure random data, use \lstinline|random_bytes|:
+
+\begin{lstlisting}[language=Lattice, caption={Generating random bytes}]
+let token_bytes = random_bytes(32)
+print(token_bytes.to_hex())  // 64-character random hex string
+
+// Generate a random hex token
+fn generate_token(length: Int) -> String {
+    let bytes = random_bytes(length)
+    return bytes.to_hex()
+}
+
+let session_token = generate_token(16)
+print("Session: " + session_token)
+\end{lstlisting}
+
+\lstinline|random_bytes| returns a \lstinline|Buffer| of the specified
+length, filled with cryptographically secure random bytes. On macOS and BSD,
+it uses \texttt{arc4random\_buf}. On Linux, it reads from
+\texttt{/dev/urandom}. On Windows, it uses \texttt{RtlGenRandom}. With
+OpenSSL available, it uses \texttt{RAND\_bytes}. All of these are suitable
+for generating session tokens, encryption keys, and nonces.
+
+\begin{defnbox}{Cryptographic vs.\ Pseudorandom}
+\lstinline|random_bytes| produces cryptographically secure random data---it
+is unpredictable and suitable for security-sensitive applications. The
+\lstinline|random()| function from the math module (see \cref{sec:math-random})
+uses \texttt{rand()}, which is \emph{not} cryptographically secure and
+should only be used for non-security purposes like games and simulations.
+\end{defnbox}
+
+% ---------------------------------------------------------------------------
+\section{uuid()}\label{sec:uuid}
+% ---------------------------------------------------------------------------
+
+\index{uuid}
+
+Universally Unique Identifiers (UUIDs) are 128-bit identifiers typically
+displayed as 32 hexadecimal digits in a 8-4-4-4-12 format. Lattice provides
+a built-in function for generating Version~4 (random) UUIDs:
+
+\begin{lstlisting}[language=Lattice, caption={Generating UUIDs}]
+let id = uuid()
+print(id)  // "550e8400-e29b-41d4-a716-446655440000" (example)
+
+// Generate multiple unique identifiers
+flux ids = []
+flux i = 0
+while i < 5 {
+    ids.push(uuid())
+    i += 1
+}
+for id in ids {
+    print(id)
+}
+\end{lstlisting}
+
+Each call to \lstinline|uuid()| returns a fresh, unique string. The
+underlying implementation uses \lstinline|random_bytes| to generate 16
+random bytes, then sets the version bits (0100 for V4) and variant bits
+(10xx for RFC~4122) before formatting.
+
+\begin{lstlisting}[language=Lattice, caption={UUIDs for record identifiers}]
+fn create_user(name: String, email: String) -> Map {
+    let user = Map::new()
+    user["id"] = uuid()
+    user["name"] = name
+    user["email"] = email
+    user["created_at"] = time_format(time(), "%Y-%m-%dT%H:%M:%SZ")
+    return user
+}
+
+let alice = create_user("Alice", "alice@example.com")
+print(json_stringify(alice))
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{The os Module}\label{sec:os-module}
+% ---------------------------------------------------------------------------
+
+\index{env}
+\index{env\_set}
+\index{env\_keys}
+\index{args}
+\index{platform}
+\index{cwd}
+\index{hostname}
+\index{pid}
+\index{exec}
+\index{shell}
+
+The operating system functions let your program interact with its
+environment: reading and setting environment variables, inspecting
+command-line arguments, executing external commands, and querying system
+information.
+
+\subsection{Environment Variables: env, env\_set, env\_keys}
+\label{sec:env-vars}
+
+\begin{lstlisting}[language=Lattice, caption={Working with environment variables}]
+// Read an environment variable
+let home = env("HOME")
+print("Home directory: " + home)
+
+let path = env("PATH")
+print("PATH: " + path)
+
+// Check for a variable (returns nil if not set)
+let debug = env("DEBUG")
+if debug != nil {
+    print("Debug mode is on: " + debug)
+} else {
+    print("Debug mode is off")
+}
+
+// Set an environment variable
+env_set("APP_MODE", "production")
+print(env("APP_MODE"))  // "production"
+
+// List all environment variable names
+let keys = env_keys()
+print("Environment has " + to_string(keys.len()) + " variables")
+\end{lstlisting}
+
+\lstinline|env(name)| returns the value of the named environment variable as
+a \lstinline|String|, or \lstinline|nil| if it is not set. \lstinline|env_set|
+sets a variable for the current process (it does not modify the parent
+shell's environment). \lstinline|env_keys| returns an array of all
+environment variable names.
+
+\subsection{Command-Line Arguments: args()}\label{sec:args}
+
+\begin{lstlisting}[language=Lattice, caption={Accessing command-line arguments}]
+// Run: lattice script.lat --verbose output.txt
+
+let arguments = args()
+print(arguments)  // ["script.lat", "--verbose", "output.txt"]
+
+// Simple argument parsing
+flux verbose = false
+flux output_path = "default.txt"
+
+flux i = 0
+while i < arguments.len() {
+    if arguments[i] == "--verbose" {
+        verbose = true
+    } else if !arguments[i].starts_with("--") {
+        output_path = arguments[i]
+    }
+    i += 1
+}
+
+if verbose {
+    print("Writing to: " + output_path)
+}
+\end{lstlisting}
+
+\lstinline|args()| returns the command-line arguments as an array of strings.
+The first element is typically the script name.
+
+\subsection{System Information: platform, cwd, hostname, pid}
+\label{sec:system-info}
+
+\begin{lstlisting}[language=Lattice, caption={Querying system information}]
+print("Platform: " + platform())     // "macos", "linux", "windows", or "wasm"
+print("Working dir: " + cwd())       // "/home/user/project"
+print("Hostname: " + hostname())     // "workstation"
+print("Process ID: " + to_string(pid()))  // 12345
+\end{lstlisting}
+
+\lstinline|platform()| returns a short string identifying the operating
+system. This is useful for writing cross-platform scripts that need to adjust
+their behavior:
+
+\begin{lstlisting}[language=Lattice, caption={Platform-specific behavior}]
+let separator = if platform() == "windows" { "\\" } else { "/" }
+let config_dir = if platform() == "macos" {
+    env("HOME") + "/Library/Application Support/myapp"
+} else if platform() == "linux" {
+    env("HOME") + "/.config/myapp"
+} else {
+    env("APPDATA") + "\\myapp"
+}
+
+if !file_exists(config_dir) {
+    mkdir(config_dir)
+}
+\end{lstlisting}
+
+\subsection{Executing External Commands: exec and shell}
+\label{sec:exec-shell}
+
+\begin{lstlisting}[language=Lattice, caption={Running external commands with exec}]
+// exec runs a command and returns its stdout as a string
+let output = exec("echo 'Hello from the shell'")
+print(output)  // "Hello from the shell\n"
+
+// Capture the output of a system command
+let git_status = exec("git status --short")
+print(git_status)
+\end{lstlisting}
+
+\lstinline|exec| runs a command via \texttt{popen}, captures its standard
+output, and returns it as a string. If the command exits with a non-zero
+status, \lstinline|exec| raises a runtime error.
+
+For more control---including access to both stdout, stderr, and the exit
+code---use \lstinline|shell|:
+
+\begin{lstlisting}[language=Lattice, caption={Running commands with shell for full control}]
+let result = shell("ls -la /nonexistent")
+
+print("Exit code: " + to_string(result["exit_code"]))
+print("Stdout: " + result["stdout"])
+print("Stderr: " + result["stderr"])
+
+// Check if a command succeeded
+if result["exit_code"] == 0 {
+    print("Success!")
+} else {
+    print("Failed: " + result["stderr"])
+}
+\end{lstlisting}
+
+\lstinline|shell| returns a Map with three keys: \lstinline|"exit_code"|
+(an \lstinline|Int|), \lstinline|"stdout"| (a \lstinline|String|), and
+\lstinline|"stderr"| (a \lstinline|String|). Unlike \lstinline|exec|, it
+does \emph{not} raise an error on non-zero exit codes, giving you full
+control over error handling.
+
+\begin{warnbox}{Shell Injection}
+Both \lstinline|exec| and \lstinline|shell| pass the command string directly
+to the system shell (\texttt{/bin/sh} on Unix, \texttt{cmd.exe} on Windows).
+\textbf{Never} construct command strings from untrusted user input without
+sanitization---this is a classic shell injection vulnerability:
+\begin{lstlisting}[language=Lattice]
+// DANGEROUS: user_input could contain "; rm -rf /"
+let result = exec("echo " + user_input)
+
+// SAFER: validate or escape the input first
+\end{lstlisting}
+\end{warnbox}
+
+% ---------------------------------------------------------------------------
+\section{The math Module}\label{sec:math-module}
+% ---------------------------------------------------------------------------
+
+\index{math module}
+\index{abs}
+\index{floor}
+\index{ceil}
+\index{round}
+\index{sqrt}
+\index{pow}
+\index{min}
+\index{max}
+\index{clamp}
+\index{lerp}
+\index{sin}
+\index{cos}
+\index{tan}
+\index{log}
+\index{random}
+\index{random\_int}
+
+Lattice's math functions are registered as top-level built-ins. They accept
+both \lstinline|Int| and \lstinline|Float| arguments (promoting to
+\lstinline|Float| when needed) and cover the standard mathematical operations.
+
+\subsection{Rounding and Absolute Value}\label{sec:math-rounding}
+
+\begin{lstlisting}[language=Lattice, caption={Rounding functions}]
+print(abs(-42))       // 42
+print(abs(-3.14))     // 3.14
+
+print(floor(3.7))     // 3
+print(floor(-2.3))    // -3
+
+print(ceil(3.2))      // 4
+print(ceil(-2.7))     // -2
+
+print(round(3.5))     // 4
+print(round(2.4))     // 2
+\end{lstlisting}
+
+\lstinline|floor|, \lstinline|ceil|, and \lstinline|round| all return
+\lstinline|Int| values (the C \texttt{floor}/\texttt{ceil}/\texttt{round}
+cast to \texttt{int64\_t}). When given an \lstinline|Int|, they return it
+unchanged.
+
+\subsection{Powers, Roots, and Logarithms}\label{sec:math-powers}
+
+\begin{lstlisting}[language=Lattice, caption={Powers and roots}]
+print(pow(2, 10))     // 1024 (Int)
+print(pow(2, -1))     // 0.5 (Float, because negative exponent)
+print(sqrt(144))      // 12.0
+
+print(log(math_e()))   // 1.0 (natural log)
+print(log2(1024))      // 10.0
+print(log10(1000))     // 3.0
+
+print(exp(1))          // 2.718281828... (e^1)
+\end{lstlisting}
+
+\lstinline|pow| is smart about types: when both arguments are non-negative
+integers, it returns an \lstinline|Int| (with overflow detection that falls
+back to \lstinline|Float|). \lstinline|sqrt| always returns a
+\lstinline|Float| and raises a domain error for negative inputs.
+
+\subsection{Min, Max, Clamp, and Lerp}\label{sec:math-minmax}
+
+\begin{lstlisting}[language=Lattice, caption={Clamping and interpolation}]
+print(min(3, 7))     // 3
+print(max(3, 7))     // 7
+
+// Clamp a value to a range
+let health = clamp(120, 0, 100)
+print(health)  // 100
+
+let brightness = clamp(-10, 0, 255)
+print(brightness)  // 0
+
+// Linear interpolation
+let midpoint = lerp(0.0, 100.0, 0.5)
+print(midpoint)  // 50.0
+
+let quarter = lerp(10.0, 20.0, 0.25)
+print(quarter)  // 12.5
+\end{lstlisting}
+
+\lstinline|clamp(value, low, high)| constrains a value to the range
+[\textit{low}, \textit{high}]. \lstinline|lerp(a, b, t)| computes the
+linear interpolation $a + (b - a) \times t$. Both are essential for game
+development, animation, and signal processing.
+
+\subsection{Trigonometry}\label{sec:math-trig}
+
+\begin{lstlisting}[language=Lattice, caption={Trigonometric functions}]
+let pi = math_pi()
+
+print(sin(0))           // 0.0
+print(sin(pi / 2))      // 1.0
+print(cos(0))           // 1.0
+print(cos(pi))          // -1.0
+print(tan(pi / 4))      // ~1.0
+
+// Inverse trig
+print(asin(1.0))        // ~1.5707... (pi/2)
+print(acos(0.0))        // ~1.5707... (pi/2)
+print(atan(1.0))        // ~0.7853... (pi/4)
+
+// atan2 for angle from coordinates
+let angle = atan2(1.0, 1.0)
+print(angle)  // ~0.7853... (pi/4, i.e., 45 degrees)
+\end{lstlisting}
+
+All trigonometric functions work in radians. \lstinline|math_pi()| returns
+$\pi$ and \lstinline|math_e()| returns Euler's number $e$, both as
+\lstinline|Float| constants.
+
+Hyperbolic functions are also available: \lstinline|sinh|, \lstinline|cosh|,
+and \lstinline|tanh|.
+
+\subsection{Random Numbers}\label{sec:math-random}
+
+\begin{lstlisting}[language=Lattice, caption={Generating random numbers}]
+// Random float in [0, 1)
+let r = random()
+print(r)  // e.g., 0.7234...
+
+// Random integer in a range [low, high] (inclusive)
+let dice = random_int(1, 6)
+print("You rolled: " + to_string(dice))
+
+// Shuffle an array using random
+fn shuffle(arr: Array) -> Array {
+    flux result = arr
+    flux i = result.len() - 1
+    while i > 0 {
+        let j = random_int(0, i)
+        let temp = result[i]
+        result[i] = result[j]
+        result[j] = temp
+        i -= 1
+    }
+    return result
+}
+
+let deck = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let shuffled = shuffle(deck)
+print(shuffled)
+\end{lstlisting}
+
+\lstinline|random()| returns a \lstinline|Float| in the range $[0, 1)$.
+\lstinline|random_int(low, high)| returns an \lstinline|Int| in the
+inclusive range $[\text{low}, \text{high}]$.
+
+\subsection{Other Math Functions}\label{sec:math-other}
+
+\index{sign}
+\index{gcd}
+\index{lcm}
+\index{is\_nan}
+\index{is\_inf}
+
+\begin{lstlisting}[language=Lattice, caption={Additional math functions}]
+// Sign function
+print(sign(-42))   // -1
+print(sign(0))     // 0
+print(sign(7.5))   // 1.0
+
+// Greatest common divisor and least common multiple
+print(gcd(12, 8))   // 4
+print(lcm(4, 6))    // 12
+
+// Special value detection
+print(is_nan(0.0 / 0.0))   // true
+print(is_inf(1.0 / 0.0))   // true
+print(is_nan(42.0))         // false
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{The regex Module}\label{sec:regex-module}
+% ---------------------------------------------------------------------------
+
+\index{regex}
+\index{regex\_match}
+\index{regex\_find\_all}
+\index{regex\_replace}
+
+Regular expressions let you search, match, and transform text using
+patterns. Lattice uses POSIX Extended Regular Expressions (ERE) on Unix
+systems.
+
+\subsection{Matching: regex\_match}\label{sec:regex-match}
+
+\begin{lstlisting}[language=Lattice, caption={Testing if a string matches a pattern}]
+let email = "alice@example.com"
+let pattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+
+if regex_match(pattern, email) {
+    print("Valid email format")
+} else {
+    print("Invalid email format")
+}
+\end{lstlisting}
+
+\lstinline|regex_match| returns \lstinline|true| if the pattern matches
+anywhere in the string. Use \texttt{\^{}} and \texttt{\$} anchors to require
+a full-string match.
+
+\begin{lstlisting}[language=Lattice, caption={Case-insensitive matching with flags}]
+// The third argument is a flags string
+let is_greeting = regex_match("^hello", "Hello World", "i")
+print(is_greeting)  // true
+\end{lstlisting}
+
+The optional flags string supports:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Flag} & \textbf{Meaning} \\
+\midrule
+\texttt{i} & Case-insensitive matching (\texttt{REG\_ICASE}) \\
+\texttt{m} & Newline-sensitive matching (\texttt{REG\_NEWLINE}) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Finding All Matches: regex\_find\_all}\label{sec:regex-find}
+
+\begin{lstlisting}[language=Lattice, caption={Finding all pattern matches in a string}]
+let text = "Call 555-1234 or 555-5678 for info"
+let phone_pattern = "[0-9]{3}-[0-9]{4}"
+
+let numbers = regex_find_all(phone_pattern, text)
+for number in numbers {
+    print("Found: " + number)
+}
+// Found: 555-1234
+// Found: 555-5678
+\end{lstlisting}
+
+\lstinline|regex_find_all| returns an array of all non-overlapping matches.
+If no matches are found, it returns an empty array.
+
+\begin{lstlisting}[language=Lattice, caption={Extracting data from structured text}]
+let log = """
+[2024-01-15] ERROR: Connection timeout
+[2024-01-15] INFO: Server started
+[2024-01-16] ERROR: Disk space low
+[2024-01-16] WARN: Memory usage high
+"""
+
+let errors = regex_find_all("\\[.*\\] ERROR: .*", log)
+print("Found " + to_string(errors.len()) + " errors:")
+for error in errors {
+    print("  " + error)
+}
+// Found 2 errors:
+//   [2024-01-15] ERROR: Connection timeout
+//   [2024-01-16] ERROR: Disk space low
+\end{lstlisting}
+
+\subsection{Replacing: regex\_replace}\label{sec:regex-replace}
+
+\begin{lstlisting}[language=Lattice, caption={Replacing patterns in text}]
+let text = "The quick brown fox jumps over the lazy dog"
+
+// Replace all vowels
+let result = regex_replace("[aeiou]", text, "*")
+print(result)  // "Th* q**ck br*wn f*x j*mps *v*r th* l*zy d*g"
+
+// Sanitize user input: remove non-alphanumeric characters
+let input = "Hello! <script>alert('xss')</script>"
+let clean = regex_replace("[^a-zA-Z0-9 ]", input, "")
+print(clean)  // "Hello scriptalertxssscript"
+\end{lstlisting}
+
+\lstinline|regex_replace| replaces \emph{all} non-overlapping matches of the
+pattern with the replacement string. It returns a new string; the original
+is unmodified.
+
+\begin{lstlisting}[language=Lattice, caption={Normalizing whitespace}]
+let messy = "Too   many     spaces    here"
+let clean = regex_replace("  +", messy, " ")
+print(clean)  // "Too many spaces here"
+\end{lstlisting}
+
+\begin{notebox}{Regex on Windows}
+The regex functions use POSIX \texttt{regex.h}, which is not available in
+MinGW on Windows. On Windows builds, the regex functions return stub errors.
+A future version may bundle PCRE2 for cross-platform support. See
+\filename{src/regex\_ops.c} for details.
+\end{notebox}
+
+\subsection{Practical Example: Log Parser}\label{sec:regex-example}
+
+Let's combine regex with file I/O and data formats to build a log file
+parser:
+
+\begin{lstlisting}[language=Lattice, caption={A log parser using regex}]
+fn parse_log(path: String) -> Array {
+    let content = read_file(path)
+    let lines = content.split("\n")
+
+    flux entries = []
+    let pattern = "^\\[([0-9-]+)\\] ([A-Z]+): (.*)$"
+
+    for line in lines {
+        if line.len() == 0 { continue }
+
+        let matches = regex_find_all(
+            "[0-9]{4}-[0-9]{2}-[0-9]{2}", line)
+        let levels = regex_find_all("[A-Z]{3,}", line)
+
+        if matches.len() > 0 && levels.len() > 0 {
+            let entry = Map::new()
+            entry["date"] = matches[0]
+            entry["level"] = levels[0]
+            entry["message"] = line
+            entries.push(entry)
+        }
+    }
+
+    return entries
+}
+
+let entries = parse_log("application.log")
+let json_output = json_stringify(entries)
+write_file("parsed_log.json", json_output)
+print("Parsed " + to_string(entries.len()) + " log entries")
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section*{Exercises}\label{sec:time-crypto-os-exercises}
+% ---------------------------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{Stopwatch.} Write a stopwatch utility with functions
+    \lstinline|start()|, \lstinline|lap()|, and \lstinline|stop()| that
+    records split times. Print each lap time and the total elapsed time,
+    formatted as \texttt{MM:SS.mmm}.
+
+    \item \textbf{Password Hasher.} Write a function that takes a password
+    and a salt (generated with \lstinline|random_bytes|), computes
+    \lstinline|hmac_sha256(salt, password)|, and returns a string in the
+    format \texttt{salt\$hash} (where the salt is hex-encoded). Write a
+    companion \lstinline|verify| function that checks a password against a
+    stored hash.
+
+    \item \textbf{Cron Expression Evaluator.} Write a function that takes a
+    simple cron-like expression (e.g., \texttt{"*/5 * * * *"} for ``every 5
+    minutes'') and the current time, and returns the next time the
+    expression will fire. Use the \lstinline|time_*| extraction functions
+    and date arithmetic.
+
+    \item \textbf{System Information Report.} Write a program that collects
+    system information---platform, hostname, PID, current directory, all
+    environment variables, and the current time---and outputs it as a
+    formatted YAML document.
+
+    \item \textbf{Text Statistics.} Write a program that reads a text file
+    and uses \lstinline|regex_find_all| to count: (a)~the number of words,
+    (b)~the number of sentences (ending with . ! or ?), (c)~the number of
+    email addresses, and (d)~the number of URLs. Output the results as a
+    JSON object.
+
+    \item \textbf{Monte Carlo Pi Estimator.} Use \lstinline|random()| to
+    estimate $\pi$ by the Monte Carlo method: generate random $(x, y)$
+    points in the unit square, count how many fall inside the unit circle
+    ($x^2 + y^2 \leq 1$), and compute $\pi \approx 4 \times
+    \text{inside} / \text{total}$. How many points do you need for 4
+    decimal places of accuracy?
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section*{What's Next}\label{sec:time-crypto-os-next}
+% ---------------------------------------------------------------------------
+
+With this chapter, we have completed our tour of the standard library.
+You now have the tools to work with files, parse and generate data in
+multiple formats, communicate over the network, manipulate dates, hash and
+encode data, generate unique identifiers, interact with the operating system,
+do mathematics, and match text with regular expressions. In
+\cref{ch:lazy-iterators}, we will shift gears and explore Lattice's iterator
+system---a powerful abstraction for processing sequences lazily and
+composing transformations with a functional style.

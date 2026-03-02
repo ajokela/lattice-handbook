@@ -1,0 +1,970 @@
+\chapter{Pattern Matching}\label{ch:pattern-matching}
+
+\index{pattern matching}
+\index{match expression}
+
+Every program makes decisions. In \cref{ch:control-flow} we used \lstinline|if/else| chains to steer execution based on boolean conditions, and that works beautifully when you have one or two tests to run. But programs often face a harder question: ``What \emph{shape} does this data have?'' Is the HTTP response a success or a failure? Does the command-line argument look like a number, a flag, or a filename? Is the list empty, a singleton, or something longer?
+
+Pattern matching answers these questions directly. Instead of writing a cascade of \lstinline|if/else| branches---each one manually testing a field or comparing a value---you describe what the data \emph{looks like}, and Lattice picks the first description that fits.
+
+\begin{lstlisting}[language=Lattice, caption={A first taste of match}]
+let status_code = 404
+
+let message = match status_code {
+    200 => "OK",
+    301 => "Moved Permanently",
+    404 => "Not Found",
+    500 => "Internal Server Error",
+    _   => "Unknown status"
+}
+
+print(message) // Not Found
+\end{lstlisting}
+
+This chapter builds from that starting point. We will explore every pattern type Lattice supports---from literals and wildcards through range patterns, array destructuring, struct field extraction, and enum variant matching. Along the way we will meet \emph{guards}, \emph{bindings}, and \emph{exhaustiveness checking}, the compiler's way of telling you when you have forgotten a case.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{The \texttt{match} Expression}\label{sec:match-expression}
+\index{match expression!syntax}
+
+A \lstinline|match| expression evaluates a \emph{scrutinee} (the value being inspected) and compares it against a series of \emph{arms}. Each arm has a pattern on the left side of \lstinline|=>| and a body on the right:
+
+\begin{defnbox}{Match Expression}
+\begin{lstlisting}[language=Lattice, numbers=none]
+match scrutinee {
+    pattern1 => body1,
+    pattern2 => body2,
+    _        => fallback_body
+}
+\end{lstlisting}
+A \emph{match expression} evaluates the scrutinee once, then tries each arm's pattern from top to bottom. The body of the first matching arm is executed, and its value becomes the value of the entire \lstinline|match| expression. If no arm matches, the expression evaluates to \lstinline|nil|.
+\end{defnbox}
+
+Because \lstinline|match| is an expression, you can bind its result to a variable, return it from a function, or embed it anywhere a value is expected:
+
+\begin{lstlisting}[language=Lattice, caption={match as an expression}]
+fn describe_temperature(temp: Int) -> String {
+    return match temp {
+        0  => "Freezing point of water",
+        100 => "Boiling point of water",
+        _  => "Just another temperature: ${temp}"
+    }
+}
+
+print(describe_temperature(100)) // Boiling point of water
+print(describe_temperature(42))  // Just another temperature: 42
+\end{lstlisting}
+
+\subsection{Arm Bodies: Expressions and Blocks}\label{sec:match-arm-bodies}
+\index{match expression!arm body}
+
+An arm body can be a single expression (as we have seen) or a block enclosed in curly braces. When a block is used, the value of the last expression in the block becomes the arm's value:
+
+\begin{lstlisting}[language=Lattice, caption={Block bodies in match arms}]
+let score = 87
+
+let grade = match score {
+    100 => "Perfect!",
+    _ => {
+        let letter = if score >= 90 { "A" } else { "B" }
+        "${letter} (${score}/100)"
+    }
+}
+
+print(grade) // B (87/100)
+\end{lstlisting}
+
+\begin{tipbox}{Commas Between Arms}
+Arms are separated by commas. The trailing comma after the last arm is optional but encouraged for consistency---it makes adding new arms later easier and produces cleaner diffs in version control.
+\end{tipbox}
+
+\subsection{First Match Wins}\label{sec:first-match-wins}
+\index{match expression!evaluation order}
+
+Arms are tried from top to bottom, and the first one that matches wins. This ordering matters when patterns overlap:
+
+\begin{lstlisting}[language=Lattice, caption={Order matters---first match wins}]
+let n = 0
+
+let result = match n {
+    0 => "zero",       // This arm matches first
+    _ => "something",  // This arm would also match, but never reached
+}
+
+print(result) // zero
+\end{lstlisting}
+
+If you put a wildcard \lstinline|_| before more specific patterns, the specific patterns will never be reached. Lattice currently does not warn about unreachable arms, so you should arrange your patterns from most specific to least specific.
+
+\begin{warnbox}{No Match Returns nil}
+If no arm matches the scrutinee, the entire \lstinline|match| expression evaluates to \lstinline|nil|---not an error. This is a deliberate design choice that keeps programs running, but it also means a missing arm might silently produce \lstinline|nil| where you expected a real value. The exhaustiveness checker (\cref{sec:exhaustiveness}) helps catch these situations at compile time.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Literal Patterns}\label{sec:literal-patterns}
+\index{pattern matching!literal pattern}
+
+The most direct kind of pattern matches a specific, concrete value. Literal patterns support integers, floats, strings, booleans, and \lstinline|nil|:
+
+\begin{lstlisting}[language=Lattice, caption={Literal patterns across types}]
+fn classify(value: any) -> String {
+    return match value {
+        42      => "The answer",
+        3.14    => "Approximately pi",
+        "hello" => "A greeting",
+        true    => "Affirmative",
+        nil     => "Nothing at all",
+        _       => "Something else"
+    }
+}
+
+print(classify(42))      // The answer
+print(classify("hello")) // A greeting
+print(classify(nil))     // Nothing at all
+print(classify(99))      // Something else
+\end{lstlisting}
+
+Literal patterns use value equality to compare. Two integers are equal if they hold the same number; two strings are equal if they contain the same characters. Complex types like arrays and structs are \emph{not} compared by value in literal patterns---use destructuring patterns (\cref{sec:array-patterns,sec:struct-patterns}) for those.
+
+Negative numeric literals work as you would expect:
+
+\begin{lstlisting}[language=Lattice, caption={Negative literal patterns}]
+let temp = -40
+
+let note = match temp {
+    -40 => "Where Celsius meets Fahrenheit",
+    0   => "Freezing",
+    _   => "Unremarkable"
+}
+
+print(note) // Where Celsius meets Fahrenheit
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Wildcard and Binding Patterns}\label{sec:wildcard-binding}
+
+\subsection{The Wildcard \texttt{\_}}\label{sec:wildcard-pattern}
+\index{pattern matching!wildcard}
+\index{\_@\texttt{\_} (wildcard)}
+
+The underscore \lstinline|_| matches any value without capturing it. It is the catch-all, the ``I don't care what this is'' pattern:
+
+\begin{lstlisting}[language=Lattice, caption={Wildcard as a catch-all}]
+fn is_special(n: Int) -> Bool {
+    return match n {
+        0 => true,
+        1 => true,
+        _ => false
+    }
+}
+\end{lstlisting}
+
+A wildcard arm placed at the end of a \lstinline|match| guarantees that every possible value is covered, which makes the match exhaustive.
+
+\subsection{Binding Patterns}\label{sec:binding-pattern}
+\index{pattern matching!binding pattern}
+
+Sometimes you want to match \emph{any} value, but you also want to use it inside the arm's body. A binding pattern does exactly that---any bare identifier (other than \lstinline|_|) becomes a variable bound to the scrutinee's value:
+
+\begin{lstlisting}[language=Lattice, caption={Binding patterns capture the scrutinee}]
+let response_code = 418
+
+let msg = match response_code {
+    200 => "Success",
+    404 => "Not found",
+    code => "Unexpected status: ${code}"
+}
+
+print(msg) // Unexpected status: 418
+\end{lstlisting}
+
+The name \lstinline|code| in that last arm is not a keyword or a previously defined variable---it is a fresh local variable whose value is the scrutinee (here, \lstinline|418|). The binding is only available inside the arm's body.
+
+\begin{notebox}{Bindings vs.\ Literals}
+How does Lattice tell the difference between a binding pattern like \lstinline|code| and a literal pattern? The rule is: literal patterns are actual literal values (\lstinline|42|, \lstinline|"hello"|, \lstinline|true|, \lstinline|nil|). Any other bare identifier is treated as a binding. You cannot match against the value of an existing variable by naming it in a pattern---use a guard instead (\cref{sec:guards}).
+\end{notebox}
+
+Binding patterns truly shine when combined with guards, which we will explore in \cref{sec:guards}.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Range Patterns}\label{sec:range-patterns}
+\index{pattern matching!range pattern}
+\index{range!in patterns}
+
+Range patterns match values that fall within a numeric range. The syntax uses the familiar \lstinline|..| operator, but with an important twist: range patterns are \textbf{inclusive} on both ends.
+
+\begin{lstlisting}[language=Lattice, caption={Grading with range patterns}]
+fn letter_grade(score: Int) -> String {
+    return match score {
+        90..100 => "A",
+        80..89  => "B",
+        70..79  => "C",
+        60..69  => "D",
+        0..59   => "F",
+        _       => "Invalid score"
+    }
+}
+
+print(letter_grade(95))  // A
+print(letter_grade(80))  // B
+print(letter_grade(70))  // C
+print(letter_grade(42))  // F
+\end{lstlisting}
+
+\begin{warnbox}{Ranges in Patterns vs.\ Ranges Elsewhere}
+The \lstinline|..| operator has different semantics depending on context. When used to create a \lstinline|Range| value (for example, in a \lstinline|for| loop), \lstinline|a..b| is \emph{half-open}: it includes \lstinline|a| but excludes \lstinline|b|. Inside a \lstinline|match| pattern, however, \lstinline|a..b| is \emph{inclusive}: it matches values where $a \le \text{value} \le b$. This is a deliberate choice---inclusive ranges make match arms more intuitive when partitioning a numeric domain into adjacent regions.
+\end{warnbox}
+
+Under the hood, the compiler translates a range pattern into a pair of comparisons. The pattern \lstinline|80..89| becomes roughly \lstinline|value >= 80 && value <= 89|, using \lstinline|OP_GTEQ| and \lstinline|OP_LTEQ| opcodes connected by a short-circuit jump. You can see this in the range-pattern compilation logic in \filename{src/stackcompiler.c}.
+
+Range patterns work with integer values. You can also use variables or expressions as the endpoints:
+
+\begin{lstlisting}[language=Lattice, caption={Dynamic range endpoints}]
+let threshold = 50
+
+let category = match 42 {
+    0..threshold => "Below or at threshold",
+    _            => "Above threshold"
+}
+
+print(category) // Below or at threshold
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Guards}\label{sec:guards}
+\index{pattern matching!guard}
+\index{guard (match)}
+
+A \emph{guard} is an additional boolean condition attached to a match arm with the \lstinline|if| keyword. The arm only matches if both the pattern and the guard are satisfied:
+
+\begin{lstlisting}[language=Lattice, caption={Guards refine pattern matches}]
+fn classify_number(n: Int) -> String {
+    return match n {
+        0 => "zero",
+        x if x > 0 => "positive: ${x}",
+        x if x < 0 => "negative: ${x}",
+        _ => "unreachable"
+    }
+}
+
+print(classify_number(42))  // positive: 42
+print(classify_number(-7))  // negative: -7
+print(classify_number(0))   // zero
+\end{lstlisting}
+
+In the arms \lstinline|x if x > 0| and \lstinline|x if x < 0|, the identifier \lstinline|x| is a binding pattern that captures the scrutinee, and the \lstinline|if| clause is a guard that tests the captured value. The guard expression can use any bound variables from the pattern, making it possible to write powerful, flexible conditions.
+
+Guards are full expressions, so you can call functions, combine boolean operators, or access methods:
+
+\begin{lstlisting}[language=Lattice, caption={Complex guard expressions}]
+fn describe_name(name: String) -> String {
+    return match name {
+        s if s.len() == 0    => "Empty name",
+        s if s.len() > 50    => "That's a very long name",
+        s if s.contains(" ") => "Full name: ${s}",
+        s                    => "First name only: ${s}"
+    }
+}
+
+print(describe_name(""))                // Empty name
+print(describe_name("Ada"))             // First name only: Ada
+print(describe_name("Ada Lovelace"))    // Full name: Ada Lovelace
+\end{lstlisting}
+
+\begin{notebox}{Guards and Exhaustiveness}
+A guarded arm is not considered a catch-all by the exhaustiveness checker, even if its pattern is a wildcard or a binding. The guard might evaluate to \lstinline|false|, so the checker cannot guarantee the arm will match. To ensure full coverage, add an unguarded catch-all arm at the end.
+\end{notebox}
+
+\subsection{Guards with Other Pattern Types}\label{sec:guards-with-patterns}
+
+Guards can be combined with any pattern type. Here is a range pattern with a guard:
+
+\begin{lstlisting}[language=Lattice, caption={Combining range patterns and guards}]
+fn shipping_message(weight: Int) -> String {
+    return match weight {
+        1..5 if weight == 1   => "Letter rate",
+        1..5                  => "Small parcel",
+        6..30                 => "Standard parcel",
+        _ if weight > 1000    => "Freight only",
+        _                     => "Large parcel"
+    }
+}
+
+print(shipping_message(1))    // Letter rate
+print(shipping_message(3))    // Small parcel
+print(shipping_message(2000)) // Freight only
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Array Destructuring Patterns}\label{sec:array-patterns}
+\index{pattern matching!array destructuring}
+\index{array!destructuring}
+
+So far, every pattern has matched a single flat value. Array patterns reach \emph{inside} a value, matching the structure and extracting individual elements:
+
+\begin{lstlisting}[language=Lattice, caption={Basic array destructuring}]
+let point = [10, 20]
+
+match point {
+    [0, 0]    => print("Origin"),
+    [x, 0]    => print("On the x-axis at ${x}"),
+    [0, y]    => print("On the y-axis at ${y}"),
+    [x, y]    => print("Point at (${x}, ${y})")
+}
+// Point at (10, 20)
+\end{lstlisting}
+
+An array pattern is enclosed in square brackets and contains sub-patterns for each element. The scrutinee must be an array, and---without a rest pattern---its length must exactly match the number of elements in the pattern.
+
+Each element position can hold any sub-pattern:
+\begin{itemize}
+  \item A \textbf{literal} like \lstinline|0| matches that specific value at that position.
+  \item A \textbf{binding} like \lstinline|x| matches any value and captures it.
+  \item A \textbf{wildcard} \lstinline|_| matches any value without capturing.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Mixing literal and binding sub-patterns}]
+let rgb = [255, 128, 0]
+
+let color_name = match rgb {
+    [255, 0, 0]     => "Red",
+    [0, 255, 0]     => "Green",
+    [0, 0, 255]     => "Blue",
+    [255, 255, 255] => "White",
+    [0, 0, 0]       => "Black",
+    [r, g, b]       => "Custom RGB(${r}, ${g}, ${b})"
+}
+
+print(color_name) // Custom RGB(255, 128, 0)
+\end{lstlisting}
+
+\subsection{Rest Patterns}\label{sec:rest-patterns}
+\index{pattern matching!rest pattern}
+\index{...@\texttt{...} (rest pattern)}
+
+What if you do not know (or care about) how many elements the array has? The rest pattern \lstinline|...name| collects zero or more remaining elements into a sub-array:
+
+\begin{lstlisting}[language=Lattice, caption={Rest patterns collect remaining elements}]
+let numbers = [1, 2, 3, 4, 5]
+
+match numbers {
+    []           => print("Empty"),
+    [only]       => print("Just one: ${only}"),
+    [first, ...rest] => {
+        print("First: ${first}")
+        print("Rest: ${rest}")
+    }
+}
+// First: 1
+// Rest: [2, 3, 4, 5]
+\end{lstlisting}
+
+The rest pattern is powerful for processing lists head-first. You can place elements \emph{after} the rest pattern too, matching from both ends:
+
+\begin{lstlisting}[language=Lattice, caption={Rest with trailing elements}]
+let log_entries = ["INFO", "Starting up", "v2.1", "2024-01-15"]
+
+match log_entries {
+    [level, ...middle, date] => {
+        print("Level: ${level}")
+        print("Date: ${date}")
+        print("Middle: ${middle}")
+    },
+    _ => print("Unexpected format")
+}
+// Level: INFO
+// Date: 2024-01-15
+// Middle: [Starting up, v2.1]
+\end{lstlisting}
+
+The compiler handles post-rest elements by indexing from the end of the array. For a pattern like \lstinline|[first, ...mid, last]|, the element \lstinline|last| is extracted at index \lstinline|array.len() - 1|, and \lstinline|mid| receives a slice of everything in between.
+
+\begin{notebox}{Length Requirements with Rest}
+Without a rest pattern, the array length must match the pattern count exactly. With a rest pattern, the array must have \emph{at least} as many elements as the non-rest positions. A pattern \lstinline|[a, ...rest, b]| requires at least two elements; the rest can be empty.
+\end{notebox}
+
+\subsection{Array Patterns and Guards}\label{sec:array-guards}
+
+Array patterns combine naturally with guards for precise conditions:
+
+\begin{lstlisting}[language=Lattice, caption={Array patterns with guards}]
+fn describe_pair(pair: Array) -> String {
+    return match pair {
+        [a, b] if a == b     => "Equal pair: ${a}",
+        [a, b] if a + b == 0 => "Opposite pair: ${a} and ${b}",
+        [a, b]               => "Pair: ${a} and ${b}",
+        _                    => "Not a pair"
+    }
+}
+
+print(describe_pair([5, 5]))    // Equal pair: 5
+print(describe_pair([3, -3]))   // Opposite pair: 3 and -3
+print(describe_pair([1, 2]))    // Pair: 1 and 2
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Struct Destructuring Patterns}\label{sec:struct-patterns}
+\index{pattern matching!struct destructuring}
+\index{struct!destructuring}
+
+Struct patterns match values by their field names and optionally by field values. They use curly braces and are especially useful for pulling out the fields you need without cluttering your code with manual field access.
+
+\begin{lstlisting}[language=Lattice, caption={Basic struct destructuring}]
+struct User {
+    name: String,
+    age: Int,
+    active: Bool
+}
+
+let user = User { name: "Rosalind", age: 33, active: true }
+
+match user {
+    {active: false} => print("Inactive user"),
+    {name, age}     => print("${name}, age ${age}")
+}
+// Rosalind, age 33
+\end{lstlisting}
+
+There are two forms of struct field patterns:
+
+\begin{enumerate}
+  \item \textbf{Shorthand binding}: Writing just a field name like \lstinline|{name, age}| matches any value for those fields and binds them to variables of the same name.
+  \item \textbf{Value matching}: Writing \lstinline|{active: false}| matches only when the \lstinline|active| field equals \lstinline|false|.
+\end{enumerate}
+
+You can mix both forms in a single pattern:
+
+\begin{lstlisting}[language=Lattice, caption={Mixed shorthand and value patterns}]
+struct Config {
+    mode: String,
+    debug: Bool,
+    port: Int
+}
+
+let config = Config { mode: "production", debug: false, port: 8080 }
+
+match config {
+    {mode: "test", debug: true} => print("Test mode with debugging"),
+    {mode: "production", port}  => print("Production on port ${port}"),
+    {mode}                      => print("Running in ${mode} mode")
+}
+// Production on port 8080
+\end{lstlisting}
+
+\begin{tipbox}{Partial Matching}
+Struct patterns do not need to mention every field. A pattern like \lstinline|\{name\}| matches any struct that has a \lstinline|name| field, regardless of what other fields it contains or what their values are. This makes struct patterns resilient to additions---if you add a field to the struct later, existing patterns continue to work.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Enum Variant Patterns}\label{sec:enum-patterns}
+\index{pattern matching!enum variant}
+\index{enum!pattern matching}
+
+Enum variant patterns are where pattern matching truly shines. They let you distinguish between an enum's variants and extract the data each variant carries:
+
+\begin{lstlisting}[language=Lattice, caption={Matching enum variants}]
+enum Shape {
+    Circle(Float),
+    Rectangle(Float, Float),
+    Triangle(Float, Float, Float)
+}
+
+fn area(shape: Shape) -> Float {
+    return match shape {
+        Shape::Circle(r)           => 3.14159 * r * r,
+        Shape::Rectangle(w, h)     => w * h,
+        Shape::Triangle(a, b, c)   => {
+            let s = (a + b + c) / 2.0
+            // Heron's formula
+            let val = s * (s - a) * (s - b) * (s - c)
+            // Approximate square root via Newton's method
+            flux guess = val / 2.0
+            for _ in 0..10 {
+                guess = (guess + val / guess) / 2.0
+            }
+            guess
+        }
+    }
+}
+
+print(area(Shape::Circle(5.0)))          // 78.53975
+print(area(Shape::Rectangle(3.0, 4.0)))  // 12.0
+\end{lstlisting}
+
+The pattern \lstinline|Shape::Circle(r)| checks three things: (1) the value is an enum, (2) it belongs to the \lstinline|Shape| enum, and (3) its variant is \lstinline|Circle|. If all three pass, the payload is bound to \lstinline|r|.
+
+\subsection{Variants Without Payloads}\label{sec:unit-variants}
+\index{enum!unit variant}
+
+For unit variants (those carrying no data), use the variant name without parentheses:
+
+\begin{lstlisting}[language=Lattice, caption={Matching unit variants}]
+enum Direction {
+    North,
+    South,
+    East,
+    West
+}
+
+fn arrow(dir: Direction) -> String {
+    return match dir {
+        Direction::North => "^",
+        Direction::South => "v",
+        Direction::East  => ">",
+        Direction::West  => "<"
+    }
+}
+
+print(arrow(Direction::North)) // ^
+print(arrow(Direction::West))  // <
+\end{lstlisting}
+
+\subsection{Nested Enum Patterns}\label{sec:nested-enum}
+
+Each payload position in an enum variant pattern can itself be a sub-pattern---a literal to match a specific value, a binding to capture the value, or a wildcard to ignore it:
+
+\begin{lstlisting}[language=Lattice, caption={Sub-patterns in enum payloads}]
+enum Result {
+    Ok(any),
+    Err(String)
+}
+
+fn handle(result: Result) -> String {
+    return match result {
+        Result::Ok(0)      => "Zero result",
+        Result::Ok(value)  => "Got: ${value}",
+        Result::Err(msg)   => "Error: ${msg}"
+    }
+}
+
+print(handle(Result::Ok(0)))            // Zero result
+print(handle(Result::Ok(42)))           // Got: 42
+print(handle(Result::Err("timeout")))   // Error: timeout
+\end{lstlisting}
+
+\subsection{Enum Matching with Guards}\label{sec:enum-guards}
+
+Guards work seamlessly with enum patterns:
+
+\begin{lstlisting}[language=Lattice, caption={Guards on enum patterns}]
+enum Temperature {
+    Celsius(Float),
+    Fahrenheit(Float)
+}
+
+fn describe(temp: Temperature) -> String {
+    return match temp {
+        Temperature::Celsius(c) if c > 100.0    => "Boiling! (${c}C)",
+        Temperature::Celsius(c) if c < 0.0      => "Freezing! (${c}C)",
+        Temperature::Celsius(c)                  => "Moderate (${c}C)",
+        Temperature::Fahrenheit(f) if f > 212.0  => "Boiling! (${f}F)",
+        Temperature::Fahrenheit(f)               => "Tolerable (${f}F)"
+    }
+}
+
+print(describe(Temperature::Celsius(105.0)))    // Boiling! (105.0C)
+print(describe(Temperature::Fahrenheit(72.0)))  // Tolerable (72.0F)
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exhaustiveness Checking}\label{sec:exhaustiveness}
+\index{pattern matching!exhaustiveness}
+\index{exhaustiveness checking}
+
+A match expression is \emph{exhaustive} if it handles every possible value the scrutinee might have. Lattice's compiler includes a static analysis pass (implemented in \filename{src/match\_check.c}) that inspects every \lstinline|match| expression in your program and warns you when coverage is incomplete.
+
+\subsection{How the Checker Works}\label{sec:checker-mechanics}
+
+The exhaustiveness checker runs after parsing, before code generation. It walks the entire AST---including nested functions, \lstinline|impl| blocks, and \lstinline|test| blocks---looking for \lstinline|match| expressions. For each one, it asks a series of questions:
+
+\begin{enumerate}
+  \item \textbf{Are there zero arms?} If so, the checker emits: \texttt{warning: match expression on line N has no arms}.
+  \item \textbf{Is there a catch-all arm?} An unguarded wildcard (\lstinline|_|) or an unguarded binding pattern (\lstinline|x|) without a phase qualifier covers every remaining case. If one exists, the match is exhaustive.
+  \item \textbf{Are we matching an enum?} If any arm uses an enum variant pattern, the checker looks up the enum declaration, builds a coverage set, and reports missing variants.
+  \item \textbf{Are we matching booleans?} If all patterns are boolean literals, the checker verifies both \lstinline|true| and \lstinline|false| are present.
+  \item \textbf{Everything else}: For integer, float, or string scrutinees without a catch-all, the checker recommends: \texttt{consider adding a wildcard \_ arm}.
+\end{enumerate}
+
+\subsection{Enum Exhaustiveness}\label{sec:enum-exhaustiveness}
+\index{exhaustiveness checking!enum}
+
+Enum exhaustiveness is where the checker is most precise. Consider a \lstinline|Color| enum:
+
+\begin{lstlisting}[language=Lattice, caption={The checker catches missing variants}]
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+let c = Color::Red
+
+// This produces a warning:
+// warning: non-exhaustive match: missing Color variant `Color::Blue`
+let name = match c {
+    Color::Red   => "red",
+    Color::Green => "green"
+}
+\end{lstlisting}
+
+The warning names the exact variant you forgot. If multiple variants are missing, they are all listed:
+
+\begin{lstlisting}[language=Lattice, numbers=none]
+// warning: non-exhaustive match: missing Color variants
+//          `Color::Green`, `Color::Blue`
+\end{lstlisting}
+
+To satisfy the checker, either handle every variant or add a wildcard arm:
+
+\begin{lstlisting}[language=Lattice, caption={Making an enum match exhaustive}]
+let name = match c {
+    Color::Red   => "red",
+    Color::Green => "green",
+    Color::Blue  => "blue"
+}
+// No warning --- all variants covered
+\end{lstlisting}
+
+\subsection{Boolean Exhaustiveness}\label{sec:bool-exhaustiveness}
+\index{exhaustiveness checking!boolean}
+
+When every arm uses a boolean literal, the checker ensures both \lstinline|true| and \lstinline|false| are covered:
+
+\begin{lstlisting}[language=Lattice, caption={Boolean exhaustiveness}]
+let flag = true
+
+// warning: non-exhaustive match: missing `false` case
+let label = match flag {
+    true => "on"
+}
+
+// Fixed:
+let label = match flag {
+    true  => "on",
+    false => "off"
+}
+\end{lstlisting}
+
+\subsection{Limitations of the Checker}\label{sec:checker-limitations}
+
+The exhaustiveness checker is deliberately pragmatic rather than exhaustive itself. A few limitations to be aware of:
+
+\begin{itemize}
+  \item \textbf{No redundancy warnings}: The checker does not report unreachable or redundant arms. If you put a wildcard before specific patterns, no warning is issued.
+  \item \textbf{No deep analysis of arrays or structs}: Array and struct patterns are not analyzed for completeness. The checker relies on a wildcard arm for these cases.
+  \item \textbf{Guarded arms and enum coverage}: A guarded enum arm is still counted toward variant coverage. The checker pragmatically assumes that if you wrote a pattern for a variant with a guard, you have considered that variant.
+  \item \textbf{Range patterns are not analyzed}: The checker does not verify that a set of range patterns covers the entire integer domain.
+\end{itemize}
+
+\begin{tipbox}{A Good Habit}
+Even when the checker does not require it, adding a wildcard arm with a meaningful response (or an error) is good defensive programming. Future changes to an enum or data format are less likely to introduce silent bugs if there is a catch-all that handles the unexpected.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Phase-Qualified Patterns}\label{sec:phase-patterns}
+\index{pattern matching!phase qualifier}
+\index{phase!in patterns}
+
+Lattice's phase system (explored in depth in \cref{ch:phases-explained}) assigns every value a \emph{phase}---fluid, crystal, or unphased. Pattern matching can discriminate on phase by prefixing a pattern with a phase qualifier:
+
+\begin{lstlisting}[language=Lattice, caption={Phase-qualified patterns}]
+flux temperature = 72
+fix boiling_point = 212
+
+let status = match temperature {
+    crystal _ => "This value is crystallized",
+    fluid t   => "Fluid value: ${t}"
+}
+
+print(status) // Fluid value: 72
+
+let bp_status = match boiling_point {
+    crystal t => "Crystal: ${t}",
+    fluid _   => "Fluid"
+}
+
+print(bp_status) // Crystal: 212
+\end{lstlisting}
+
+The \lstinline|fluid| qualifier matches values in the fluid or unphased state (which is the default). The \lstinline|crystal| qualifier matches only values that have been crystallized with \lstinline|fix| or \lstinline|freeze|.
+
+\begin{warnbox}{Phase Qualifiers and Exhaustiveness}
+A phase-qualified wildcard or binding is \emph{not} considered a catch-all by the exhaustiveness checker. The pattern \lstinline|crystal _| only matches crystal values, so it cannot guarantee coverage of all inputs. You still need an unqualified catch-all arm.
+\end{warnbox}
+
+Phase-qualified patterns are a niche feature. They become useful in generic code that must behave differently depending on whether a value is mutable or immutable, which we will explore further in \cref{ch:phases-explained}.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Putting It All Together}\label{sec:match-examples}
+
+Let us build a more realistic example that combines multiple pattern types. Imagine we are writing a command-line argument parser:
+
+\begin{lstlisting}[language=Lattice, caption={A command-line argument processor}]
+fn process_args(args: Array) -> String {
+    return match args {
+        []                    => "No arguments provided. Use --help.",
+        ["--help"]            => "Usage: app [options] [files...]",
+        ["--version"]         => "v2.1.0",
+        ["--output", path]    => "Output will be written to ${path}",
+        ["--verbose", ...rest] => {
+            let files = rest.join(", ")
+            "Verbose mode, processing: ${files}"
+        },
+        [cmd, ...rest] => "Unknown command: ${cmd}"
+    }
+}
+
+print(process_args([]))
+// No arguments provided. Use --help.
+
+print(process_args(["--help"]))
+// Usage: app [options] [files...]
+
+print(process_args(["--output", "/tmp/out.txt"]))
+// Output will be written to /tmp/out.txt
+
+print(process_args(["--verbose", "a.txt", "b.txt"]))
+// Verbose mode, processing: a.txt, b.txt
+\end{lstlisting}
+
+Here is another example that processes a stream of events using enum variants:
+
+\begin{lstlisting}[language=Lattice, caption={Processing events with enum matching}]
+enum Event {
+    Click(Int, Int),
+    KeyPress(String),
+    Resize(Int, Int),
+    Close
+}
+
+fn handle_event(event: Event) -> String {
+    return match event {
+        Event::Click(x, y) if x < 0 => "Click out of bounds",
+        Event::Click(0, 0)           => "Click at origin",
+        Event::Click(x, y)           => "Click at (${x}, ${y})",
+        Event::KeyPress("q")         => "Quit requested",
+        Event::KeyPress("h")         => "Help requested",
+        Event::KeyPress(key)         => "Key: ${key}",
+        Event::Resize(w, h)          => "Window is now ${w}x${h}",
+        Event::Close                 => "Goodbye!"
+    }
+}
+
+print(handle_event(Event::Click(100, 200)))
+// Click at (100, 200)
+
+print(handle_event(Event::KeyPress("q")))
+// Quit requested
+
+print(handle_event(Event::Close))
+// Goodbye!
+\end{lstlisting}
+
+And finally, an example that matches struct data with guards:
+
+\begin{lstlisting}[language=Lattice, caption={Struct matching for access control}]
+struct Request {
+    method: String,
+    path: String,
+    authenticated: Bool
+}
+
+fn route(req: Request) -> String {
+    return match req {
+        {method: "GET", path: "/"}          => "Home page",
+        {method: "GET", path: "/health"}    => "OK",
+        {method: "GET", path}               => "Serving ${path}",
+        {method: "POST", authenticated: false} => "401 Unauthorized",
+        {method: "POST", path}              => "Processing POST to ${path}",
+        {method}                            => "405 Method Not Allowed: ${method}"
+    }
+}
+
+let req = Request { method: "POST", path: "/api/data", authenticated: true }
+print(route(req)) // Processing POST to /api/data
+
+let bad_req = Request { method: "POST", path: "/api/data", authenticated: false }
+print(route(bad_req)) // 401 Unauthorized
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{How Match Compiles}\label{sec:match-internals}
+\index{match expression!compilation}
+
+Understanding how \lstinline|match| compiles helps you reason about performance and appreciate the elegance of the design. Lattice has \textbf{no dedicated match opcodes} in its bytecode instruction set. Instead, the compiler in \filename{src/stackcompiler.c} translates each match expression into a sequence of general-purpose opcodes---comparisons, jumps, and stack manipulations.
+
+\subsection{The Stack Invariant}\label{sec:stack-invariant}
+
+The compiler maintains a key invariant: the scrutinee stays on the stack across all arms. Before testing each arm, the compiler emits an \lstinline|OP_DUP| to duplicate the scrutinee, then compares the duplicate against the pattern. If the arm does not match, the duplicate is popped and we move on. If it does match, the arm body executes, and the scrutinee is cleaned up afterward.
+
+\subsection{Compilation by Pattern Type}\label{sec:compilation-by-type}
+
+\textbf{Literal patterns} compile to a \lstinline|OP_DUP| followed by pushing the literal constant and an \lstinline|OP_EQ| comparison.
+
+\textbf{Wildcard patterns} without a phase qualifier push \lstinline|OP_TRUE| directly---they always match.
+
+\textbf{Range patterns} compile to two comparisons (\lstinline|OP_GTEQ| for the start, \lstinline|OP_LTEQ| for the end) connected by a short-circuit jump.
+
+\textbf{Binding patterns} duplicate the scrutinee and create a local variable slot. Guard compilation emits the guard expression, and the result is tested with \lstinline|OP_JUMP_IF_FALSE|.
+
+\textbf{Complex patterns} (arrays, structs, enums) use a two-phase approach:
+\begin{enumerate}
+  \item \textbf{Structural check}: Verify the type (using the \lstinline|typeof| builtin), check length or field names, and compare literal sub-patterns. Multiple checks are chained with short-circuit \lstinline|OP_JUMP_IF_FALSE| jumps, so if the first check fails, no further work is done.
+  \item \textbf{Binding extraction}: If the structural check passes, extract the needed elements. Array elements are pulled out with \lstinline|OP_INDEX|, struct fields with \lstinline|OP_GET_FIELD|, and enum payloads by calling the \lstinline|.payload()| method followed by \lstinline|OP_INDEX|.
+\end{enumerate}
+
+After the matched arm's body executes, an \lstinline|OP_JUMP| skips over all remaining arms. At the very end, a fallback emits \lstinline|OP_POP| (to discard the scrutinee) and \lstinline|OP_NIL| for the no-match case.
+
+\begin{notebox}{Performance Implications}
+Because each arm is compiled as a linear sequence of checks and jumps, match expressions are evaluated in $O(n)$ time where $n$ is the number of arms. The compiler does not build a jump table or decision tree. For small match expressions (the common case), this is perfectly efficient. For matches with many literal arms, the short-circuit jumps keep things fast by skipping unnecessary work.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Common Patterns and Idioms}\label{sec:match-idioms}
+\index{pattern matching!idioms}
+
+\subsection{Replacing Long if/else Chains}\label{sec:replace-if-else}
+
+Any time you find yourself writing three or more \lstinline|if/else| branches that all test the same variable, consider using \lstinline|match| instead:
+
+\begin{lstlisting}[language=Lattice, caption={Before and after: if/else to match}]
+// Before
+fn day_type(day: String) -> String {
+    if day == "Saturday" {
+        return "weekend"
+    } else if day == "Sunday" {
+        return "weekend"
+    } else {
+        return "weekday"
+    }
+}
+
+// After
+fn day_type(day: String) -> String {
+    return match day {
+        "Saturday" => "weekend",
+        "Sunday"   => "weekend",
+        _          => "weekday"
+    }
+}
+\end{lstlisting}
+
+The \lstinline|match| version is more compact, makes the structure of the decision visible at a glance, and ensures every case is handled.
+
+\subsection{Extracting from Nested Structures}\label{sec:nested-extraction}
+
+Match excels at pulling values out of nested data:
+
+\begin{lstlisting}[language=Lattice, caption={Extracting nested data}]
+enum Response {
+    Success(Array),
+    Error(String)
+}
+
+fn first_item(resp: Response) -> String {
+    return match resp {
+        Response::Success([first, ...rest]) => "First: ${first}",
+        Response::Success([])               => "Empty results",
+        Response::Error(msg)                => "Failed: ${msg}",
+        _                                   => "Unknown"
+    }
+}
+
+print(first_item(Response::Success([10, 20, 30])))
+// First: 10
+
+print(first_item(Response::Success([])))
+// Empty results
+
+print(first_item(Response::Error("timeout")))
+// Failed: timeout
+\end{lstlisting}
+
+\subsection{State Machines}\label{sec:state-machines}
+
+Enums and match are a natural way to model state machines. Each state is a variant, and each transition is a match arm:
+
+\begin{lstlisting}[language=Lattice, caption={A state machine with match}]
+enum ConnectionState {
+    Disconnected,
+    Connecting(String),
+    Connected(String),
+    Error(String)
+}
+
+fn next_state(state: ConnectionState, action: String) -> ConnectionState {
+    return match state {
+        ConnectionState::Disconnected if action == "connect" => {
+            ConnectionState::Connecting("server.example.com")
+        },
+        ConnectionState::Connecting(host) if action == "success" => {
+            ConnectionState::Connected(host)
+        },
+        ConnectionState::Connecting(_) if action == "fail" => {
+            ConnectionState::Error("Connection refused")
+        },
+        ConnectionState::Connected(_) if action == "disconnect" => {
+            ConnectionState::Disconnected
+        },
+        other => other
+    }
+}
+\end{lstlisting}
+
+\subsection{The Option Pattern}\label{sec:option-pattern}
+
+A very common idiom in Lattice is using an \lstinline|Option|-like enum to represent values that may or may not exist, and matching to handle both cases:
+
+\begin{lstlisting}[language=Lattice, caption={The Option pattern}]
+enum Option {
+    Some(any),
+    None
+}
+
+fn find_user(id: Int) -> Option {
+    if id == 1 {
+        return Option::Some("Alice")
+    }
+    return Option::None
+}
+
+let user = find_user(1)
+
+let greeting = match user {
+    Option::Some(name) => "Hello, ${name}!",
+    Option::None       => "User not found"
+}
+
+print(greeting) // Hello, Alice!
+\end{lstlisting}
+
+This pattern appears throughout Lattice code and is explored further in \cref{ch:error-handling}, where we combine it with \lstinline|Result| types for robust error handling.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:pattern-matching-exercises}
+
+\begin{enumerate}
+  \item \textbf{FizzBuzz with match.} Write a function \lstinline|fn fizzbuzz(n: Int) -> String| that uses a \lstinline|match| expression with guards to return \lstinline|"FizzBuzz"| when \lstinline|n| is divisible by both 3 and 5, \lstinline|"Fizz"| when divisible by 3, \lstinline|"Buzz"| when divisible by 5, and the number as a string otherwise. Hint: use a binding pattern with guards.
+
+  \item \textbf{List operations.} Write a function \lstinline|fn sum_list(items: Array) -> Int| that computes the sum of an integer array using \lstinline|match| with array destructuring and rest patterns. If the array is empty, return 0. If it has one element, return that element. If it has more, extract the first element and recursively sum the rest.
+
+  \item \textbf{Shape perimeter.} Define an enum \lstinline|Shape| with variants \lstinline|Circle(Float)|, \lstinline|Rectangle(Float, Float)|, and \lstinline|Square(Float)|. Write a function \lstinline|fn perimeter(s: Shape) -> Float| that uses pattern matching to compute the perimeter. What happens if you forget to handle the \lstinline|Square| variant?
+
+  \item \textbf{HTTP router.} Define a struct \lstinline|Request| with fields \lstinline|method: String| and \lstinline|path: String|. Write a function \lstinline|fn route(req: Request) -> String| that uses struct pattern matching to return different responses for \lstinline|GET /|, \lstinline|GET /about|, \lstinline|POST /login|, and a catch-all \lstinline|404| response.
+
+  \item \textbf{Expression evaluator.} Define an enum for arithmetic expressions:
+  \begin{lstlisting}[language=Lattice, numbers=none]
+enum Expr {
+    Num(Int),
+    Add(any, any),
+    Mul(any, any)
+}
+  \end{lstlisting}
+  Write a function \lstinline|fn evaluate(e: Expr) -> Int| that recursively evaluates an expression tree using pattern matching. For example, \lstinline|Expr::Add(Expr::Num(2), Expr::Num(3))| should evaluate to 5.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────
+
+\bigskip
+\noindent\textbf{What's Next}\quad
+Pattern matching gives us the tools to inspect data and branch on its structure. But what happens when things go wrong---when a file is missing, a network request times out, or a function receives unexpected input? In \cref{ch:error-handling}, we will explore Lattice's approach to error handling: the \lstinline|error()| and \lstinline|is_error()| functions, \lstinline|try/catch| blocks, the \lstinline|?| propagation operator, \lstinline|defer| for cleanup, and how to design programs that fail gracefully.

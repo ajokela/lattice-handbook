@@ -1,0 +1,711 @@
+\chapter{Structured Concurrency with \texttt{scope} and \texttt{spawn}}\label{ch:structured-concurrency}
+
+\index{structured concurrency}
+\index{scope@\texttt{scope}}
+\index{spawn@\texttt{spawn}}
+
+Suppose you need to fetch three web pages at once, resize a batch of images in parallel, or crunch numbers across all your CPU cores.
+Most languages hand you a thread primitive and wish you luck---leaving you to track which threads are still running, which have crashed, and whether anyone remembered to join them.
+Lattice takes a different approach: every concurrent task is \emph{scoped}, meaning it is born inside a block and \emph{guaranteed} to finish before that block returns.
+No orphaned threads. No forgotten futures. No fire-and-forget surprises at 3~a.m.
+
+Let's see what that looks like.
+
+%% ─────────────────────────────────────────────────────────────
+\section{The \texttt{scope \{ spawn \{ \ldots\ \} \}} Model}\label{sec:scope-spawn-model}
+%% ─────────────────────────────────────────────────────────────
+
+\index{scope@\texttt{scope}!basic usage}
+
+The two keywords you need are \lstinline|scope| and \lstinline|spawn|.
+A \lstinline|scope| block creates a concurrency region; each \lstinline|spawn| inside it launches a new OS thread:
+
+\begin{lstlisting}[language=Lattice, caption={Your first scope/spawn}]
+scope {
+  spawn {
+    print("Hello from thread A")
+  }
+  spawn {
+    print("Hello from thread B")
+  }
+  print("Hello from the parent")
+}
+print("Both spawns are finished by here")
+\end{lstlisting}
+
+Run this a few times and you will see the three messages interleaved in different orders---but the final \lstinline|print| always executes \emph{after} every spawn has completed.
+That is the fundamental contract: \textbf{a \lstinline|scope| block does not return until every \lstinline|spawn| inside it has finished}.
+
+\begin{defnbox}{Structured Concurrency}
+\index{structured concurrency!definition}
+\emph{Structured concurrency} is a programming discipline in which concurrent tasks are confined to a lexical scope.
+The scope acts as a lifetime boundary: it waits for all child tasks to complete (or fail) before control flows past it.
+In Lattice, this is expressed with \lstinline|scope { spawn { ... } }|.
+\end{defnbox}
+
+\subsection{What Goes Where}
+
+You can place any code inside a \lstinline|scope| block, not only \lstinline|spawn| statements.
+Non-spawn statements run \emph{first}, on the parent thread, before any spawn threads are launched:
+
+\begin{lstlisting}[language=Lattice, caption={Synchronous setup inside a scope}]
+scope {
+  // This runs first, on the parent thread.
+  let urls = ["https://example.com/a", "https://example.com/b"]
+  print("Starting downloads for ${urls.len()} URLs")
+
+  spawn {
+    // Thread 1
+    print("Downloading ${urls[0]}")
+  }
+  spawn {
+    // Thread 2
+    print("Downloading ${urls[1]}")
+  }
+}
+\end{lstlisting}
+
+The synchronous preamble is compiled into a separate body chunk and executed before the spawn threads are created.
+If the preamble fails, the spawns never start.
+
+\begin{notebox}{Scope Is an Expression}
+\index{scope@\texttt{scope}!as expression}
+Like most constructs in Lattice, \lstinline|scope| is an expression---but it always evaluates to \lstinline|Unit|.
+If you need to collect results from spawned tasks, use a \lstinline|Channel| or a \lstinline|Ref|, both of which we will explore later in this chapter and in \cref{ch:channels-select}.
+\end{notebox}
+
+\subsection{Multiple Spawns}
+
+There is no hard limit on the number of \lstinline|spawn| blocks inside a single \lstinline|scope|.
+Each one becomes its own OS thread:
+
+\begin{lstlisting}[language=Lattice, caption={Many spawns in one scope}]
+scope {
+  spawn { print("Worker 1") }
+  spawn { print("Worker 2") }
+  spawn { print("Worker 3") }
+  spawn { print("Worker 4") }
+}
+// All four workers are done.
+\end{lstlisting}
+
+Under the hood, the compiler counts the \lstinline|spawn| blocks at compile time and emits a single \lstinline|OP_SCOPE| instruction that carries the spawn count as an inline operand.
+The VM then allocates a \texttt{VMSpawnTask} for each spawn, clones the virtual machine state, and calls \texttt{pthread\_create} for each task---all visible in \filename{src/stackvm.c}.
+
+\begin{tipbox}{Keep Spawns Coarse-Grained}
+Each \lstinline|spawn| creates a real OS thread with its own stack and cloned VM environment.
+Spawning thousands of micro-tasks is not the right pattern here---use iterators or channels for fine-grained parallelism.
+Think of \lstinline|spawn| as ``I have a meaningful chunk of work that should run on its own core.''
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Why Structured Concurrency Matters}\label{sec:why-structured-concurrency}
+%% ─────────────────────────────────────────────────────────────
+
+\index{structured concurrency!motivation}
+
+If you have ever chased a bug involving a detached thread that outlived its parent function, you already know why structured concurrency matters.
+Let's make the argument concrete.
+
+\subsection{The Problem with Unstructured Threads}
+
+Consider pseudocode in a language with raw thread spawning:
+
+\begin{lstlisting}[language=Lattice, caption={An unstructured concurrency hazard (pseudocode)}]
+// Danger: unstructured thread (NOT valid Lattice)
+fn fetch_data() {
+  let handle = thread_spawn(|| {
+    // What if fetch_data returns before this finishes?
+    // What if this panics and nobody catches it?
+    let data = download("https://api.example.com/report")
+    save_to_disk(data)
+  })
+  // Oops, we forgot to join the handle!
+  return "done"
+}
+\end{lstlisting}
+
+This pattern leads to three classes of bugs:
+
+\begin{enumerate}
+  \item \textbf{Orphaned tasks.} The spawned thread continues after the function returns, possibly accessing freed memory or stale references.
+  \item \textbf{Silent failures.} If the thread panics, nobody is listening. Errors vanish into the void.
+  \item \textbf{Resource leaks.} File handles, network sockets, and memory held by the thread are never cleaned up if the parent forgets to join.
+\end{enumerate}
+
+\subsection{Lattice's Guarantee}
+
+Lattice eliminates all three by construction:
+
+\begin{itemize}
+  \item You \emph{cannot} spawn a thread outside a \lstinline|scope|. The compiler rejects bare \lstinline|spawn| blocks.
+  \item Every \lstinline|scope| waits for \emph{all} spawns. There is no way to ``forget'' to join---it is automatic.
+  \item If \emph{any} spawn encounters a runtime error, the scope collects it and re-raises it in the parent. The first error wins; all threads are still joined before the error propagates.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Error propagation from spawns}]
+try {
+  scope {
+    spawn {
+      // This will fail
+      let result = parse_int("not_a_number")
+    }
+    spawn {
+      print("I still run to completion")
+    }
+  }
+} catch err {
+  print("Caught from spawn: ${err}")
+}
+\end{lstlisting}
+
+The \lstinline|try/catch| around the scope catches errors from \emph{any} of the spawned threads.
+In the VM implementation (see \texttt{stackvm\_spawn\_thread\_fn} in \filename{src/stackvm.c}), each child VM stores its error string in the \texttt{VMSpawnTask.error} field; after all threads are joined, the parent collects the first non-null error and re-raises it.
+
+\begin{warnbox}{Errors Don't Cancel Siblings}
+\index{spawn@\texttt{spawn}!error handling}
+When one spawn encounters an error, the other spawns are \emph{not} cancelled.
+They all run to completion (or to their own errors), and then the scope reports the first error.
+If you need cancellation, use a shared \lstinline|Ref| as a signal flag that spawns check periodically---we will see this pattern in \cref{sec:sharing-data-spawns}.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Joining Semantics---No Orphaned Tasks}\label{sec:joining-semantics}
+%% ─────────────────────────────────────────────────────────────
+
+\index{structured concurrency!joining}
+\index{joining semantics}
+
+Let's trace exactly what happens when a \lstinline|scope| executes:
+
+\begin{enumerate}
+  \item \textbf{Environment snapshot.} The VM pushes a new scope in the environment and exports all live local variables into it via \texttt{env\_define}. Each spawned thread receives a \emph{deep clone} of this environment---spawns see the values as they existed at the moment the scope began.
+  \item \textbf{Synchronous body.} Any non-spawn statements run on the parent thread.
+  \item \textbf{Thread creation.} For each spawn, the VM calls \texttt{stackvm\_clone\_for\_thread} to create an independent child VM, then \texttt{pthread\_create} to launch the thread. Each child VM gets its own stack, heap (\texttt{DualHeap}), and garbage collector.
+  \item \textbf{Join barrier.} The parent calls \texttt{pthread\_join} on every spawn thread in order. This is an unconditional, blocking join---the parent cannot proceed until all children are done.
+  \item \textbf{Cleanup.} Child VMs are freed, the environment scope is popped, and errors (if any) are propagated.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={Demonstrating join semantics with timing}]
+fn slow_work(label: String, ms: Int) {
+  // Simulate work
+  let start = clock()
+  while clock() - start < ms {
+    // busy-wait
+  }
+  print("${label} finished after ~${ms}ms")
+}
+
+scope {
+  spawn { slow_work("Task A", 200) }
+  spawn { slow_work("Task B", 100) }
+  spawn { slow_work("Task C", 300) }
+}
+print("All tasks done")
+// Output (order of first three lines varies):
+// Task B finished after ~100ms
+// Task A finished after ~200ms
+// Task C finished after ~300ms
+// All tasks done
+\end{lstlisting}
+
+The key observation: \lstinline|"All tasks done"| always prints last, regardless of how fast each spawn completes.
+
+\subsection{Nested Scopes}
+
+\index{scope@\texttt{scope}!nesting}
+
+Scopes can nest. Each inner scope is a complete join barrier:
+
+\begin{lstlisting}[language=Lattice, caption={Nested scopes}]
+scope {
+  spawn {
+    print("Outer spawn starts")
+    scope {
+      spawn { print("Inner spawn A") }
+      spawn { print("Inner spawn B") }
+    }
+    // Inner spawns are done here.
+    print("Outer spawn continues")
+  }
+}
+print("Everything is done")
+\end{lstlisting}
+
+The inner \lstinline|scope| ensures its two spawns finish before the outer spawn continues.
+The outer \lstinline|scope| then ensures the outer spawn finishes before the final \lstinline|print|.
+This nesting composes cleanly---you never have to reason about which thread outlives which.
+
+\subsection{Scopes in Loops}
+
+\index{scope@\texttt{scope}!in loops}
+
+A common pattern is placing a \lstinline|scope| inside a loop to process batches in parallel:
+
+\begin{lstlisting}[language=Lattice, caption={Scope inside a loop}]
+let batches = [
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9]
+]
+
+for batch in batches {
+  scope {
+    spawn {
+      let sum = batch.reduce(0, |acc, x| acc + x)
+      print("Batch sum: ${sum}")
+    }
+  }
+}
+// Each batch is fully processed before the next one starts.
+\end{lstlisting}
+
+Each iteration's \lstinline|scope| is a self-contained concurrency region.
+This is safe because the scope joins before the loop advances to the next iteration.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Sharing Data Between Spawned Tasks}\label{sec:sharing-data-spawns}
+%% ─────────────────────────────────────────────────────────────
+
+\index{spawn@\texttt{spawn}!data sharing}
+\index{data sharing!between spawns}
+
+Here is the rule you need to internalize: \textbf{each spawn gets a deep clone of the parent's variables}.
+Mutations inside a spawn do \emph{not} affect the parent or sibling spawns.
+
+\begin{lstlisting}[language=Lattice, caption={Spawns get independent copies}]
+flux counter = 0
+scope {
+  spawn {
+    counter = counter + 1
+    print("Spawn A sees: ${counter}")  // 1
+  }
+  spawn {
+    counter = counter + 1
+    print("Spawn B sees: ${counter}")  // 1
+  }
+}
+print("Parent sees: ${counter}")  // 0
+\end{lstlisting}
+
+Both spawns start with \lstinline|counter = 0| (cloned from the parent), increment their own copy, and print \lstinline|1|.
+The parent's \lstinline|counter| remains \lstinline|0|.
+
+\begin{notebox}{Why Deep Cloning?}
+\index{deep cloning!in spawns}
+Deep cloning prevents data races by giving each thread its own copy of the world.
+In the implementation (\filename{src/stackvm.c}, \texttt{stackvm\_export\_locals\_to\_env}), the parent's live locals are cloned via \texttt{value\_deep\_clone} into the child VM's environment.
+This means spawns can freely mutate their local state without synchronization.
+\end{notebox}
+
+\subsection{Communicating Through Channels}
+
+If you \emph{do} need spawns to communicate, use a \lstinline|Channel|.
+Channels are thread-safe by design---they use a mutex-protected buffer internally (see \filename{src/channel.c}).
+
+\begin{lstlisting}[language=Lattice, caption={Spawns communicating via a channel}]
+let results = Channel::new()
+
+scope {
+  spawn {
+    let answer = 21 * 2
+    results.send(answer)
+  }
+  spawn {
+    let answer = 6 * 7
+    results.send(answer)
+  }
+}
+
+// Both spawns are done; collect results.
+print(results.recv())  // 42
+print(results.recv())  // 42
+\end{lstlisting}
+
+Because \lstinline|Channel| values are reference-counted and mutex-protected, they can be safely shared across spawn boundaries.
+When the parent's environment is cloned for each spawn, the channel itself is \emph{not} deep-copied---both spawns and the parent hold references to the same underlying \texttt{LatChannel}, with the reference count incremented via \texttt{channel\_retain}.
+
+We will explore channels in depth in \cref{ch:channels-select}.
+
+\subsection{Communicating Through Ref}
+
+\index{Ref@\texttt{Ref}!with spawns}
+
+For shared mutable state that doesn't need channel semantics, Lattice offers \lstinline|Ref|---a reference-counted, thread-safe wrapper:
+
+\begin{lstlisting}[language=Lattice, caption={Using Ref for shared state}]
+let total = Ref::new(0)
+
+scope {
+  spawn {
+    let current = total.get()
+    total.set(current + 10)
+  }
+  spawn {
+    let current = total.get()
+    total.set(current + 20)
+  }
+}
+
+print("Total: ${total.get()}")
+// Could be 10, 20, or 30 depending on timing
+\end{lstlisting}
+
+\begin{warnbox}{Ref Is Not Atomic}
+\index{Ref@\texttt{Ref}!race conditions}
+A \lstinline|Ref| provides shared mutable state, but it does \emph{not} provide atomicity.
+The \lstinline|get()| followed by \lstinline|set()| pattern above is a classic race condition.
+If you need atomic read-modify-write semantics, use a channel to serialize access, or restructure your code so that each spawn writes to its own channel and the parent aggregates.
+We will cover safe patterns in \cref{ch:concurrency-patterns}.
+\end{warnbox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{The Sublimate Phase for Thread-Safe Values}\label{sec:sublimate-phase}
+%% ─────────────────────────────────────────────────────────────
+
+\index{sublimate@\texttt{sublimate}}
+\index{phase!sublimated}
+\index{sublimated phase}
+
+In \cref{ch:phases-explained}, we met the \phase{fluid} and \phase{crystal} phases---values that are mutable or frozen, respectively.
+Concurrency introduces a third phase transition: \phase{sublimated}.
+
+\begin{defnbox}{The Sublimated Phase}
+\index{sublimate@\texttt{sublimate}!definition}
+A \emph{sublimated} value is one that has been marked as thread-safe and immutable.
+Like a crystal value, a sublimated value cannot be mutated.
+Unlike crystal, sublimation is specifically intended for data that will cross thread boundaries.
+The name comes from chemistry: sublimation is the phase transition from solid directly to gas---the value ``evaporates'' from one thread's local world into the shared concurrent space.
+\end{defnbox}
+
+\subsection{Using \texttt{sublimate}}
+
+The \lstinline|sublimate| keyword transitions a value to the sublimated phase:
+
+\begin{lstlisting}[language=Lattice, caption={Sublimating a value}]
+flux config = [1, 2, 3]
+
+// Mark as thread-safe before sharing
+sublimate config
+
+scope {
+  spawn {
+    // config is sublimated --- safe to read, cannot mutate
+    print("Config length: ${config.len()}")
+  }
+  spawn {
+    print("First element: ${config[0]}")
+  }
+}
+\end{lstlisting}
+
+Once sublimated, any attempt to mutate the value raises a runtime error:
+
+\begin{lstlisting}[language=Lattice, caption={Sublimated values cannot be mutated}]
+flux data = [10, 20, 30]
+sublimate data
+// data.push(40)  // Runtime error: cannot modify a sublimated value
+\end{lstlisting}
+
+\subsection{Sublimate vs.\ Freeze}
+
+You might wonder: ``If sublimated values are immutable, how are they different from frozen values?''
+
+\begin{itemize}
+  \item \lstinline|freeze| produces a \phase{crystal} value. Crystals are immutable but are designed for single-threaded lifetime management---they participate in arenas and crystal regions.
+  \item \lstinline|sublimate| produces a \phase{sublimated} value. Sublimated values are immutable \emph{and} conceptually detached from any single thread's memory region. They are the right choice for data that will be read by multiple threads.
+\end{itemize}
+
+In the VM implementation (\filename{src/stackvm.c}), both crystal and sublimated values are treated identically for mutation checks---any attempt to set a field, push to an array, or assign an index is rejected.
+The \texttt{OP\_SUBLIMATE\_VAR} opcode sets the value's phase tag to \texttt{VTAG\_SUBLIMATED} and fires any reactive bonds.
+
+\begin{lstlisting}[language=Lattice, caption={Sublimate and freeze comparison}]
+flux temperatures = [72.1, 68.4, 75.0]
+
+// Option 1: freeze --- good for single-threaded immutability
+fix frozen_temps = freeze temperatures
+
+// Option 2: sublimate --- good for cross-thread sharing
+flux shared_temps = [72.1, 68.4, 75.0]
+sublimate shared_temps
+
+scope {
+  spawn {
+    // Both are readable, neither is mutable
+    print("Frozen: ${frozen_temps[0]}")
+    print("Sublimated: ${shared_temps[0]}")
+  }
+}
+\end{lstlisting}
+
+\begin{tipbox}{When to Sublimate}
+Use \lstinline|sublimate| when you have configuration data, lookup tables, or shared constants that multiple spawns need to read.
+It communicates intent: ``this value is intended for concurrent access.''
+If you are not sharing data across threads, plain \lstinline|freeze| is sufficient and more conventional.
+\end{tipbox}
+
+\subsection{Sublimating Complex Structures}
+
+Sublimation is deep---it applies to the entire value graph:
+
+\begin{lstlisting}[language=Lattice, caption={Deep sublimation}]
+flux settings = Map::new()
+settings["db_host"] = "localhost"
+settings["db_port"] = 5432
+settings["retries"] = 3
+
+sublimate settings
+
+scope {
+  spawn {
+    print("Connecting to ${settings["db_host"]}:${settings["db_port"]}")
+  }
+  spawn {
+    print("Max retries: ${settings["retries"]}")
+  }
+}
+\end{lstlisting}
+
+After sublimation, neither the map nor any of its values can be modified---the entire structure is safe for concurrent reads.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Practical Examples}\label{sec:concurrency-practical-examples}
+%% ─────────────────────────────────────────────────────────────
+
+Let's put everything together with some real-world-inspired examples.
+
+\subsection{Parallel Computation: Fan-Out / Fan-In}\label{subsec:fan-out-fan-in}
+
+\index{fan-out/fan-in}
+\index{concurrency patterns!fan-out/fan-in}
+
+The classic concurrent pattern: split work across threads, then collect results.
+
+\begin{lstlisting}[language=Lattice, caption={Fan-out/fan-in with channels}]
+fn compute_chunk(numbers: Array, result_ch: Channel) {
+  let sum = numbers.reduce(0, |acc, n| acc + n)
+  result_ch.send(sum)
+}
+
+let data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+let results = Channel::new()
+
+// Split into 3 chunks and process in parallel
+scope {
+  spawn { compute_chunk(data.slice(0, 4), results) }
+  spawn { compute_chunk(data.slice(4, 8), results) }
+  spawn { compute_chunk(data.slice(8, 12), results) }
+}
+
+// Collect and sum the partial results
+let total = results.recv() + results.recv() + results.recv()
+print("Total: ${total}")  // Total: 78
+\end{lstlisting}
+
+This is a textbook fan-out/fan-in.
+The \lstinline|scope| ensures all three workers complete before we start receiving.
+The channel collects partial sums, and we aggregate them on the parent thread.
+
+\subsection{Parallel String Processing}
+
+\begin{lstlisting}[language=Lattice, caption={Processing files in parallel}]
+fn process_name(name: String, output: Channel) {
+  let processed = name.trim().upper()
+  output.send(processed)
+}
+
+let names = ["  alice  ", "BOB", " Charlie ", "  dave"]
+let output = Channel::new()
+
+scope {
+  spawn { process_name(names[0], output) }
+  spawn { process_name(names[1], output) }
+  spawn { process_name(names[2], output) }
+  spawn { process_name(names[3], output) }
+}
+
+// Collect all results
+flux processed_names = []
+for _ in 0..4 {
+  processed_names.push(output.recv())
+}
+print(processed_names)
+// ["ALICE", "BOB", "CHARLIE", "DAVE"] (order may vary)
+\end{lstlisting}
+
+\subsection{Nested Parallelism: Two-Level Fan-Out}
+
+\begin{lstlisting}[language=Lattice, caption={Nested scope for two-level parallelism}]
+fn process_region(region: String, cities: Array, results: Channel) {
+  let city_results = Channel::new()
+
+  scope {
+    spawn {
+      city_results.send("${cities[0]}: processed")
+    }
+    spawn {
+      city_results.send("${cities[1]}: processed")
+    }
+  }
+
+  let summary = "${region}: ${city_results.recv()}, ${city_results.recv()}"
+  results.send(summary)
+}
+
+let results = Channel::new()
+
+scope {
+  spawn {
+    process_region("West", ["Seattle", "Portland"], results)
+  }
+  spawn {
+    process_region("East", ["Boston", "New York"], results)
+  }
+}
+
+print(results.recv())
+print(results.recv())
+\end{lstlisting}
+
+Each region processes its cities in parallel (inner \lstinline|scope|), and regions themselves run in parallel (outer \lstinline|scope|).
+The structured concurrency model guarantees that inner scopes complete before their parent spawn returns, which completes before the outer scope returns.
+
+\subsection{Using a Cancellation Flag}
+
+\index{cancellation!with Ref}
+
+Since spawns cannot be forcibly cancelled, we use a shared \lstinline|Ref| as a cooperative cancellation signal:
+
+\begin{lstlisting}[language=Lattice, caption={Cooperative cancellation with Ref}]
+let should_stop = Ref::new(false)
+let results = Channel::new()
+
+scope {
+  spawn {
+    // Producer: generate values until told to stop
+    flux count = 0
+    while should_stop.get() == false {
+      count = count + 1
+      results.send(count)
+      if count >= 100 {
+        break
+      }
+    }
+    results.close()
+  }
+  spawn {
+    // Consumer: read values, signal stop after finding 42
+    flux done = false
+    while done == false {
+      let val = results.recv()
+      if val == 42 {
+        print("Found 42! Signaling stop.")
+        should_stop.set(true)
+        done = true
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+The \lstinline|Ref| serves as a boolean flag visible to both threads.
+The consumer sets it when it has seen enough, and the producer checks it each iteration.
+This is a cooperative, structured alternative to thread cancellation.
+
+\subsection{Scope with Error Handling}
+
+\begin{lstlisting}[language=Lattice, caption={Handling errors from parallel tasks}]
+fn safe_divide(a: Int, b: Int, results: Channel) {
+  if b == 0 {
+    results.send("error: division by zero")
+  } else {
+    results.send(to_string(a / b))
+  }
+}
+
+let results = Channel::new()
+
+scope {
+  spawn { safe_divide(100, 5, results) }
+  spawn { safe_divide(200, 0, results) }
+  spawn { safe_divide(300, 3, results) }
+}
+
+for _ in 0..3 {
+  print(results.recv())
+}
+// Output (order may vary):
+// 20
+// error: division by zero
+// 100
+\end{lstlisting}
+
+When errors are expected and recoverable, handling them inside the spawn and communicating results through a channel is often cleaner than relying on \lstinline|try/catch| around the scope.
+
+%% ─────────────────────────────────────────────────────────────
+\section{Under the Hood}\label{sec:scope-spawn-internals}
+%% ─────────────────────────────────────────────────────────────
+
+\index{scope@\texttt{scope}!implementation}
+\index{OP\_SCOPE@\texttt{OP\_SCOPE}}
+
+For readers who want to understand the machinery, here is a tour of how \lstinline|scope| and \lstinline|spawn| are compiled and executed.
+
+\subsection{Compilation}
+
+The compiler (\filename{src/stackcompiler.c}) handles \lstinline|scope| expressions in \texttt{EXPR\_SCOPE}:
+
+\begin{enumerate}
+  \item It counts the \lstinline|spawn| blocks and separates them from the synchronous statements.
+  \item The synchronous statements are compiled into a \emph{sub-body chunk}---a self-contained bytecode chunk that can be executed independently.
+  \item Each \lstinline|spawn| body is also compiled into its own sub-body chunk.
+  \item A single \lstinline|OP_SCOPE| instruction is emitted with the spawn count, the synchronous body index, and each spawn body index as inline operands.
+\end{enumerate}
+
+If there are no \lstinline|spawn| blocks (a bare \lstinline|scope { ... }|), the compiler emits \lstinline|OP_SCOPE| with a spawn count of zero, and the body runs synchronously as a sub-chunk---useful for isolating variable scopes.
+
+\subsection{Execution}
+
+When the VM encounters \lstinline|OP_SCOPE| (\filename{src/stackvm.c}):
+
+\begin{enumerate}
+  \item It pushes a new environment scope and exports all live locals via deep cloning.
+  \item If \texttt{spawn\_count == 0}, it runs the body chunk synchronously and returns the result.
+  \item Otherwise, it runs the synchronous body first, then allocates a \texttt{VMSpawnTask} array.
+  \item For each spawn, \texttt{stackvm\_clone\_for\_thread} creates an independent child \texttt{StackVM} with its own runtime, heap, and GC state. The function \texttt{stackvm\_export\_locals\_to\_env} copies the parent's locals into the child's environment.
+  \item Each child is launched with \texttt{pthread\_create}. The thread function \texttt{stackvm\_spawn\_thread\_fn} sets up a thread-local \texttt{DualHeap}, runs the spawn chunk, and records any error.
+  \item The parent calls \texttt{pthread\_join} on every thread, collects errors, frees child VMs, and pops the environment scope.
+\end{enumerate}
+
+\begin{notebox}{Thread-Local Heaps}
+\index{DualHeap@\texttt{DualHeap}!per-thread}
+Each spawn thread gets its own \texttt{DualHeap} for memory allocation.
+This means spawned tasks can allocate freely without contending on a global allocator lock.
+The heap is freed when the thread completes.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch19-exercises}
+%% ─────────────────────────────────────────────────────────────
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+
+  \item \textbf{Parallel Sum.} Given an array of 1000 integers, write a program that splits the array into 4 chunks, sums each chunk in a separate spawn, and then adds the partial sums together. Use a \lstinline|Channel| to collect results.
+
+  \item \textbf{Scope Ordering.} Write a program with a scope containing three spawns that each print a message. Run it several times and observe the output order. Then add a fourth print statement \emph{after} the scope. Verify that it always prints last.
+
+  \item \textbf{Nested Scope Hierarchy.} Create a three-level nested scope structure: an outer scope with two spawns, each of which contains an inner scope with two more spawns. Each innermost spawn should print its ``address'' (e.g., \lstinline|"Outer 1, Inner 2"|). Verify that all messages print before the program exits.
+
+  \item \textbf{Cancellation Pattern.} Implement a producer-consumer pair where the producer generates random strings and sends them through a channel. The consumer reads strings and stops the producer (using a \lstinline|Ref| flag) when it finds one longer than 10 characters.
+
+  \item \textbf{Error Propagation.} Write a scope with three spawns where the second one deliberately causes an error. Wrap the scope in \lstinline|try/catch| and verify that the error is caught. Confirm that the other spawns still ran to completion by having them write to a channel.
+
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────
+\section*{What's Next}
+%% ─────────────────────────────────────────────────────────────
+
+We have seen how \lstinline|scope| and \lstinline|spawn| give you safe, structured concurrency with automatic joining and error propagation.
+But we have only scratched the surface of the \lstinline|Channel|---we used it as a convenient mailbox without exploring its full API.
+In the next chapter, we will dive deep into channels: how to create them, how \lstinline|send| and \lstinline|recv| work, how to multiplex across multiple channels with \lstinline|select|, and how to build powerful data pipelines that transform values as they flow between threads.

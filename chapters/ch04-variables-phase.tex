@@ -1,0 +1,676 @@
+\chapter{Variables and the Idea of Phase}\label{ch:variables-phase}
+
+\index{variables}\index{phase system}
+
+In most languages, declaring a variable is a mundane act.
+You pick a name, assign a value, and move on.
+In Lattice, declaring a variable is a \emph{decision}---a declaration of intent about how that value should behave over its lifetime.
+Will it change?
+Should it be locked down?
+Or should the language figure that out for you?
+
+Lattice gives you three keywords for variable declaration---\lstinline|let|, \lstinline|flux|, and \lstinline|fix|---and each one makes a different promise to the runtime.
+Behind these keywords lies the \emph{phase system}\index{phase system}, the feature that gives Lattice its name and its crystalline metaphor.
+This chapter introduces both the practical mechanics of variable binding and the philosophy that makes them meaningful.
+
+%% ───────────────────────────────────────────────────────────
+\section{\texttt{let}, \texttt{flux}, and \texttt{fix}}\label{sec:let-flux-fix}
+
+\subsection{\texttt{let} --- Inferred Phase}\label{subsec:let}
+\index{let}
+
+The \lstinline|let| keyword declares a variable and infers its phase from the value you assign:
+
+\begin{lstlisting}[language=Lattice, caption={Declaring variables with let}]
+let name = "Lattice"      // a string
+let version = 28           // an integer
+let pi = 3.14159           // a float
+let active = true          // a boolean
+let colors = ["red", "green", "blue"]  // an array
+\end{lstlisting}
+
+With \lstinline|let|, the variable's mutability depends on what you assign.
+In casual mode (the default), \lstinline|let| bindings are treated as fluid---you \emph{can} reassign them or mutate their contents:
+
+\begin{lstlisting}[language=Lattice, caption={let bindings are fluid in casual mode}]
+let score = 100
+// In casual mode, this works:
+// score = 200
+
+let items = [1, 2, 3]
+items.push(4)  // modifying in place works
+print(items)   // [1, 2, 3, 4]
+\end{lstlisting}
+
+Think of \lstinline|let| as the ``just give me a variable'' keyword---quick, convenient, and unassuming.
+It's perfect for scripts, quick prototypes, and situations where you don't need to think about mutability.
+
+\subsection{\texttt{flux} --- Explicitly Fluid}\label{subsec:flux}
+\index{flux}\index{fluid phase}
+
+The \lstinline|flux| keyword (pronounced like ``flux'' in metallurgy) declares a variable that is \emph{explicitly fluid}\index{fluid phase}.
+A fluid value can be modified, reassigned, grown, and reshaped:
+
+\begin{lstlisting}[language=Lattice, caption={Declaring mutable variables with flux}]
+flux counter = 0
+counter += 1
+counter += 1
+print(counter)  // 2
+
+flux inventory = Map::new()
+inventory["apples"] = 12
+inventory["bananas"] = 6
+print(inventory)  // {"apples": 12, "bananas": 6}
+
+flux temperatures = []
+temperatures.push(72.1)
+temperatures.push(68.5)
+temperatures.push(74.3)
+print(temperatures)  // [72.1, 68.5, 74.3]
+\end{lstlisting}
+
+The \lstinline|flux| prefix is a signal to anyone reading your code: ``this variable \emph{will} change.''
+When you see \lstinline|flux| in a program, you know to watch for mutations.
+
+\begin{defnbox}{Fluid Phase}
+A value in the \emph{fluid phase}\index{fluid phase} is mutable.
+Arrays can be pushed to, maps can gain new keys, and the variable can be reassigned.
+In the chemistry metaphor, a fluid value is like molten metal---it has not yet solidified into its final form.
+You declare fluid variables with \lstinline|flux| (or the shorthand prefix \lstinline|~|).
+\end{defnbox}
+
+Under the hood, the compiler emits an \lstinline|OP_MARK_FLUID|\index{OP\_MARK\_FLUID} instruction when it encounters \lstinline|flux|, which sets the value's phase tag to \lstinline|VTAG_FLUID| (you can see this in \filename{src/stackcompiler.c}).
+This tag travels with the value for its entire lifetime.
+
+\subsection{\texttt{fix} --- Explicitly Crystal}\label{subsec:fix}
+\index{fix}\index{crystal phase}
+
+The \lstinline|fix| keyword declares a variable that is \emph{crystal}\index{crystal phase}---immutable, locked, permanent.
+The value must already be frozen (or will be frozen by the declaration):
+
+\begin{lstlisting}[language=Lattice, caption={Declaring immutable variables with fix}]
+fix pi = freeze(3.14159)
+fix greeting = freeze("Hello, World!")
+fix primes = freeze([2, 3, 5, 7, 11])
+
+print(pi)        // 3.14159
+print(greeting)  // Hello, World!
+print(primes)    // [2, 3, 5, 7, 11]
+\end{lstlisting}
+
+Attempting to modify a crystal value produces an error:
+
+\begin{lstlisting}[language=Lattice, caption={Crystal values reject modification}]
+fix config = freeze([1, 2, 3])
+// config.push(4)  -- error: cannot mutate crystal value
+// config = [4, 5, 6]  -- error: cannot assign to crystal binding
+\end{lstlisting}
+
+\begin{defnbox}{Crystal Phase}
+A value in the \emph{crystal phase}\index{crystal phase} is immutable.
+Its contents cannot be modified, its structure cannot change, and it can be safely shared across threads.
+In the chemistry metaphor, a crystal is solid, ordered, and permanent---like a diamond formed under pressure.
+You declare crystal variables with \lstinline|fix| (or the shorthand prefix \lstinline|*|).
+\end{defnbox}
+
+When the compiler encounters \lstinline|fix|, it emits an \lstinline|OP_FREEZE|\index{OP\_FREEZE} instruction that transitions the value to the crystal phase.
+
+\subsection{The Shorthand Prefixes: \texttt{\~{}} and \texttt{*}}\label{subsec:shorthand-prefixes}
+\index{~@\texttt{\~{}} (flux shorthand)}\index{*@\texttt{*} (fix shorthand)}
+
+In type annotations and function parameters, you'll sometimes see \lstinline|~| for fluid and \lstinline|*| for crystal:
+
+\begin{lstlisting}[language=Lattice, caption={Phase shorthand in function parameters}]
+fn mutate(data: ~Map) {
+    data.set("modified", true)
+}
+
+fn inspect(data: *Map) {
+    print(data.get("name"))
+}
+\end{lstlisting}
+
+Here, \lstinline|~Map| means ``a Map that must be fluid'' and \lstinline|*Map| means ``a Map that must be crystal.''
+The runtime checks these constraints on every call---pass a crystal map to \lstinline|mutate()| and you'll get a clear error.
+
+These shorthand prefixes are equivalent to writing \lstinline|flux Map| and \lstinline|fix Map| in type position.
+Use whichever reads better to you.
+
+\subsection{Comparing the Three Keywords}\label{subsec:comparing-keywords}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\toprule
+\textbf{Keyword} & \textbf{Phase} & \textbf{Mutable?} & \textbf{When to Use} \\
+\midrule
+\lstinline|let|  & Inferred   & Depends on mode & Scripts, quick code, ``just works'' \\
+\lstinline|flux| & Fluid      & Yes             & Values you intend to modify \\
+\lstinline|fix|  & Crystal    & No              & Constants, shared data, configs \\
+\bottomrule
+\end{tabular}
+\caption{Variable declaration keywords}\label{tab:declaration-keywords}
+\end{table}
+
+A rule of thumb: if you're writing a script or prototyping, \lstinline|let| is fine.
+If you're writing production code or library code, prefer \lstinline|flux| and \lstinline|fix| for clarity.
+In strict mode, \lstinline|let| is actually \emph{disallowed}---you must choose explicitly.
+
+%% ───────────────────────────────────────────────────────────
+\section{Why Mutability Is a First-Class Concept}\label{sec:mutability-first-class}
+\index{mutability!as first-class concept}
+
+Most languages treat mutability as a binary toggle.
+In Rust, you have \lstinline|let| vs.\ \lstinline|let mut|.
+In JavaScript, you have \lstinline|const| vs.\ \lstinline|let|.
+In Python, everything is mutable and you just hope for the best.
+
+Lattice goes further.
+Mutability is not just a property of a \emph{variable}---it's a property of the \emph{value itself}.
+This distinction is subtle but profound.
+
+\begin{lstlisting}[language=Lattice, caption={Phase is a property of the value, not the variable}]
+flux items = [1, 2, 3]
+print(phase_of(items))   // fluid
+
+freeze(items)
+print(phase_of(items))   // crystal
+
+// The variable `items` still exists.
+// But the *value* it holds has changed phase.
+// items.push(4)  -- error: the value is crystal
+\end{lstlisting}
+
+The phase travels with the value.
+If you pass a frozen array to a function, that function cannot mutate it---even if it assigns it to a new \lstinline|flux| variable.
+The crystal phase is embedded in the value, not in the binding.
+
+\begin{lstlisting}[language=Lattice, caption={Phase follows the value through function calls}]
+fn try_to_modify(data: any) {
+    flux local = data
+    // local.push(99)  -- error if data is crystal!
+    print(phase_of(local))
+}
+
+flux numbers = [1, 2, 3]
+try_to_modify(numbers)    // prints: fluid
+
+freeze(numbers)
+try_to_modify(numbers)    // prints: crystal (push would fail)
+\end{lstlisting}
+
+This design has a powerful consequence: when a value is frozen, it is safe to share it across threads, pass it to unknown functions, or store it in a long-lived data structure---because \emph{nothing} can modify it.
+The guarantee is enforced by the runtime, not by programmer discipline.
+
+\begin{notebox}{The Value vs.\ the Binding}
+The \lstinline|flux|/\lstinline|fix| keywords control two things:
+\begin{enumerate}
+  \item Whether the \textbf{variable binding} can be reassigned (pointing to a different value).
+  \item The initial \textbf{phase of the value} (fluid or crystal).
+\end{enumerate}
+The second property persists even after the value is passed to other functions or stored in data structures.
+The first property only applies to the original variable name in its scope.
+\end{notebox}
+
+%% ───────────────────────────────────────────────────────────
+\section{Quick Introduction to \texttt{freeze()} and \texttt{thaw()}}\label{sec:freeze-thaw}
+\index{freeze}\index{thaw}
+
+We've already seen \lstinline|freeze()| in passing.
+Let's give it proper attention.
+
+\subsection{\texttt{freeze()} --- Fluid to Crystal}\label{subsec:freeze-detail}
+
+\lstinline|freeze()| transitions a value from the fluid phase to the crystal phase.
+Once frozen, the value is immutable:
+
+\begin{lstlisting}[language=Lattice, caption={Freezing a value}]
+flux settings = Map::new()
+settings["debug"] = false
+settings["verbose"] = true
+settings["max_retries"] = 3
+
+print(phase_of(settings))  // fluid
+freeze(settings)
+print(phase_of(settings))  // crystal
+
+// settings["debug"] = true  -- error: cannot mutate crystal value
+\end{lstlisting}
+
+For collections (arrays, maps, sets), \lstinline|freeze()| is \textbf{deep}\index{freeze!deep}: it freezes the container and all values inside it recursively.
+
+\begin{lstlisting}[language=Lattice, caption={Deep freeze}]
+flux data = [[1, 2], [3, 4]]
+freeze(data)
+
+// data.push([5, 6])  -- error: outer array is crystal
+// data[0].push(3)    -- error: inner array is also crystal
+\end{lstlisting}
+
+\subsection{\texttt{thaw()} --- Crystal to Fluid}\label{subsec:thaw-detail}
+
+\lstinline|thaw()| creates a \textbf{mutable copy}\index{thaw!creates copy} of a crystal value.
+The original remains frozen:
+
+\begin{lstlisting}[language=Lattice, caption={Thawing a frozen value}]
+fix original = freeze([10, 20, 30])
+print(phase_of(original))  // crystal
+
+flux copy = thaw(original)
+print(phase_of(copy))      // fluid
+
+copy.push(40)
+print(copy)      // [10, 20, 30, 40]
+print(original)  // [10, 20, 30] (unchanged!)
+\end{lstlisting}
+
+The metaphor is precise: thawing a crystal doesn't destroy the crystal.
+It melts a copy, leaving the original intact.
+This is a key property for safe concurrent programming---multiple threads can thaw the same frozen data independently without interfering with each other.
+
+\subsection{\texttt{clone()} --- Independent Copy}\label{subsec:clone-detail}
+\index{clone}
+
+While we're talking about copying, let's mention \lstinline|clone()|.
+Unlike \lstinline|thaw()|, which always produces a fluid copy from a crystal, \lstinline|clone()| creates an independent deep copy of any value, preserving its current phase:
+
+\begin{lstlisting}[language=Lattice, caption={Cloning preserves phase}]
+flux original = [1, 2, 3]
+flux copy = clone(original)
+
+copy.push(4)
+print(original)  // [1, 2, 3] (unaffected)
+print(copy)      // [1, 2, 3, 4]
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Function} & \textbf{Input Phase} & \textbf{Output Phase} \\
+\midrule
+\lstinline|freeze(v)| & Fluid & Crystal (same value, now locked) \\
+\lstinline|thaw(v)| & Crystal & Fluid (new copy) \\
+\lstinline|clone(v)| & Any & Same as input (new copy) \\
+\bottomrule
+\end{tabular}
+\caption{Phase transition functions}\label{tab:phase-transitions}
+\end{table}
+
+We'll explore the full depth of phase transitions---including \lstinline|sublimate|, \lstinline|crystallize|, \lstinline|borrow|, \lstinline|forge|, bonds, reactions, and more---in Part~III of this book.
+For now, \lstinline|freeze()|, \lstinline|thaw()|, and \lstinline|clone()| are the essential trio.
+
+%% ───────────────────────────────────────────────────────────
+\section{\texttt{\#mode casual} vs.\ \texttt{\#mode strict}}\label{sec:casual-strict}
+\index{casual mode}\index{strict mode}\index{\#mode}
+
+Lattice offers two modes of phase enforcement, controlled by a directive at the top of a file:
+
+\begin{lstlisting}[language=Lattice, caption={Mode directives}]
+#mode casual   // the default: relaxed phase rules
+#mode strict   // tighter enforcement: no let, consume on freeze
+\end{lstlisting}
+
+If you don't specify a mode, the default is \lstinline|casual|.
+
+\subsection{Casual Mode}\label{subsec:casual-mode}
+\index{casual mode!rules}
+
+In casual mode, Lattice is forgiving:
+
+\begin{itemize}
+  \item \lstinline|let| is allowed and produces an inferred-phase binding.
+  \item \lstinline|freeze()| transitions a value in place but does \emph{not} consume the variable---you can still read from the binding.
+  \item Phase mismatches at function call boundaries produce runtime errors, not compile-time errors.
+  \item You can mix \lstinline|let|, \lstinline|flux|, and \lstinline|fix| freely.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Casual mode: forgiving}]
+let data = [1, 2, 3]
+data.push(4)         // works: let is fluid in casual mode
+freeze(data)
+print(data)          // works: data is still accessible (now crystal)
+// data.push(5)      -- error: crystal value
+\end{lstlisting}
+
+Casual mode is designed for scripting, exploratory programming, and situations where you want the phase system's safety net without its full strictness.
+
+\subsection{Strict Mode}\label{subsec:strict-mode}
+\index{strict mode!rules}
+
+Strict mode tightens the rules:
+
+\begin{itemize}
+  \item \lstinline|let| is \textbf{disallowed}\index{strict mode!no let}. You must use \lstinline|flux| or \lstinline|fix| for every declaration, making your intent explicit.
+  \item \lstinline|freeze()| \textbf{consumes the binding}\index{strict mode!consume on freeze}. After freezing a variable, the original name is no longer accessible---you must capture the frozen result in a new binding.
+  \item The phase checker runs \textbf{before execution}\index{strict mode!static checking}, catching phase errors as compile-time warnings rather than runtime surprises.
+  \item Assigning to a crystal binding is a compile-time error.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Strict mode: explicit and consuming}]
+#mode strict
+
+flux data = [1, 2, 3]
+data.push(4)
+
+fix frozen = freeze(data)
+// `data` is no longer accessible in strict mode.
+// You must use `frozen` from now on.
+print(frozen)  // [1, 2, 3, 4]
+\end{lstlisting}
+
+The consume-on-freeze behavior prevents a common bug: modifying a value after you've shared a ``frozen'' reference to it.
+In casual mode, you could freeze a value, hand the frozen reference to another part of the program, and then accidentally mutate the original.
+Strict mode makes this impossible by removing the original name from scope.
+
+\begin{lstlisting}[language=Lattice, caption={Strict mode catches errors early}]
+#mode strict
+
+// let x = 42  -- error: use flux or fix instead of let
+
+flux counter = 0
+counter += 1
+
+fix pi = freeze(3.14159)
+// pi = 2.71828  -- error: cannot assign to crystal binding
+
+// This error is caught before the program runs.
+\end{lstlisting}
+
+\begin{tipbox}{When to Use Strict Mode}
+Use \lstinline|#mode strict| when:
+\begin{itemize}
+  \item You're writing a library that will be used by others.
+  \item You're writing code that runs in production.
+  \item You're working on concurrent code where phase safety is critical.
+  \item You want the compiler to catch mistakes before runtime.
+\end{itemize}
+Use casual mode (the default) when:
+\begin{itemize}
+  \item You're scripting or prototyping.
+  \item You're exploring in the REPL\@.
+  \item You want to move fast without ceremony.
+\end{itemize}
+\end{tipbox}
+
+\subsection{Inside the Phase Checker}\label{subsec:phase-checker-internals}
+\index{phase checker}
+
+When you use \lstinline|#mode strict|, the parser sets the program's mode to \lstinline|MODE_STRICT|, which triggers the phase checker (\filename{src/phase\_check.c}) before execution begins.
+The phase checker is a static analysis pass that walks the AST and:
+
+\begin{enumerate}
+  \item Tracks the phase of every variable through a scope stack.
+  \item Verifies that \lstinline|fix| bindings are never assigned to.
+  \item Ensures that arguments passed to phase-constrained parameters (\lstinline|~Map|, \lstinline|*Map|) have compatible phases.
+  \item Rejects \lstinline|let| bindings---requiring explicit \lstinline|flux| or \lstinline|fix|.
+  \item Inside \lstinline|spawn| blocks, checks that fluid bindings from the outer scope are not used across the thread boundary.
+\end{enumerate}
+
+The phase checker is defined as a \lstinline|PhaseChecker| struct that maintains a stack of scopes, each mapping variable names to their known phases (\lstinline|PHASE_FLUID|, \lstinline|PHASE_CRYSTAL|, or \lstinline|PHASE_UNSPECIFIED|).
+As it walks the AST, it pushes and pops scopes at function and block boundaries, just like the runtime would.
+
+The errors it produces are not fatal---they're warnings that appear before execution.
+But they are informative:
+
+\begin{lstlisting}[numbers=none]
+phase error: strict mode: use 'flux' or 'fix' instead of 'let' for binding 'x'
+phase error: strict mode: cannot assign to crystal binding 'config'
+phase error: strict mode: cannot use fluid binding 'data' across thread boundary in spawn
+\end{lstlisting}
+
+%% ───────────────────────────────────────────────────────────
+\section{First Encounter with the Phase Philosophy}\label{sec:phase-philosophy}
+\index{phase system!philosophy}
+
+Now that you've seen the mechanics---\lstinline|flux|, \lstinline|fix|, \lstinline|freeze()|, \lstinline|thaw()|, casual mode, strict mode---let's step back and think about \emph{why} Lattice works this way.
+
+\subsection{The Lifecycle of Data}\label{subsec:data-lifecycle}
+
+Most data in a program goes through a predictable lifecycle:
+
+\begin{enumerate}
+  \item \textbf{Construction}: The data is built up incrementally.
+     You add items to a list, set fields in a configuration, accumulate results.
+  \item \textbf{Stabilization}: At some point, the data is ``done.''
+     The configuration is complete, the list has all its items, the computation is finished.
+  \item \textbf{Consumption}: The stabilized data is read, shared, serialized, sent to another thread, or stored for later use.
+\end{enumerate}
+
+In most languages, there is no formal boundary between these stages.
+You just \emph{stop modifying} the data and hope nobody else modifies it later.
+This works fine in small programs.
+In large programs, with shared state and concurrent threads, it becomes a source of bugs.
+
+Lattice makes the boundary explicit:
+
+\begin{lstlisting}[language=Lattice, caption={The lifecycle of data in Lattice}]
+// 1. Construction (fluid)
+flux report = Map::new()
+report["title"] = "Q4 Revenue"
+report["total"] = 1_250_000
+report["approved"] = false
+
+// 2. Stabilization (freeze)
+report["approved"] = true
+freeze(report)
+
+// 3. Consumption (crystal, safe to share)
+print(report.get("title"))     // Q4 Revenue
+// send_to_archive(report)     // safe: report is immutable
+// spawn { process(report) }   // safe: can be sent across threads
+\end{lstlisting}
+
+The \lstinline|freeze()| call is the boundary.
+Before it, the data is under construction.
+After it, the data is permanent.
+The runtime enforces this boundary---you can't go back to the construction phase (unless you explicitly \lstinline|thaw()| a copy).
+
+\subsection{The Chemistry Metaphor}\label{subsec:chemistry-metaphor}
+\index{phase system!chemistry metaphor}
+
+The terminology in Lattice is deliberately drawn from chemistry and materials science\index{materials science}:
+
+\begin{itemize}
+  \item \phase{Fluid} values are like molten metal---shapeable, hot, unstable.
+  \item \phase{Crystal} values are like a diamond or quartz---solid, ordered, permanent.
+  \item \lstinline|freeze()| is \emph{crystallization}---the transition from fluid to solid.
+  \item \lstinline|thaw()| is \emph{melting}---creating a fluid copy from a solid.
+  \item \lstinline|forge| blocks are a \emph{forge}---a controlled environment where you heat, shape, and cool a material in a single operation.
+\end{itemize}
+
+This metaphor extends further in Part~III, where we'll meet:
+\begin{itemize}
+  \item \textbf{Sublimation}: shallow freezing that locks the structure but leaves inner values mutable.
+  \item \textbf{Bonds}: links between values that cause one to freeze when another does.
+  \item \textbf{Reactions}: callbacks that fire when a value changes phase.
+  \item \textbf{Pressure}: restrictions on what can change without fully freezing.
+  \item \textbf{Alloys}: structs with per-field phase declarations.
+  \item \textbf{Arenas}: memory regions where crystal values are stored.
+\end{itemize}
+
+But even without these advanced features, the core idea is powerful: \textbf{make the lifecycle of your data visible in the code}.
+
+\subsection{Phase and Concurrency}\label{subsec:phase-concurrency}
+\index{phase system!concurrency}
+
+The phase system's biggest payoff comes with concurrency.
+Lattice's \lstinline|scope|/\lstinline|spawn| structured concurrency model requires that any value sent across a channel must be \emph{crystal}.
+This is enforced at runtime:
+
+\begin{lstlisting}[language=Lattice, caption={Phase and concurrency}]
+let ch = Channel::new()
+
+flux data = [1, 2, 3]
+// ch.send(data)  -- error: cannot send fluid value
+
+freeze(data)
+ch.send(data)  // works: crystal values are safe to share
+
+scope {
+    spawn {
+        let received = ch.recv()
+        print(received)  // [1, 2, 3]
+    }
+}
+\end{lstlisting}
+
+This constraint means that data races---the most common and hardest-to-debug class of concurrency bugs---are impossible in Lattice.
+If a value can cross a thread boundary, it is guaranteed to be immutable.
+If it is mutable, it cannot cross.
+The phase system draws a bright line between ``private, mutable, single-threaded'' and ``shared, immutable, multi-threaded.''
+
+We'll explore concurrency in full in Part~V\@.
+For now, the key insight is: the phase system is not just about preventing accidental mutation.
+It's a foundation for safe concurrency.
+
+\subsection{A Preview: The Forge Block}\label{subsec:forge-preview}
+\index{forge}
+
+One of the most elegant patterns in Lattice is the \lstinline|forge| block, which encapsulates the entire lifecycle of a value---construction, stabilization, and output---in a single expression:
+
+\begin{lstlisting}[language=Lattice, caption={Forge: build fluid, end crystal}]
+fix server_config = forge {
+    flux temp = Map::new()
+    temp.set("host", "0.0.0.0")
+    temp.set("port", "443")
+    temp.set("tls", "true")
+    temp.set("max_connections", "1024")
+    freeze(temp)
+}
+
+// server_config is crystal, ready to share
+print(server_config.get("host"))  // 0.0.0.0
+print(phase_of(server_config))    // crystal
+\end{lstlisting}
+
+Inside the \lstinline|forge| block, you work with fluid data.
+The block's result is automatically treated as crystal.
+The temporary mutable state never escapes.
+This pattern is so useful that you'll see it throughout Lattice codebases wherever immutable configurations, frozen caches, or thread-safe snapshots are built.
+
+%% ───────────────────────────────────────────────────────────
+\section{Practical Patterns}\label{sec:variable-patterns}
+
+Let's close with some practical patterns that show how \lstinline|let|, \lstinline|flux|, \lstinline|fix|, and \lstinline|freeze()| work together in real code.
+
+\subsection{Accumulate Then Freeze}\label{subsec:accumulate-freeze}
+\index{patterns!accumulate then freeze}
+
+Build a collection incrementally, then freeze it for safe consumption:
+
+\begin{lstlisting}[language=Lattice, caption={Accumulate then freeze}]
+fn load_user_ids(filename: String) -> [Int] {
+    let content = read_file(filename)
+    let lines = content.split("\n")
+    flux ids = []
+    for line in lines {
+        let trimmed = line.trim()
+        if !trimmed.is_empty() {
+            ids.push(parse_int(trimmed))
+        }
+    }
+    freeze(ids)
+    return ids
+}
+\end{lstlisting}
+
+The function returns a frozen array.
+Callers can trust that the data will not change out from under them.
+
+\subsection{Configuration Objects}\label{subsec:config-objects}
+\index{patterns!configuration objects}
+
+Build a configuration with sensible defaults, allow overrides, then lock it down:
+
+\begin{lstlisting}[language=Lattice, caption={Configuration with defaults}]
+fn make_config(overrides: Map) -> Map {
+    flux cfg = Map::new()
+
+    // Defaults
+    cfg["timeout"] = 30
+    cfg["retries"] = 3
+    cfg["verbose"] = false
+
+    // Apply overrides
+    for entry in overrides.entries() {
+        cfg[entry[0]] = entry[1]
+    }
+
+    freeze(cfg)
+    return cfg
+}
+
+flux opts = Map::new()
+opts["timeout"] = 60
+opts["verbose"] = true
+
+fix config = make_config(opts)
+print(config.get("timeout"))   // 60
+print(config.get("retries"))   // 3
+print(phase_of(config))        // crystal
+\end{lstlisting}
+
+\subsection{The Fluid Working Copy}\label{subsec:fluid-copy}
+\index{patterns!fluid working copy}
+
+When you need to modify frozen data, \lstinline|thaw()| gives you a working copy:
+
+\begin{lstlisting}[language=Lattice, caption={Working with a thawed copy}]
+fix original_scores = freeze([85, 92, 78, 95, 88])
+
+// Create a working copy to add a new score
+flux updated = thaw(original_scores)
+updated.push(91)
+updated = updated.sort()
+freeze(updated)
+
+print(original_scores)  // [85, 92, 78, 95, 88] (unchanged)
+print(updated)          // [78, 85, 88, 91, 92, 95]
+\end{lstlisting}
+
+This immutable-data-with-copies pattern will feel familiar if you've worked with functional programming languages or immutable data structures in Clojure or Elm.
+
+%% ───────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:ch04-exercises}
+
+\begin{enumerate}
+  \item \textbf{Phase Detective.}
+  In the REPL, create variables with \lstinline|let|, \lstinline|flux|, and \lstinline|fix|.
+  Use \lstinline|phase_of()| to check the phase of each.
+  Freeze a \lstinline|flux| variable and check again.
+  Thaw it and check once more.
+  Write down what you observe.
+
+  \item \textbf{Strict Mode Workout.}
+  Create a file with \lstinline|#mode strict| at the top.
+  Try using \lstinline|let| to declare a variable.
+  Try assigning to a \lstinline|fix| binding.
+  Try freezing a value and then accessing the original name.
+  Record the error messages you see.
+
+  \item \textbf{Config Builder.}
+  Write a function that builds a database configuration (host, port, database name, connection pool size) using a \lstinline|forge| block.
+  The function should accept a map of overrides and return a crystal map with defaults merged in.
+
+  \item \textbf{Freeze Guard.}
+  Write a function \lstinline|fn ensure_frozen(value: any) -> any| that returns the value unchanged if it's already crystal, or freezes it if it's fluid.
+  Use \lstinline|phase_of()| to decide.
+
+  \item \textbf{The Thaw Game.}
+  Start with \lstinline|fix data = freeze([10, 20, 30])|.
+  Thaw it, add elements, and freeze again.
+  Repeat this three times, building a longer and longer array.
+  Verify that each intermediate frozen version is independent.
+\end{enumerate}
+
+%% ───────────────────────────────────────────────────────────
+\section*{What's Next}\label{sec:ch04-whats-next}
+
+You now understand how Lattice thinks about variables and mutability.
+The \lstinline|let|/\lstinline|flux|/\lstinline|fix| keywords give you explicit control over the lifecycle of your data, and the phase system enforces that control at runtime.
+We've barely scratched the surface of what the phase system can do---bonds, reactions, sublimation, pressure, and alloys await in Part~III\@.
+
+But first, we need to learn how to \emph{direct} the flow of our programs.
+In the next chapter, we'll explore Lattice's control flow constructs: \lstinline|if|/\lstinline|else|, \lstinline|while|, \lstinline|for|, \lstinline|loop|, and the powerful \lstinline|match| expression.
+These are the tools that turn sequences of values into programs that make decisions.

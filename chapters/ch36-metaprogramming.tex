@@ -1,0 +1,775 @@
+\chapter{Metaprogramming and Reflection}\label{ch:metaprogramming}
+
+\index{metaprogramming|(}
+\index{reflection|(}
+
+Most of the time, a program manipulates data: numbers, strings, arrays, structs.
+But sometimes a program needs to manipulate \emph{itself}---inspect its own structure, examine types at runtime, build code from strings, or interrogate a struct to discover what fields it carries.
+These capabilities fall under the umbrella of \textbf{metaprogramming} and \textbf{reflection}.
+
+Lattice is not a ``macro language'' in the tradition of Lisp or Rust.
+It does not have compile-time code generation or hygienic macros.
+Instead, it offers a pragmatic set of \emph{runtime} introspection tools: functions that let you peek inside values, tokenize source code, convert between structs and maps, and even evaluate strings as Lattice code on the fly.
+
+These tools are powerful, and like any powerful tool, they come with trade-offs.
+Let's explore them.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Runtime Code Introspection and Dynamic Features}\label{sec:introspection}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{typeof@\lstinline|typeof|}
+\index{phase\_of@\lstinline|phase_of|}
+\index{to\_string@\lstinline|to_string|}
+\index{repr@\lstinline|repr|}
+
+Lattice provides a family of built-in functions for examining values at runtime.
+These are not methods on objects---they are global functions available everywhere, defined in \filename{src/eval.c} (for the tree-walk interpreter) and mirrored in the bytecode VM dispatch loops.
+
+\subsection{Type Queries}
+
+The most fundamental introspection is asking ``what \emph{is} this value?''
+
+\begin{lstlisting}[language=Lattice, caption={Querying types at runtime}]
+print(typeof(42))           // Int
+print(typeof(3.14))         // Float
+print(typeof("hello"))      // String
+print(typeof(true))         // Bool
+print(typeof([1, 2, 3]))    // Array
+print(typeof(nil))          // Nil
+\end{lstlisting}
+
+The \lstinline|typeof| function returns a string naming the value's type.
+Under the hood, it calls \lstinline|builtin_typeof_str()| from \filename{src/builtins.c}, which is a straightforward \lstinline|switch| on the value's internal type tag.
+The possible return values are: \lstinline|"Int"|, \lstinline|"Float"|, \lstinline|"Bool"|, \lstinline|"String"|, \lstinline|"Array"|, \lstinline|"Struct"|, \lstinline|"Closure"|, \lstinline|"Unit"|, \lstinline|"Nil"|, \lstinline|"Range"|, \lstinline|"Map"|, \lstinline|"Channel"|, \lstinline|"Buffer"|, \lstinline|"Tuple"|, \lstinline|"Set"|, \lstinline|"Iterator"|, \lstinline|"Ref"|, and \lstinline|"Enum"|.
+
+\begin{defnbox}{typeof()}
+\index{typeof@\lstinline|typeof|!definition}
+\lstinline|typeof(val)| returns a \lstinline|String| naming the runtime type of \lstinline|val|.
+For structs, it returns \lstinline|"Struct"| (not the struct's name---use \lstinline|struct_name()| for that).
+\end{defnbox}
+
+This makes \lstinline|typeof| useful for writing generic functions that need to branch on type:
+
+\begin{lstlisting}[language=Lattice, caption={A generic serializer using typeof}]
+fn serialize(val: any) -> String {
+  let t = typeof(val)
+  if t == "Int" || t == "Float" || t == "Bool" {
+    return to_string(val)
+  }
+  if t == "String" {
+    return "\"" + val + "\""
+  }
+  if t == "Array" {
+    let parts = val.map(|item| serialize(item))
+    return "[" + parts.join(", ") + "]"
+  }
+  if t == "Nil" {
+    return "null"
+  }
+  return repr(val)
+}
+
+print(serialize([1, "hello", true]))
+// Output: [1, "hello", true]
+\end{lstlisting}
+
+\subsection{Phase Queries}
+
+\index{phase\_of@\lstinline|phase_of|!function}
+
+Lattice's phase system distinguishes fluid (mutable) values from crystallized (frozen) ones.
+The \lstinline|phase_of| function lets you check a value's phase at runtime:
+
+\begin{lstlisting}[language=Lattice, caption={Querying value phase}]
+flux temperature = 72.0
+print(phase_of(temperature))     // fluid
+
+fix pi = 3.14159
+print(phase_of(pi))              // crystal
+
+let config = freeze(["debug", "verbose"])
+print(phase_of(config))          // crystal
+\end{lstlisting}
+
+The return values are \lstinline|"fluid"|, \lstinline|"crystal"|, or \lstinline|"unphased"| (for values that have not been explicitly assigned a phase).
+This is particularly useful when writing library code that must respect its callers' mutability constraints:
+
+\begin{lstlisting}[language=Lattice, caption={Respecting caller's phase constraints}]
+fn safe_append(collection: any, item: any) -> any {
+  if phase_of(collection) == "crystal" {
+    // Don't mutate a frozen collection; return a new one
+    let thawed = thaw(collection)
+    thawed.push(item)
+    return freeze(thawed)
+  }
+  collection.push(item)
+  return collection
+}
+\end{lstlisting}
+
+\subsection{String Representations}
+
+Two functions convert values to strings, each with a different purpose:
+
+\begin{itemize}
+  \item \lstinline|to_string(val)| --- produces a human-readable display string.
+        Strings are returned without quotes, arrays are formatted with brackets,
+        and special values like \lstinline|nil| become \lstinline|"nil"|.
+  \item \lstinline|repr(val)| --- produces a representation string that could
+        (in principle) be parsed back into the original value. Strings are
+        quoted, struct fields are shown, and closures display their parameter
+        lists.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={to\_string vs. repr}]
+let greeting = "hello"
+print(to_string(greeting))   // hello
+print(repr(greeting))        // "hello"
+
+let items = [1, 2, 3]
+print(to_string(items))      // [1, 2, 3]
+print(repr(items))           // [1, 2, 3]
+
+print(to_string(nil))        // nil
+print(repr(nil))             // nil
+\end{lstlisting}
+
+\begin{tipbox}{When to Use repr()}
+Use \lstinline|repr()| when writing debug output or logging.
+It shows you the ``programmer's view'' of a value, including type information that \lstinline|to_string()| strips away.
+For user-facing output, prefer \lstinline|to_string()| or string interpolation.
+\end{tipbox}
+
+\subsection{Dynamic Evaluation with lat\_eval()}
+
+\index{lat\_eval@\lstinline|lat_eval|}
+
+The most powerful (and most dangerous) introspection tool is \lstinline|lat_eval()|, which takes a string of Lattice source code, parses and evaluates it at runtime, and returns the result:
+
+\begin{lstlisting}[language=Lattice, caption={Dynamic code evaluation}]
+let result = lat_eval("2 + 3 * 4")
+print(result)  // 14
+
+// Define a function dynamically
+lat_eval("fn greet(name: String) { print(\"Hello, \" + name) }")
+greet("World")  // Hello, World
+\end{lstlisting}
+
+Under the hood, \lstinline|lat_eval()| in \filename{src/eval.c} does exactly what the top-level interpreter does: it tokenizes the string, parses it into an AST, registers any function and struct declarations into the current evaluator's registries, and executes the statements.
+Bindings created inside \lstinline|lat_eval()| persist in the caller's scope.
+
+\begin{warnbox}{lat\_eval() and Security}
+\lstinline|lat_eval()| executes arbitrary code with full access to the runtime environment.
+Never pass untrusted input (user data, network data) to \lstinline|lat_eval()|.
+An attacker could read files, make network connections, or execute system commands.
+In production code, prefer structured approaches (closures, maps, pattern matching) over \lstinline|lat_eval()|.
+\end{warnbox}
+
+\subsection{Completeness Checking with is\_complete()}
+
+\index{is\_complete@\lstinline|is_complete|}
+
+A companion to \lstinline|lat_eval()| is \lstinline|is_complete()|, which checks whether a source string has balanced brackets and parentheses:
+
+\begin{lstlisting}[language=Lattice, caption={Checking source completeness}]
+print(is_complete("1 + 2"))        // true
+print(is_complete("fn foo() {"))   // false — unclosed brace
+print(is_complete("if true { }"))  // true
+\end{lstlisting}
+
+This is used internally by the REPL to determine whether to wait for more input or evaluate the current line.
+It tokenizes the string, counts bracket depth, and returns \lstinline|true| if the depth is zero or less.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{tokenize() --- Inspecting Tokens}\label{sec:tokenize}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{tokenize@\lstinline|tokenize|}
+\index{lexer!from Lattice code}
+
+The \lstinline|tokenize()| built-in function exposes Lattice's own lexer to user code.
+Given a string of source code, it returns an array of \lstinline|Token| structs, each with a \lstinline|type| field (the token type name) and a \lstinline|text| field (the token's text):
+
+\begin{lstlisting}[language=Lattice, caption={Tokenizing Lattice source code}]
+let tokens = tokenize("let x = 42 + y")
+
+for tok in tokens {
+  print("${tok.type}: ${tok.text}")
+}
+// Output:
+// LET: LET
+// IDENT: x
+// ASSIGN: ASSIGN
+// INT_LIT: 42
+// PLUS: PLUS
+// IDENT: y
+\end{lstlisting}
+
+Each element in the returned array is a struct with two fields:
+
+\begin{itemize}
+  \item \lstinline|type| --- a \lstinline|String| naming the token type
+        (e.g., \lstinline|"IDENT"|, \lstinline|"INT_LIT"|, \lstinline|"STRING_LIT"|,
+        \lstinline|"PLUS"|, \lstinline|"LBRACE"|, \lstinline|"FN"|).
+  \item \lstinline|text| --- a \lstinline|String| containing the token's text.
+        For identifiers and literals, this is the actual text from the source.
+        For operators and keywords, this is the token type name repeated.
+\end{itemize}
+
+The trailing \lstinline|EOF| token is stripped from the result, so you only see meaningful tokens.
+
+\subsection{Use Cases for tokenize()}
+
+The most prominent use of \lstinline|tokenize()| is in the self-hosted compiler (see \cref{sec:self-hosted}).
+The compiler written in Lattice (\filename{compiler/latc.lat}) calls \lstinline|tokenize()| on the input source file to get its token stream, then implements a recursive-descent parser over those tokens.
+This means the self-hosted compiler does not need to reimplement lexing---it reuses the C lexer via this single function call.
+
+Beyond the self-hosted compiler, \lstinline|tokenize()| enables:
+
+\begin{lstlisting}[language=Lattice, caption={Counting keywords in a source file}]
+fn count_keywords(source: String) -> Int {
+  let tokens = tokenize(source)
+  let keywords = ["fn", "let", "flux", "fix", "if", "else",
+                   "for", "while", "return", "match", "struct"]
+  flux count = 0
+  for tok in tokens {
+    if tok.type == "IDENT" {
+      for kw in keywords {
+        if tok.text == kw {
+          count = count + 1
+        }
+      }
+    }
+  }
+  return count
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={A syntax highlighter skeleton}]
+fn highlight(source: String) -> String {
+  let tokens = tokenize(source)
+  flux result = ""
+  for tok in tokens {
+    if tok.type == "FN" || tok.type == "LET" || tok.type == "IF" {
+      result = result + "\x1b[35m" + tok.text + "\x1b[0m "
+    } else if tok.type == "STRING_LIT" {
+      result = result + "\x1b[32m\"" + tok.text + "\"\x1b[0m "
+    } else if tok.type == "INT_LIT" || tok.type == "FLOAT_LIT" {
+      result = result + "\x1b[34m" + tok.text + "\x1b[0m "
+    } else {
+      result = result + tok.text + " "
+    }
+  }
+  return result
+}
+\end{lstlisting}
+
+\begin{notebox}{tokenize() and the Bytecode VMs}
+The \lstinline|tokenize()| function is available in all three backends.
+In the tree-walk interpreter, it calls \lstinline|lexer_tokenize()| directly.
+In the bytecode VMs, it is dispatched as a native built-in function that invokes the same C lexer.
+The returned tokens are identical regardless of backend.
+\end{notebox}
+
+\subsection{Token Types}
+
+Lattice's lexer produces a rich set of token types.
+Here is a representative sample:
+
+\begin{table}[h]
+\centering
+\caption{Common token types returned by tokenize()}\label{tab:token-types}
+\begin{tabular}{@{} l l p{5.5cm} @{}}
+\toprule
+\textbf{Token Type} & \textbf{Example Text} & \textbf{Description} \\
+\midrule
+\texttt{IDENT}       & \texttt{my\_var}    & Identifier \\
+\texttt{INT\_LIT}    & \texttt{42}         & Integer literal \\
+\texttt{FLOAT\_LIT}  & \texttt{3.14}       & Float literal \\
+\texttt{STRING\_LIT} & \texttt{hello}      & String literal (without quotes) \\
+\texttt{FN}          & \texttt{FN}         & \lstinline|fn| keyword \\
+\texttt{LET}         & \texttt{LET}        & \lstinline|let| keyword \\
+\texttt{FLUX}        & \texttt{FLUX}       & \lstinline|flux| keyword \\
+\texttt{FIX}         & \texttt{FIX}        & \lstinline|fix| keyword \\
+\texttt{IF}          & \texttt{IF}         & \lstinline|if| keyword \\
+\texttt{PLUS}        & \texttt{PLUS}       & \texttt{+} operator \\
+\texttt{ASSIGN}      & \texttt{ASSIGN}     & \texttt{=} assignment \\
+\texttt{LBRACE}      & \texttt{LBRACE}     & \texttt{\{} opening brace \\
+\texttt{RBRACE}      & \texttt{RBRACE}     & \texttt{\}} closing brace \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For a complete list, see \cref{appA-grammar-reference}.
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Struct Reflection Functions}\label{sec:struct-reflection}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{struct reflection|(}
+\index{struct\_name@\lstinline|struct_name|}
+\index{struct\_fields@\lstinline|struct_fields|}
+\index{struct\_to\_map@\lstinline|struct_to_map|}
+\index{struct\_from\_map@\lstinline|struct_from_map|}
+
+Lattice structs are not opaque---at runtime, you can interrogate them to discover their name, fields, and values.
+This makes it possible to write generic code that operates on \emph{any} struct, regardless of its definition.
+
+\subsection{struct\_name()}
+
+\begin{lstlisting}[language=Lattice, caption={Getting a struct's type name}]
+struct User {
+  name: String,
+  age: Int,
+}
+
+let alice = User { name: "Alice", age: 30 }
+print(struct_name(alice))  // User
+\end{lstlisting}
+
+The \lstinline|struct_name()| function returns the struct's type name as a string.
+This is distinct from \lstinline|typeof(alice)|, which returns \lstinline|"Struct"| for all struct instances.
+With \lstinline|struct_name()| you can distinguish between different struct types at runtime.
+
+\subsection{struct\_fields()}
+
+\begin{lstlisting}[language=Lattice, caption={Listing a struct's field names}]
+struct Point {
+  x: Float,
+  y: Float,
+}
+
+let origin = Point { x: 0.0, y: 0.0 }
+let fields = struct_fields(origin)
+print(fields)  // [x, y]
+\end{lstlisting}
+
+The \lstinline|struct_fields()| function returns an array of field name strings.
+The names are in declaration order---the same order you specified when defining the struct.
+
+\subsection{struct\_to\_map()}
+
+\index{struct\_to\_map@\lstinline|struct_to_map|!function}
+
+Perhaps the most useful reflection function, \lstinline|struct_to_map()| converts a struct instance into a \lstinline|Map| where the keys are field names and the values are deep clones of the field values:
+
+\begin{lstlisting}[language=Lattice, caption={Converting a struct to a map}]
+struct Config {
+  host: String,
+  port: Int,
+  debug: Bool,
+}
+
+let cfg = Config { host: "localhost", port: 8080, debug: true }
+let map = struct_to_map(cfg)
+
+print(map["host"])    // localhost
+print(map["port"])    // 8080
+print(map["debug"])   // true
+\end{lstlisting}
+
+This is invaluable for serialization.
+Instead of writing a custom serializer for each struct type, you can convert to a map and pass it to \lstinline|json_stringify()|:
+
+\begin{lstlisting}[language=Lattice, caption={Generic struct serialization via struct\_to\_map}]
+fn to_json(val: any) -> String {
+  if typeof(val) == "Struct" {
+    let map = struct_to_map(val)
+    return json_stringify(map)
+  }
+  return json_stringify(val)
+}
+
+struct Product {
+  name: String,
+  price: Float,
+  in_stock: Bool,
+}
+
+let item = Product { name: "Widget", price: 9.99, in_stock: true }
+print(to_json(item))
+// Output: {"name":"Widget","price":9.99,"in_stock":true}
+\end{lstlisting}
+
+\subsection{struct\_from\_map()}
+
+\index{struct\_from\_map@\lstinline|struct_from_map|!function}
+
+The inverse of \lstinline|struct_to_map()| is \lstinline|struct_from_map()|, which creates a struct instance from a type name and a map of field values:
+
+\begin{lstlisting}[language=Lattice, caption={Creating a struct from a map}]
+struct User {
+  name: String,
+  age: Int,
+}
+
+let data = Map::new()
+data["name"] = "Bob"
+data["age"] = 25
+
+let user = struct_from_map("User", data)
+print(user.name)  // Bob
+print(user.age)   // 25
+\end{lstlisting}
+
+The struct type must already be defined in the current scope.
+If a field is missing from the map, it defaults to \lstinline|nil|.
+This function is particularly useful for deserialization---parsing JSON into a map, then converting the map into a typed struct:
+
+\begin{lstlisting}[language=Lattice, caption={JSON deserialization into a struct}]
+struct Task {
+  title: String,
+  done: Bool,
+  priority: Int,
+}
+
+fn parse_task(json_str: String) -> any {
+  let map = json_parse(json_str)
+  return struct_from_map("Task", map)
+}
+
+let task = parse_task("{\"title\": \"Write docs\", \"done\": false, \"priority\": 1}")
+print(task.title)     // Write docs
+print(task.priority)  // 1
+\end{lstlisting}
+
+\subsection{Combining Reflection for Generic Programming}
+
+With these four functions, you can write powerful generic code:
+
+\begin{lstlisting}[language=Lattice, caption={A generic equality checker for structs}]
+fn struct_equal(a: any, b: any) -> Bool {
+  if typeof(a) != "Struct" || typeof(b) != "Struct" {
+    return false
+  }
+  if struct_name(a) != struct_name(b) {
+    return false
+  }
+  let fields_a = struct_fields(a)
+  let fields_b = struct_fields(b)
+  if len(fields_a) != len(fields_b) {
+    return false
+  }
+  let map_a = struct_to_map(a)
+  let map_b = struct_to_map(b)
+  for field in fields_a {
+    if map_a[field] != map_b[field] {
+      return false
+    }
+  }
+  return true
+}
+
+struct Point {
+  x: Float,
+  y: Float,
+}
+
+let p1 = Point { x: 1.0, y: 2.0 }
+let p2 = Point { x: 1.0, y: 2.0 }
+let p3 = Point { x: 3.0, y: 4.0 }
+
+print(struct_equal(p1, p2))  // true
+print(struct_equal(p1, p3))  // false
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={A generic struct printer}]
+fn describe_struct(val: any) -> String {
+  if typeof(val) != "Struct" {
+    return repr(val)
+  }
+  let name = struct_name(val)
+  let fields = struct_fields(val)
+  let map = struct_to_map(val)
+  flux parts = []
+  for field in fields {
+    parts.push(field + ": " + repr(map[field]))
+  }
+  return name + " { " + parts.join(", ") + " }"
+}
+
+struct Color {
+  r: Int,
+  g: Int,
+  b: Int,
+}
+
+let coral = Color { r: 255, g: 127, b: 80 }
+print(describe_struct(coral))
+// Output: Color { r: 255, g: 127, b: 80 }
+\end{lstlisting}
+
+\index{struct reflection|)}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{format() --- String Building}\label{sec:format}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{format@\lstinline|format|}
+\index{string formatting}
+
+While string interpolation with \lstinline|${}| handles most formatting needs, the \lstinline|format()| function provides a positional placeholder approach similar to Python's \lstinline|str.format()| or Rust's \lstinline|format!()| macro.
+
+\subsection{Basic Usage}
+
+\begin{lstlisting}[language=Lattice, caption={Using format() for string building}]
+let msg = format("{} is {} years old", "Alice", 30)
+print(msg)  // Alice is 30 years old
+
+let report = format("Total: {} items, {} in stock", 150, 42)
+print(report)  // Total: 150 items, 42 in stock
+\end{lstlisting}
+
+The format string uses \lstinline|{}| as a placeholder.
+Arguments are consumed left to right, one per placeholder.
+Each argument is converted to its display string (equivalent to calling \lstinline|to_string()| on it).
+
+\subsection{Escaping Braces}
+
+If you need a literal \lstinline|{| or \lstinline|}| in the output, double it:
+
+\begin{lstlisting}[language=Lattice, caption={Escaping braces in format strings}]
+let json_template = format("{{\"name\": \"{}\", \"age\": {}}}", "Bob", 25)
+print(json_template)  // {"name": "Bob", "age": 25}
+\end{lstlisting}
+
+The implementation in \filename{src/format\_ops.c} handles this by checking for consecutive \lstinline|{{| and \lstinline|}}| patterns, emitting a single brace for each pair.
+
+\subsection{Error Handling}
+
+If you provide fewer arguments than placeholders, \lstinline|format()| raises a runtime error:
+
+\begin{lstlisting}[language=Lattice, caption={format() error on missing arguments}]
+// This will raise an error:
+// let msg = format("{} and {}", "Alice")
+// Error: format: not enough arguments for placeholders
+\end{lstlisting}
+
+Extra arguments are silently ignored---only the placeholders that exist in the format string consume arguments.
+
+\subsection{format() vs. String Interpolation}
+
+When should you use \lstinline|format()| instead of string interpolation?
+
+\begin{itemize}
+  \item \textbf{Dynamic format strings}: When the template is not known at compile time---for instance, loaded from a configuration file or received over a network.
+  \item \textbf{Reusable templates}: When you want to define a template once and apply it with different arguments.
+  \item \textbf{Array-based arguments}: When the arguments come from a computed source rather than inline variables.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Dynamic templates with format()}]
+// A logging system with configurable format
+flux log_template = "[{}] {}: {}"
+
+fn log(level: String, message: String) {
+  let timestamp = to_string(time_ms())
+  print(format(log_template, timestamp, level, message))
+}
+
+log("INFO", "Server started")
+// Output: [1709234567890] INFO: Server started
+
+log("ERROR", "Connection refused")
+// Output: [1709234567891] ERROR: Connection refused
+\end{lstlisting}
+
+\begin{tipbox}{Prefer Interpolation for Readability}
+For most cases, string interpolation (\lstinline|"Hello, ${name}!"|) is more readable than \lstinline|format("Hello, {}!", name)|.
+Reserve \lstinline|format()| for situations where the template itself is dynamic or where you are building strings programmatically.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{The Power and Danger of Runtime Features}\label{sec:power-danger}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\index{lat\_eval@\lstinline|lat_eval|!dangers}
+\index{metaprogramming!best practices}
+
+Runtime introspection and dynamic evaluation are a double-edged sword.
+Let's be honest about both edges.
+
+\subsection{The Power}
+
+Dynamic features let you build things that would otherwise require code generation or preprocessors:
+
+\begin{lstlisting}[language=Lattice, caption={A configuration-driven plugin system}]
+struct Plugin {
+  name: String,
+  version: String,
+  init: fn() -> Bool,
+}
+
+fn load_plugin_from_config(config: Map) -> any {
+  let name = config["name"]
+  let source = read_file("plugins/" + name + ".lat")
+  lat_eval(source)
+  // The plugin registers itself via a global function
+  return true
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={A test runner that discovers tests}]
+fn find_test_functions(source: String) -> Array {
+  let tokens = tokenize(source)
+  flux test_names = []
+  for i in 0..len(tokens) - 1 {
+    if tokens[i].type == "TEST" {
+      if i + 1 < len(tokens) && tokens[i + 1].type == "STRING_LIT" {
+        test_names.push(tokens[i + 1].text)
+      }
+    }
+  }
+  return test_names
+}
+
+let source = read_file("my_tests.lat")
+let tests = find_test_functions(source)
+print("Found " + to_string(len(tests)) + " tests:")
+for name in tests {
+  print("  - " + name)
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={A generic ORM-style mapper}]
+fn map_rows_to_structs(rows: Array, struct_type: String) -> Array {
+  flux results = []
+  for row in rows {
+    let instance = struct_from_map(struct_type, row)
+    results.push(instance)
+  }
+  return results
+}
+
+struct Employee {
+  name: String,
+  department: String,
+  salary: Float,
+}
+
+// Imagine these rows came from a database query
+let rows = [
+  Map::new(),
+  Map::new(),
+]
+rows[0]["name"] = "Alice"
+rows[0]["department"] = "Engineering"
+rows[0]["salary"] = 95000.0
+rows[1]["name"] = "Bob"
+rows[1]["department"] = "Marketing"
+rows[1]["salary"] = 85000.0
+
+let employees = map_rows_to_structs(rows, "Employee")
+for emp in employees {
+  print("${emp.name} in ${emp.department}")
+}
+// Output:
+// Alice in Engineering
+// Bob in Marketing
+\end{lstlisting}
+
+\subsection{The Dangers}
+
+Every runtime feature trades away some combination of safety, performance, and readability.
+
+\begin{description}
+  \item[Performance.] \lstinline|lat_eval()| must lex, parse, and interpret the string on every call.
+    There is no caching and no compilation---it is a full interpreter invocation.
+    In a tight loop, this overhead is devastating.
+
+  \item[Security.] \lstinline|lat_eval()| on untrusted input is a code injection vulnerability.
+    The evaluated code runs with the same privileges as the host program.
+
+  \item[Debuggability.] Dynamically generated code does not have source file locations.
+    Error messages will reference the evaluated string, not a file and line number.
+    Stack traces from \lstinline|lat_eval()| are harder to read.
+
+  \item[Type safety.] Reflection functions like \lstinline|struct_to_map()| erase type information.
+    The resulting map has string keys and \lstinline|any|-typed values---you lose the compiler's ability
+    to check field names and types.
+
+  \item[Refactoring.] Code that uses \lstinline|lat_eval()| to define functions or structs dynamically
+    is invisible to static analysis tools, formatters, and documentation generators.
+    Renaming a function in your editor will not catch references inside evaluated strings.
+\end{description}
+
+\begin{warnbox}{The lat\_eval() Rule of Thumb}
+If you find yourself reaching for \lstinline|lat_eval()|, stop and ask: ``Can I solve this with closures, maps, or pattern matching instead?''
+The answer is almost always yes.
+Reserve \lstinline|lat_eval()| for genuinely dynamic scenarios: plugin systems, REPLs, code generators, and development tools.
+\end{warnbox}
+
+\subsection{Guidelines for Responsible Metaprogramming}
+
+\begin{enumerate}
+  \item \textbf{Prefer closures over eval.}
+        Instead of building a function as a string and evaluating it,
+        accept a closure parameter and call it.
+
+  \item \textbf{Use struct reflection for serialization, not for business logic.}
+        \lstinline|struct_to_map()| and \lstinline|struct_from_map()| are ideal
+        for converting between data formats. They are less ideal for implementing
+        core application behavior.
+
+  \item \textbf{Validate before evaluating.}
+        If you must use \lstinline|lat_eval()|, validate the input first.
+        At minimum, check that it tokenizes without errors using
+        \lstinline|is_complete()|.
+
+  \item \textbf{Use tokenize() for analysis, not execution.}
+        \lstinline|tokenize()| is safe---it only reads, never evaluates.
+        It is the right tool for syntax highlighting, code analysis, and
+        documentation generation.
+
+  \item \textbf{Document dynamic behavior.}
+        When your code uses reflection or dynamic evaluation, add comments
+        explaining \emph{why} the dynamic approach is necessary and what
+        the expected inputs are.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={Closures instead of eval: the better way}]
+// BAD: building code as strings
+// let code = "fn process(x: Int) -> Int { return x * " + to_string(multiplier) + " }"
+// lat_eval(code)
+
+// GOOD: use a closure that captures the value
+fn make_processor(multiplier: Int) -> fn(Int) -> Int {
+  return |x| x * multiplier
+}
+
+let process = make_processor(3)
+print(process(10))  // 30
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:meta-exercises}
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\begin{enumerate}
+  \item Write a function \lstinline|pretty_print(val: any)| that produces a formatted, indented string representation of any value.
+        For structs, use \lstinline|struct_name()| and \lstinline|struct_to_map()| to show the struct type and fields.
+        For arrays and maps, indent nested elements.
+
+  \item Use \lstinline|tokenize()| to write a function that counts the number of functions defined in a Lattice source file.
+        Look for the \lstinline|FN| token followed by an \lstinline|IDENT| token.
+
+  \item Write a \lstinline|diff_structs(a: any, b: any)| function that compares two struct instances of the same type and returns an array of field names that differ.
+        Use \lstinline|struct_fields()| and \lstinline|struct_to_map()| to implement it generically.
+
+  \item Create a simple calculator REPL that reads a line from the user with \lstinline|input()|, evaluates it with \lstinline|lat_eval()|, and prints the result.
+        Add basic error handling: catch evaluation errors and display a helpful message instead of crashing.
+
+  \item (Challenge) Write a ``struct validator'' function that takes a struct instance and a map of \lstinline|{field_name: validation_closure}| pairs.
+        For each field, call the corresponding validation closure with the field's value and collect any failures.
+        Return an array of error messages for fields that failed validation.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\vspace{1em}
+\noindent\textbf{What's Next}\quad
+We have peered behind the curtain at Lattice's runtime introspection capabilities---type queries, tokenization, struct reflection, and dynamic evaluation.
+With the ``Under the Hood'' part complete, we are ready to put everything together.
+In \cref{ch:building-cli-tool}, we will build a complete command-line tool from scratch, applying the language features, concurrency patterns, and standard library knowledge we have accumulated throughout this book.
+
+\index{metaprogramming|)}
+\index{reflection|)}

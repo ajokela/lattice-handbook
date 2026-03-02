@@ -1,0 +1,176 @@
+% cover.tex — Crystal/lattice geometric cover art for The Lattice Handbook
+\thispagestyle{empty}
+\newgeometry{margin=0pt}
+
+\noindent
+\begin{tikzpicture}[x=1cm, y=1cm]
+  % Page is 7.5in x 9.25in = 19.05cm x 23.495cm
+  \def\pw{19.05}
+  \def\ph{23.495}
+  \useasboundingbox (0,0) rectangle (\pw, \ph);
+
+  \pgfmathsetmacro{\cx}{\pw/2}
+  \pgfmathsetmacro{\cy}{\ph/2}
+
+  % ── Background gradient: dark purple to near-black ──────────────────────
+  \shade[
+    top color=latticepurple!70!black,
+    bottom color=black!95!latticepurple
+  ] (0,0) rectangle (\pw, \ph);
+
+  % ── Subtle radial glow behind the lattice ──────────────────────────────
+  \fill[
+    latticepurple!30!black,
+    path fading=circle with fuzzy edge 20 percent
+  ] (\cx, \cy) circle (8);
+
+  % ── 3D isometric projection ────────────────────────────────────────────
+  \pgfmathsetmacro{\iso}{30}
+  \pgfmathsetmacro{\scl}{0.82}
+  \pgfmathsetmacro{\ofy}{-0.4}
+
+  % Project grid point (i,j,k) centered at (2,2,2) onto page center
+  \newcommand{\project}[3]{%
+    \pgfmathsetmacro{\px}{\cx + \scl * ((#1 - 2) - (#3 - 2)) * cos(\iso)}%
+    \pgfmathsetmacro{\py}{\cy + \ofy + \scl * ((#1 - 2) + (#3 - 2)) * sin(\iso) + \scl * (#2 - 2)}%
+  }
+
+  % Draw an edge between two grid points
+  \newcommand{\gridedge}[6]{%
+    \project{#1}{#2}{#3}%
+    \edef\ax{\px}\edef\ay{\py}%
+    \project{#4}{#5}{#6}%
+    \draw (\ax, \ay) -- (\px, \py);%
+  }
+
+  % ── Outer edges (full 5x5x5 grid, very dim) ───────────────────────────
+  \begin{scope}[opacity=0.12, line width=0.3pt, white]
+    \foreach \k in {0,...,4} {
+      \foreach \j in {0,...,4} {
+        \foreach \i [evaluate=\i as \ii using int(\i+1)] in {0,...,3} {
+          \gridedge{\i}{\j}{\k}{\ii}{\j}{\k}
+        }
+      }
+    }
+    \foreach \i in {0,...,4} {
+      \foreach \j in {0,...,4} {
+        \foreach \k [evaluate=\k as \kk using int(\k+1)] in {0,...,3} {
+          \gridedge{\i}{\j}{\k}{\i}{\j}{\kk}
+        }
+      }
+    }
+    \foreach \i in {0,...,4} {
+      \foreach \k in {0,...,4} {
+        \foreach \j [evaluate=\j as \jj using int(\j+1)] in {0,...,3} {
+          \gridedge{\i}{\j}{\k}{\i}{\jj}{\k}
+        }
+      }
+    }
+  \end{scope}
+
+  % ── Mid-layer edges (inner 3x3x3, brighter) ───────────────────────────
+  \begin{scope}[opacity=0.32, line width=0.5pt, latticepurple!40!white]
+    \foreach \k in {1,...,3} {
+      \foreach \j in {1,...,3} {
+        \foreach \i [evaluate=\i as \ii using int(\i+1)] in {1,...,2} {
+          \gridedge{\i}{\j}{\k}{\ii}{\j}{\k}
+        }
+      }
+    }
+    \foreach \i in {1,...,3} {
+      \foreach \j in {1,...,3} {
+        \foreach \k [evaluate=\k as \kk using int(\k+1)] in {1,...,2} {
+          \gridedge{\i}{\j}{\k}{\i}{\j}{\kk}
+        }
+      }
+    }
+    \foreach \i in {1,...,3} {
+      \foreach \k in {1,...,3} {
+        \foreach \j [evaluate=\j as \jj using int(\j+1)] in {1,...,2} {
+          \gridedge{\i}{\j}{\k}{\i}{\jj}{\k}
+        }
+      }
+    }
+  \end{scope}
+
+  % ── Core edges (innermost 2x2x2 cube, brightest) ──────────────────────
+  \begin{scope}[opacity=0.6, line width=0.8pt, white]
+    \foreach \k in {2,3} {
+      \foreach \j in {2,3} {
+        \gridedge{2}{\j}{\k}{3}{\j}{\k}
+      }
+    }
+    \foreach \i in {2,3} {
+      \foreach \j in {2,3} {
+        \gridedge{\i}{\j}{2}{\i}{\j}{3}
+      }
+    }
+    \foreach \i in {2,3} {
+      \foreach \k in {2,3} {
+        \gridedge{\i}{2}{\k}{\i}{3}{\k}
+      }
+    }
+  \end{scope}
+
+  % ── Outer nodes (dim dots) ────────────────────────────────────────────
+  \foreach \i in {0,...,4} {
+    \foreach \j in {0,...,4} {
+      \foreach \k in {0,...,4} {
+        \pgfmathparse{
+          and(and(greater(\i,0), less(\i,4)),
+              and(and(greater(\j,0), less(\j,4)),
+                  and(greater(\k,0), less(\k,4))))}
+        \ifdim\pgfmathresult pt=0pt
+          \project{\i}{\j}{\k}
+          \fill[white, opacity=0.18] (\px, \py) circle (0.8pt);
+        \fi
+      }
+    }
+  }
+
+  % ── Mid-layer nodes ──────────────────────────────────────────────────
+  \foreach \i in {1,...,3} {
+    \foreach \j in {1,...,3} {
+      \foreach \k in {1,...,3} {
+        \pgfmathparse{
+          and(and(greater(\i,1), less(\i,4)),
+              and(and(greater(\j,1), less(\j,4)),
+                  and(greater(\k,1), less(\k,4))))}
+        \ifdim\pgfmathresult pt=1pt
+        \else
+          \project{\i}{\j}{\k}
+          \fill[latticepurple!50!white, opacity=0.45] (\px, \py) circle (1.1pt);
+        \fi
+      }
+    }
+  }
+
+  % ── Core nodes (2x2x2 inner cube, glowing) ────────────────────────────
+  \foreach \i in {2,3} {
+    \foreach \j in {2,3} {
+      \foreach \k in {2,3} {
+        \project{\i}{\j}{\k}
+        \fill[latticepurple!60!white, opacity=0.3] (\px, \py) circle (4pt);
+        \fill[white, opacity=0.95] (\px, \py) circle (1.5pt);
+      }
+    }
+  }
+
+  % ── Title ──────────────────────────────────────────────────────────────
+  \node[anchor=north, text=white] at (\cx, \ph - 1.8)
+    {\fontsize{32}{38}\selectfont\sffamily\bfseries The Lattice Handbook};
+
+  \node[anchor=north, text=white!70!latticepurple] at (\cx, \ph - 3.6)
+    {\fontsize{13}{18}\selectfont\sffamily A Comprehensive Guide to the Lattice Programming Language};
+
+  % ── Author ─────────────────────────────────────────────────────────────
+  \node[anchor=south, text=white] at (\cx, 2.4)
+    {\large\sffamily Alex Jokela};
+
+  % ── Version ────────────────────────────────────────────────────────────
+  \node[anchor=south, text=white!50!latticepurple] at (\cx, 1.2)
+    {\small\sffamily Covers Lattice v0.3.28};
+
+\end{tikzpicture}
+
+\restoregeometry

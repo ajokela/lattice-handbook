@@ -1,0 +1,745 @@
+\chapter{Generics}\label{ch:generics}
+\index{generics}
+
+Up to this point, every type annotation in our structs, enums, and functions
+has been either a concrete type like \lstinline|Int| or the catch-all
+\lstinline|any|. Concrete types are precise but inflexible; \lstinline|any|
+is flexible but tells the reader nothing about intent. Generics occupy
+the middle ground: they let you write code that is \emph{parameterised}
+over types, so that the shape of the data is documented even when the
+specific type is left open.
+
+In Lattice, generics are a \emph{documentation and design} mechanism.
+The language parses generic type parameters on functions, structs, and
+enums, and it supports rich type expressions like \lstinline|Map<String, Int>|
+and \lstinline|Fn(Int) -> Bool|. At runtime, however, Lattice is
+dynamically typed---type parameters are erased and values flow freely.
+This chapter shows you how to use generics to write clearer, more
+intention-revealing code.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Generic Functions}\label{sec:generics-functions}
+\index{generics!functions}
+\index{function!generic}
+
+A generic function declares one or more type parameters in angle brackets
+between the function name and the parameter list:
+
+\begin{lstlisting}[language=Lattice, caption={A generic identity function}]
+fn identity<T>(x: T) -> T {
+    return x
+}
+
+print(identity(42))       // 42
+print(identity("hello"))  // hello
+print(identity(true))     // true
+\end{lstlisting}
+
+The \lstinline|<T>| after the function name introduces a type parameter
+named \lstinline|T|. We then use \lstinline|T| in the parameter type and
+the return type to express that ``whatever type goes in, the same type comes
+out.''
+
+\begin{defnbox}{Type Parameter}
+A \emph{type parameter} is a placeholder name (conventionally a single
+uppercase letter like \lstinline|T|, \lstinline|U|, or \lstinline|K|)
+that stands for a type to be specified later. It appears between angle
+brackets in a declaration: \lstinline|fn foo<T>(x: T) -> T|.
+\end{defnbox}
+
+\subsection{Multiple Type Parameters}
+
+Functions can accept more than one type parameter:
+
+\begin{lstlisting}[language=Lattice, caption={Multiple type parameters}]
+fn pair<A, B>(first: A, second: B) -> any {
+    return [first, second]
+}
+
+let result = pair(1, "two")
+print(result)  // [1, two]
+\end{lstlisting}
+
+The names \lstinline|A| and \lstinline|B| signal to the reader that the
+first and second arguments may be different types.
+
+\subsection{When to Use Generic Functions}
+
+Generic type parameters shine when a function's logic is independent of the
+specific type. Classic examples include:
+
+\begin{lstlisting}[language=Lattice, caption={Generic utility functions}]
+fn first_of<T>(items: [T]) -> T {
+    return items[0]
+}
+
+fn swap<A, B>(a: A, b: B) -> any {
+    return [b, a]
+}
+
+fn repeat<T>(value: T, count: Int) -> [T] {
+    flux result = []
+    for i in 0..count {
+        result.push(value)
+    }
+    return result
+}
+
+print(first_of([10, 20, 30]))    // 10
+print(swap("hello", 42))         // [42, hello]
+print(repeat("ha", 3))           // [ha, ha, ha]
+\end{lstlisting}
+
+Without generics, these functions would use \lstinline|any| for every
+parameter---which is \emph{correct} but says nothing about the relationship
+between inputs and outputs. The generic signatures communicate intent:
+\lstinline|first_of<T>| takes an array of \lstinline|T| and returns a
+\lstinline|T|, so you know the return type matches the element type.
+
+\begin{notebox}{Generics Are Erased at Runtime}
+Lattice parses generic type parameters and stores them in the AST, but
+they are \emph{not enforced} at runtime. The runtime treats all values
+as dynamically typed. This means generics serve as \emph{documentation}
+and \emph{design intent}---they guide human readers and future tooling,
+but the compiler does not yet reject type mismatches. Think of them as
+structured comments with syntactic validation.
+\end{notebox}
+
+\subsection{Generic Functions with Constraints}
+
+Although Lattice does not enforce type constraints today, you can document
+expected capabilities in comments:
+
+\begin{lstlisting}[language=Lattice, caption={Documenting type expectations}]
+// T must support the `+` operator
+fn sum_all<T>(items: [T], zero: T) -> T {
+    flux total = zero
+    for item in items {
+        total = total + item
+    }
+    return total
+}
+
+print(sum_all([1, 2, 3, 4], 0))                // 10
+print(sum_all([1.5, 2.5, 3.0], 0.0))           // 7.0
+print(sum_all(["a", "b", "c"], ""))             // abc
+\end{lstlisting}
+
+The function works for any type that supports addition. The generic
+parameter \lstinline|T| communicates that the accumulator, the elements,
+and the result are all the same type.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Generic Structs}\label{sec:generics-structs}
+\index{generics!structs}
+\index{struct!generic}
+
+Structs can also declare type parameters:
+
+\begin{lstlisting}[language=Lattice, caption={A generic Box struct}]
+struct Box<T> {
+    value: T
+}
+
+let int_box = Box { value: 42 }
+let str_box = Box { value: "hello" }
+
+print(int_box.value)  // 42
+print(str_box.value)  // hello
+\end{lstlisting}
+
+The \lstinline|<T>| after the struct name introduces a type parameter.
+The field \lstinline|value| is annotated with \lstinline|T|, signalling
+that a \lstinline|Box| holds exactly one value of a uniform type.
+
+\begin{tipbox}{Instantiation Does Not Require Type Arguments}
+When you write \lstinline|Box { value: 42 }|, you do not need to specify
+\lstinline|Box<Int> { value: 42 }|. The type parameter exists in the
+\emph{definition} to document the struct's generic nature; at construction
+time, the value itself determines the concrete type.
+\end{tipbox}
+
+\subsection{Multi-Parameter Structs}
+
+\begin{lstlisting}[language=Lattice, caption={A struct with two type parameters}]
+struct Pair<A, B> {
+    first: A,
+    second: B
+}
+
+let entry = Pair { first: "name", second: 42 }
+print(entry.first)   // name
+print(entry.second)  // 42
+\end{lstlisting}
+
+The \lstinline|Pair<A, B>| struct makes it clear that the two fields may
+hold different types. Contrast this with:
+
+\begin{lstlisting}[language=Lattice]
+struct Pair { first: any, second: any }
+\end{lstlisting}
+
+Both definitions compile identically, but the generic version tells the
+reader ``these are distinct type roles, not arbitrary values.''
+
+\subsection{Realistic Generic Structs}
+
+Let's build a generic key--value entry and a lightweight container:
+
+\begin{lstlisting}[language=Lattice, caption={Generic key-value entry}]
+struct Entry<K, V> {
+    key: K,
+    value: V
+}
+
+fn make_entry<K, V>(key: K, value: V) -> Entry {
+    return Entry { key: key, value: value }
+}
+
+let user_entry = make_entry("alice", 30)
+print(user_entry.key)    // alice
+print(user_entry.value)  // 30
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={A generic wrapper with a label}]
+struct Tagged<T> {
+    tag: String,
+    data: T
+}
+
+let measurement = Tagged { tag: "temperature", data: 23.5 }
+let flag = Tagged { tag: "active", data: true }
+
+print(measurement.tag + ": " + to_string(measurement.data))  // temperature: 23.5
+print(flag.tag + ": " + to_string(flag.data))                // active: true
+\end{lstlisting}
+
+\subsection{Generic Structs with Traits}
+
+Generic structs work seamlessly with trait implementations:
+
+\begin{lstlisting}[language=Lattice, caption={Traits on generic structs}]
+struct Box<T> {
+    value: T
+}
+
+trait Describable {
+    fn describe(self: any) -> String
+}
+
+impl Describable for Box {
+    fn describe(self: any) -> String {
+        return "Box(" + to_string(self.value) + ")"
+    }
+}
+
+let b = Box { value: 42 }
+print(b.describe())  // Box(42)
+
+let s = Box { value: "world" }
+print(s.describe())  // Box(world)
+\end{lstlisting}
+
+The impl block says \lstinline|impl Describable for Box| (without type
+parameters)---because at runtime, all \lstinline|Box| instances share the
+same type name regardless of what \lstinline|T| was.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Generic Enums and Trait Implementations}\label{sec:generics-enums}
+\index{generics!enums}
+\index{enum!generic}
+
+Enums are perhaps the most natural fit for generics. The
+\lstinline|Option<T>| and \lstinline|Result<T, E>| patterns from
+\cref{ch:enums} become far more expressive with type parameters:
+
+\begin{lstlisting}[language=Lattice, caption={A generic Option enum}]
+enum Option<T> {
+    Some(T),
+    None
+}
+
+let found = Option::Some(42)
+let missing = Option::None
+
+print(found)    // Option::Some(42)
+print(missing)  // Option::None
+\end{lstlisting}
+
+The type parameter \lstinline|<T>| makes the intent unmistakable:
+\lstinline|Some| carries a value of type \lstinline|T|, and \lstinline|None|
+carries nothing.
+
+\subsection{Generic Result}
+
+\begin{lstlisting}[language=Lattice, caption={A generic Result enum}]
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+
+fn divide(a: Int, b: Int) -> Result {
+    if b == 0 {
+        return Result::Err("division by zero")
+    }
+    return Result::Ok(a / b)
+}
+
+let r = divide(10, 3)
+match r {
+    Result::Ok(v)  => print("result: " + to_string(v)),
+    Result::Err(e) => print("error: " + e),
+    _ => print("?")
+}
+// Output: result: 3
+\end{lstlisting}
+
+With \lstinline|Result<T, E>|, the definition documents that the success
+payload is one type and the error payload is another. The two-parameter
+signature mirrors the Rust and Haskell \texttt{Either} type.
+
+\subsection{Recursive Generic Enums}
+
+The \lstinline|Tree| example from \cref{sec:enum-recursive} becomes more
+self-documenting with a type parameter:
+
+\begin{lstlisting}[language=Lattice, caption={A generic binary tree}]
+enum Tree<T> {
+    Leaf(T),
+    Branch(any, any)
+}
+
+fn tree_sum(t: any) -> Int {
+    match t {
+        Tree::Leaf(v)      => v,
+        Tree::Branch(l, r) => tree_sum(l) + tree_sum(r),
+        _ => 0
+    }
+}
+
+let tree = Tree::Branch(
+    Tree::Branch(Tree::Leaf(1), Tree::Leaf(2)),
+    Tree::Leaf(3)
+)
+print(tree_sum(tree))  // 6
+\end{lstlisting}
+
+\begin{notebox}{Branch Payloads and Self-Reference}
+You might notice that \lstinline|Branch| uses \lstinline|any| for its
+children rather than \lstinline|Tree<T>|. This is because Lattice's type
+system does not yet resolve recursive type references within enum payloads.
+Using \lstinline|any| for the recursive positions is the idiomatic approach
+until the type system evolves.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Type Expressions}\label{sec:generics-type-expressions}
+\index{type expression}
+\index{type annotation}
+
+Beyond simple names like \lstinline|Int| and \lstinline|String|, Lattice
+supports a rich syntax for \emph{type expressions}---the annotations you
+write after colons in parameter lists and struct fields.
+
+\subsection{Named Types}
+
+The most basic type expression is a single name:
+
+\begin{lstlisting}[language=Lattice]
+fn greet(name: String) -> String {
+    return "Hello, " + name
+}
+\end{lstlisting}
+
+Built-in named types include \lstinline|Int|, \lstinline|Float|,
+\lstinline|Bool|, \lstinline|String|, \lstinline|Array|, \lstinline|Map|,
+\lstinline|Set|, \lstinline|Tuple|, \lstinline|Channel|, \lstinline|Buffer|,
+\lstinline|Iterator|, \lstinline|Ref|, and \lstinline|Fn|. Custom struct
+and enum names are also valid.
+
+\subsection{Parameterised Named Types}
+
+Named types can take type arguments in angle brackets:
+
+\begin{lstlisting}[language=Lattice, caption={Parameterised type expressions}]
+struct Config {
+    headers: Map<String, String>,
+    ports: Array<Int>,
+    handler: Fn
+}
+\end{lstlisting}
+
+\lstinline|Map<String, String>| says ``a map from strings to strings.''
+\lstinline|Array<Int>| says ``an array of integers.'' The parser recognises
+the angle brackets and stores the type arguments in the AST (see
+\filename{src/parser.c}, the \texttt{parse\_type\_expr} function).
+
+\subsection{Array Types}
+
+Lattice supports a bracket syntax for array types:
+
+\begin{lstlisting}[language=Lattice, caption={Array type annotation}]
+fn sum(nums: [Int]) -> Int {
+    flux total = 0
+    for n in nums {
+        total = total + n
+    }
+    return total
+}
+
+print(sum([1, 2, 3, 4, 5]))  // 15
+\end{lstlisting}
+
+The annotation \lstinline|[Int]| is shorthand for ``an array whose elements
+are integers.'' It is syntactically distinct from \lstinline|Array<Int>| but
+carries the same meaning.
+
+\subsection{Function Types}
+\index{function type}
+
+Function types describe the signature of a callable value:
+
+\begin{lstlisting}[language=Lattice, caption={Function type annotations}]
+fn apply(f: Fn(Int) -> Int, x: Int) -> Int {
+    return f(x)
+}
+
+let double = |n| { return n * 2 }
+print(apply(double, 5))  // 10
+\end{lstlisting}
+
+The type \lstinline|Fn(Int) -> Int| means ``a function that takes an
+\lstinline|Int| and returns an \lstinline|Int|.'' Multi-parameter function
+types list all parameter types:
+
+\begin{lstlisting}[language=Lattice, caption={Multi-parameter function types}]
+fn apply_binary(f: Fn(Int, Int) -> Int, a: Int, b: Int) -> Int {
+    return f(a, b)
+}
+
+let add = |x, y| { return x + y }
+print(apply_binary(add, 3, 4))  // 7
+\end{lstlisting}
+
+\subsection{Combining Type Expressions}
+
+These forms compose naturally. Here is a function that takes a
+transformation function and an array, and returns a new array:
+
+\begin{lstlisting}[language=Lattice, caption={Combining function and array types}]
+fn transform<T, U>(items: [T], f: Fn(T) -> U) -> [U] {
+    flux result = []
+    for item in items {
+        result.push(f(item))
+    }
+    return result
+}
+
+let names = ["alice", "bob", "charlie"]
+let lengths = transform(names, |s| { return len(s) })
+print(lengths)  // [5, 3, 7]
+\end{lstlisting}
+
+The signature \lstinline|fn transform<T, U>(items: [T], f: Fn(T) -> U) -> [U]|
+is dense but readable: it takes an array of \lstinline|T|, a function from
+\lstinline|T| to \lstinline|U|, and returns an array of \lstinline|U|.
+This is the classic ``map'' operation expressed with full type information.
+
+\begin{tipbox}{Type Expressions as Documentation}
+Even though Lattice does not enforce type expressions at runtime, they serve
+as \emph{machine-readable documentation}. Future tooling---such as the
+language server, linter, and doc generator---can leverage these annotations
+to provide better auto-complete, hover information, and static analysis.
+Write type expressions for your future self and your teammates.
+\end{tipbox}
+
+\subsection{Phase Annotations in Types}
+
+Type expressions can also include phase qualifiers from the phase system:
+
+\begin{lstlisting}[language=Lattice, caption={Phase-annotated types}]
+fn freeze_point(p: ~Point) -> *Point {
+    return freeze p
+}
+\end{lstlisting}
+
+The tilde (\lstinline|~|) denotes a fluid (mutable) value; the asterisk
+(\lstinline|*|) denotes a crystal (frozen) value. These can be combined
+with any type expression, including generic ones. Phase annotations are
+covered in depth in \cref{ch:phases-explained}.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Practical Patterns with Generics}\label{sec:generics-patterns}
+\index{generics!patterns}
+
+Let's explore several design patterns that benefit from generic annotations.
+
+\subsection{The Wrapper Pattern}
+
+A common need is to wrap a value with metadata:
+
+\begin{lstlisting}[language=Lattice, caption={A timestamped wrapper}]
+struct Timestamped<T> {
+    value: T,
+    created_at: Int
+}
+
+fn stamp<T>(value: T, time: Int) -> Timestamped {
+    return Timestamped { value: value, created_at: time }
+}
+
+let record = stamp("measurement: 23.5C", 1700000000)
+print(record.value)       // measurement: 23.5C
+print(record.created_at)  // 1700000000
+\end{lstlisting}
+
+The type parameter \lstinline|T| signals that \lstinline|Timestamped| is
+agnostic about what it wraps. It could hold a string, an integer, or another
+struct.
+
+\subsection{The Builder Pattern}
+
+Generic structs pair well with method chaining:
+
+\begin{lstlisting}[language=Lattice, caption={A generic builder}]
+struct Builder<T> {
+    parts: [T],
+    count: Int
+}
+
+trait Buildable {
+    fn add(self: any, item: any) -> any
+    fn items(self: any) -> any
+}
+
+impl Buildable for Builder {
+    fn add(self: any, item: any) -> any {
+        flux new_parts = []
+        for i in 0..self.count {
+            new_parts.push(self.parts[i])
+        }
+        new_parts.push(item)
+        return Builder { parts: new_parts, count: self.count + 1 }
+    }
+
+    fn items(self: any) -> any {
+        return self.parts
+    }
+}
+
+let list = Builder { parts: [], count: 0 }
+let result = list.add("alpha").add("beta").add("gamma")
+print(result.items())  // [alpha, beta, gamma]
+\end{lstlisting}
+
+\subsection{Higher-Order Generic Functions}
+
+Generic annotations make higher-order functions self-documenting:
+
+\begin{lstlisting}[language=Lattice, caption={Generic filter and reduce}]
+fn filter<T>(items: [T], predicate: Fn(T) -> Bool) -> [T] {
+    flux result = []
+    for item in items {
+        if predicate(item) {
+            result.push(item)
+        }
+    }
+    return result
+}
+
+fn reduce<T, U>(items: [T], initial: U, combine: Fn(U, T) -> U) -> U {
+    flux acc = initial
+    for item in items {
+        acc = combine(acc, item)
+    }
+    return acc
+}
+
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let evens = filter(nums, |n| { return n % 2 == 0 })
+print(evens)  // [2, 4, 6, 8, 10]
+
+let total = reduce(nums, 0, |acc, n| { return acc + n })
+print(total)  // 55
+\end{lstlisting}
+
+The signature of \lstinline|reduce<T, U>| makes the roles crystal clear:
+\lstinline|T| is the element type, \lstinline|U| is the accumulator type,
+and the \lstinline|combine| function bridges the two.
+
+\subsection{Generic Option Utilities}
+
+Building on the \lstinline|Option| enum from \cref{sec:enum-option-result}:
+
+\begin{lstlisting}[language=Lattice, caption={Generic Option helpers}]
+enum Option<T> {
+    Some(T),
+    None
+}
+
+fn map_option<T, U>(opt: Option, f: Fn(T) -> U) -> Option {
+    match opt {
+        Option::Some(v) => Option::Some(f(v)),
+        Option::None    => Option::None,
+        _ => Option::None
+    }
+}
+
+fn unwrap_or<T>(opt: Option, default: T) -> T {
+    match opt {
+        Option::Some(v) => v,
+        Option::None    => default,
+        _ => default
+    }
+}
+
+let name = Option::Some("Alice")
+let upper = map_option(name, |s| { return s.to_upper() })
+print(unwrap_or(upper, "unknown"))  // ALICE
+
+let missing = Option::None
+print(unwrap_or(missing, "anonymous"))  // anonymous
+\end{lstlisting}
+
+These utility functions work with any \lstinline|Option|, regardless of
+the payload type, because the logic depends only on the variant, not on
+\lstinline|T|.
+
+\subsection{Combining Generics, Enums, and Traits}
+
+Here is a pattern that brings all three features together---a generic
+``result handler'' that describes and processes outcomes:
+
+\begin{lstlisting}[language=Lattice, caption={Combining generics with enums and traits}]
+enum Outcome<T> {
+    Success(T),
+    Failure(any)
+}
+
+struct Report<T> {
+    outcome: Outcome,
+    label: String
+}
+
+trait Summarizable {
+    fn summary(self: any) -> String
+}
+
+impl Summarizable for Report {
+    fn summary(self: any) -> String {
+        let status = match self.outcome {
+            Outcome::Success(v) => "OK: " + to_string(v),
+            Outcome::Failure(e) => "FAIL: " + to_string(e),
+            _ => "UNKNOWN"
+        }
+        return "[" + self.label + "] " + status
+    }
+}
+
+let good = Report {
+    outcome: Outcome::Success(200),
+    label: "health check"
+}
+
+let bad = Report {
+    outcome: Outcome::Failure("timeout"),
+    label: "database ping"
+}
+
+print(good.summary())  // [health check] OK: 200
+print(bad.summary())   // [database ping] FAIL: timeout
+\end{lstlisting}
+
+The \lstinline|Report<T>| struct holds an \lstinline|Outcome<T>| enum, and
+the \lstinline|Summarizable| trait provides a polymorphic \lstinline|summary|
+method. Each piece---generics, enums, traits---contributes a different kind
+of abstraction, and they compose cleanly.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{The Future of Generics in Lattice}\label{sec:generics-future}
+\index{generics!roadmap}
+
+Lattice's generic system today is best described as \emph{syntax-first}:
+the parser fully understands type parameters and type arguments, and the
+AST preserves them, but the compiler and runtime do not yet enforce them.
+This is a deliberate staged approach.
+
+What works today:
+\begin{itemize}
+  \item Generic type parameter syntax on functions, structs, and enums.
+  \item Type arguments in type expressions (\lstinline|Map<String, Int>|).
+  \item Function type expressions (\lstinline|Fn(Int) -> Bool|).
+  \item Array type shorthand (\lstinline|[Int]|).
+  \item Phase-qualified type expressions.
+\end{itemize}
+
+What is planned for future versions:
+\begin{itemize}
+  \item Compile-time type checking against declared parameters.
+  \item Trait bounds on type parameters (\lstinline|<T: Describable>|).
+  \item Better error messages when types do not match at call sites.
+  \item Tooling support: the language server already reads type annotations
+    for hover information (see \filename{src/lsp\_server.c}).
+\end{itemize}
+
+\begin{warnbox}{Generics Do Not Prevent Type Errors (Yet)}
+Because type parameters are erased at runtime, passing a
+\lstinline|String| where an \lstinline|Int| is expected will not produce
+a compile-time error---you will get a runtime error when the value is used
+incorrectly. Use generics for documentation today, and look forward to
+enforcement in future Lattice versions.
+\end{warnbox}
+
+Write your generic annotations now. They cost nothing at runtime, they make
+your code dramatically easier to understand, and when the type checker
+arrives, your code will already be ready.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:generics-exercises}
+
+\begin{enumerate}
+  \item \textbf{Generic stack.}
+    Define a \lstinline|struct Stack<T>| with fields \lstinline|items: [T]|
+    and \lstinline|size: Int|. Implement a \lstinline|Pushable| trait with
+    \lstinline|push|, \lstinline|pop|, and \lstinline|peek| methods. Test
+    it with both integers and strings.
+
+  \item \textbf{Option pipeline.}
+    Write three functions: \lstinline|map_option<T, U>|,
+    \lstinline|flat_map_option<T, U>| (where \lstinline|f| returns an
+    \lstinline|Option|), and \lstinline|or_else<T>| (provides a fallback
+    option). Chain them to transform \lstinline|Option::Some(5)| into
+    \lstinline|Option::Some("10")| (double, then convert to string).
+
+  \item \textbf{Generic key-value store.}
+    Define \lstinline|struct KVStore<K, V>| that wraps a \lstinline|Map|.
+    Implement \lstinline|set|, \lstinline|get|, and \lstinline|has| methods.
+    Use it to build a phone book mapping names to numbers.
+
+  \item \textbf{Type expression exploration.}
+    Write a function whose signature uses all three type expression forms:
+    a named type with arguments (\lstinline|Map<String, Int>|), an array
+    type (\lstinline|[String]|), and a function type
+    (\lstinline|Fn(String) -> Int|). The function should accept a list of
+    strings, a scoring function, and return a map from strings to their
+    scores.
+
+  \item \textbf{Generic Result chain.}
+    Define \lstinline|enum Result<T, E>| and write a function
+    \lstinline|and_then<T, U, E>(r: Result, f: Fn(T) -> Result) -> Result|
+    that applies \lstinline|f| only if \lstinline|r| is \lstinline|Ok|.
+    Chain three \lstinline|and_then| calls to parse a string into an
+    integer, double it, and validate that it is positive.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section*{What's Next}
+
+With structs, enums, traits, and generics, you now have Lattice's full
+toolkit for structuring data and building abstractions. But programs do
+not just model data---they \emph{do} things, often many things at once.
+In the next part we enter the world of \emph{concurrency}: how Lattice's
+structured concurrency model with \lstinline|scope| and \lstinline|spawn|
+lets you run tasks in parallel while keeping your code safe and your sanity
+intact.

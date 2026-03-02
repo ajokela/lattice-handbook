@@ -1,0 +1,812 @@
+\chapter{Alloys and Reactive Bonds}\label{ch:alloys-bonds}
+
+\index{alloys|(}
+\index{reactive bonds|(}
+
+So far, the phase system has been all-or-nothing: a value is either entirely fluid or entirely crystal.
+Freeze an array, and every element freezes.
+Freeze a struct, and every field hardens.
+But real-world data is rarely so uniform.
+
+Consider a user session object.
+The user's ID and email should be immutable once established---nobody should accidentally overwrite them.
+But the session's last-active timestamp needs to update on every request, and the permissions cache might need to refresh periodically.
+You need a struct where \emph{some fields are crystal and others are fluid}---a material with mixed properties.
+
+In materials science, such a material is called an \emph{alloy}: a combination of elements with different characteristics fused into a single structure.
+Lattice borrows this metaphor.
+An alloy struct has per-field phase declarations, so each field can have its own mutability.
+And once you have mixed-phase data, Lattice goes further with \emph{reactive bonds}---automatic relationships between variables that propagate phase changes---and \emph{seeds}---validation contracts that guard the crystallization process.
+
+\section{Alloy Structs: Per-Field Phase Declarations}\label{sec:alloy-structs}
+
+\index{alloys!struct declarations}
+
+An alloy struct declares the phase of each field individually using \lstinline|flux| and \lstinline|fix| annotations in the struct definition:
+
+\begin{lstlisting}[language=Lattice, caption={Defining an alloy struct}]
+struct Session {
+    fix user_id: String,
+    fix email: String,
+    flux last_active: String,
+    flux permissions: Array
+}
+\end{lstlisting}
+
+When you create an instance of this struct, the runtime applies per-field phase enforcement.
+The \lstinline|fix| fields are automatically frozen, while the \lstinline|flux| fields remain fluid:
+
+\begin{lstlisting}[language=Lattice, caption={Creating an alloy struct instance}]
+flux session = Session {
+    user_id: "usr_42",
+    email: "alice@example.com",
+    last_active: "2024-01-15T10:30:00Z",
+    permissions: ["read", "write"]
+}
+
+// Crystal fields are locked
+print(session.user_id)     // "usr_42"
+// session.user_id = "usr_99"  // Error: cannot assign to frozen field 'user_id'
+
+// Fluid fields can change
+session.last_active = "2024-01-15T10:31:00Z"
+session.permissions.push("admin")
+print(session.last_active)  // "2024-01-15T10:31:00Z"
+\end{lstlisting}
+
+\begin{defnbox}{Alloy}
+\index{alloys!definition}
+An \emph{alloy} is a struct (or map) with per-field phase declarations.
+Individual fields carry their own phase tag, independent of the overall struct's phase.
+Crystal fields reject mutation; fluid fields allow it.
+The struct itself can be fluid (allowing field reassignment for fluid fields) while its crystal fields remain permanently locked.
+\end{defnbox}
+
+\subsection{How Alloys Work Under the Hood}
+
+The per-field phase system is implemented through the \lstinline|field_phases| array in the \lstinline|LatValue| struct (see \filename{include/value.h}).
+When a struct has per-field phases, \lstinline|field_phases| is a dynamically allocated array of \lstinline|PhaseTag| values---one for each field.
+If \lstinline|field_phases| is \lstinline|NULL|, all fields inherit the struct's overall phase.
+
+During struct construction in the VM (\filename{src/stackvm.c}), the runtime checks for a per-field phase declaration stored in the global environment under the key \lstinline|__struct_phases_<StructName>|.
+This is an array of integer phase codes:
+
+\begin{itemize}
+  \item \lstinline|0| means \lstinline|PHASE_FLUID| --- the field stays mutable.
+  \item \lstinline|1| means \lstinline|PHASE_CRYSTAL| --- the field is automatically frozen at construction.
+  \item Any other value means the field inherits the struct's overall phase.
+\end{itemize}
+
+When field assignment is attempted (\lstinline|OP_SET_FIELD|), the VM checks the \lstinline|field_phases| array:
+
+\begin{lstlisting}[language=Lattice, caption={Field-level phase enforcement}]
+// Internally, the VM checks:
+// if (obj.as.strct.field_phases[i] == VTAG_CRYSTAL)
+//     ERROR: "cannot assign to frozen field 'user_id'"
+\end{lstlisting}
+
+This enforcement happens at the deepest level of the runtime---there is no way to bypass it through clever coding.
+The field's phase tag is a property of the value itself, checked on every write.
+
+\subsection{Partial Freeze with \texttt{except}}
+
+\index{freeze@\texttt{freeze()}!partial freeze}
+
+You can also create alloy-like behavior dynamically by freezing a struct with exceptions:
+
+\begin{lstlisting}[language=Lattice, caption={Freezing a struct with exceptions}]
+struct Config {
+    host: String,
+    port: Int,
+    debug: Bool,
+    log_level: String
+}
+
+flux config = Config {
+    host: "localhost",
+    port: 8080,
+    debug: true,
+    log_level: "info"
+}
+
+// Freeze everything except debug and log_level
+freeze(config, except: ["debug", "log_level"])
+
+// config.host = "evil.com"   // Error: cannot assign to frozen field 'host'
+// config.port = 9999         // Error: cannot assign to frozen field 'port'
+config.debug = false           // OK: debug was exempted
+config.log_level = "debug"     // OK: log_level was exempted
+\end{lstlisting}
+
+The \lstinline|except| clause is compiled to the \lstinline|OP_FREEZE_EXCEPT| opcode.
+Under the hood (in \filename{src/stackvm.c}), this opcode:
+
+\begin{enumerate}
+  \item Allocates the \lstinline|field_phases| array if it does not already exist.
+  \item Iterates through each field, freezing it unless it appears in the exception list.
+  \item Sets the exempted fields' phases to \lstinline|VTAG_FLUID|.
+\end{enumerate}
+
+The same mechanism works for maps---each key can have its own phase via the \lstinline|key_phases| map stored alongside the map's data.
+
+\section{Designing Data with Mixed Mutability}\label{sec:designing-mixed-mutability}
+
+\index{alloys!design patterns}
+
+Alloy structs are a powerful design tool.
+Here are patterns that emerge naturally from per-field phases.
+
+\subsection{Identity + State Pattern}
+
+Separate immutable identity from mutable state:
+
+\begin{lstlisting}[language=Lattice, caption={Identity + State pattern}]
+struct Player {
+    fix id: Int,
+    fix name: String,
+    flux health: Int,
+    flux position_x: Float,
+    flux position_y: Float,
+    flux inventory: Array
+}
+
+flux hero = Player {
+    id: 1,
+    name: "Aria",
+    health: 100,
+    position_x: 0.0,
+    position_y: 0.0,
+    inventory: ["sword", "shield"]
+}
+
+// Identity is locked forever
+print(hero.name)  // "Aria"
+
+// State changes freely
+hero.health = hero.health - 15
+hero.position_x = 3.5
+hero.inventory.push("potion")
+\end{lstlisting}
+
+\subsection{Configuration + Runtime Pattern}
+
+Lock configuration values while allowing runtime counters and caches to change:
+
+\begin{lstlisting}[language=Lattice, caption={Configuration + Runtime pattern}]
+struct Server {
+    fix host: String,
+    fix port: Int,
+    fix max_connections: Int,
+    flux active_connections: Int,
+    flux request_count: Int
+}
+
+flux server = Server {
+    host: "0.0.0.0",
+    port: 443,
+    max_connections: 10000,
+    active_connections: 0,
+    request_count: 0
+}
+
+// Configuration is safe from accidental changes
+// Runtime counters update freely
+server.active_connections = server.active_connections + 1
+server.request_count = server.request_count + 1
+\end{lstlisting}
+
+\subsection{Append-Only Pattern}
+
+Use a crystal array field for historical records (by replacing it with a new frozen array), while keeping a mutable accumulator:
+
+\begin{lstlisting}[language=Lattice, caption={Append-only log pattern}]
+struct AuditLog {
+    fix entries: Array,
+    flux pending: Array
+}
+
+fn add_entry(log: any, entry: any) {
+    log.pending.push(entry)
+    return log
+}
+
+fn flush_log(log: any) {
+    flux all = thaw(log.entries)
+    for item in log.pending {
+        all.push(item)
+    }
+    // Return new log with frozen entries and empty pending
+    return AuditLog {
+        entries: freeze(all),
+        pending: []
+    }
+}
+\end{lstlisting}
+
+\begin{tipbox}{Alloy Design Principle}
+When designing an alloy struct, ask: ``Which fields define \emph{what this thing is} (identity), and which fields describe \emph{how it is right now} (state)?''
+Identity fields should be \lstinline|fix|.
+State fields should be \lstinline|flux|.
+\end{tipbox}
+
+\section{Reactive Bonds: \texttt{bond()}, \texttt{unbond()}, \texttt{react()}, \texttt{unreact()}}\label{sec:reactive-bonds}
+
+\index{bond@\texttt{bond()}|(}
+\index{react@\texttt{react()}|(}
+
+Lattice provides a reactive system that lets variables respond automatically when the phase of another variable changes.
+The core primitives are:
+
+\begin{itemize}
+  \item \lstinline|react(variable, callback)| --- register a callback that fires when a variable's phase changes.
+  \item \lstinline|unreact(variable)| --- remove all reaction callbacks for a variable.
+  \item \lstinline|bond(target, dependency, strategy)| --- create a dependency relationship between variables.
+  \item \lstinline|unbond(target, dependency)| --- remove a specific dependency.
+\end{itemize}
+
+\subsection{Reactions: Responding to Phase Changes}
+
+\lstinline|react()| registers a callback closure that is invoked whenever a variable undergoes a phase transition (freeze, thaw, or sublimate):
+
+\begin{lstlisting}[language=Lattice, caption={Setting up a phase reaction}]
+flux temperature = 72.5
+
+react(temperature, |phase: any| {
+    print("Temperature phase changed to: " + phase)
+})
+
+freeze(temperature)
+// Output: Temperature phase changed to: crystal
+
+thaw(temperature)
+// Output: Temperature phase changed to: fluid
+\end{lstlisting}
+
+The callback receives a string describing the new phase: \lstinline|"crystal"|, \lstinline|"fluid"|, or \lstinline|"sublimated"|.
+Multiple callbacks can be registered for the same variable---they fire in the order they were added.
+
+Under the hood, reactions are stored in the \lstinline|LatRuntime| struct (see \filename{include/runtime.h}).
+Each \lstinline|RTReaction| entry associates a variable name with an array of callback closures.
+When \lstinline|OP_FREEZE_VAR| or \lstinline|OP_THAW_VAR| executes in the VM, it calls \lstinline|stackvm_fire_reactions()| to invoke all registered callbacks.
+
+\begin{lstlisting}[language=Lattice, caption={Multiple reactions on one variable}]
+flux sensor = 98.6
+
+react(sensor, |phase: any| {
+    print("Logger: sensor is now " + phase)
+})
+
+react(sensor, |phase: any| {
+    if phase == "crystal" {
+        print("Alert: sensor has been frozen!")
+    }
+})
+
+freeze(sensor)
+// Output: Logger: sensor is now crystal
+// Output: Alert: sensor has been frozen!
+\end{lstlisting}
+
+\subsection{Removing Reactions}
+
+\lstinline|unreact()| removes all reaction callbacks registered on a variable:
+
+\begin{lstlisting}[language=Lattice, caption={Removing all reactions}]
+flux value = 42
+react(value, |phase: any| {
+    print("phase changed: " + phase)
+})
+
+unreact(value)
+freeze(value)  // No output---the callback has been removed
+\end{lstlisting}
+
+\subsection{Bonds: Phase Dependency Relationships}
+
+\index{bond@\texttt{bond()}!dependency}
+
+While reactions let you \emph{observe} phase changes, bonds let you \emph{propagate} them.
+\lstinline|bond()| creates a dependency relationship: when a dependency variable freezes, the target variable also freezes automatically.
+
+\begin{lstlisting}[language=Lattice, caption={Creating a bond between variables}]
+flux primary = [1, 2, 3]
+flux replica = [1, 2, 3]
+
+bond(replica, "primary", "mirror")
+
+// When primary freezes, replica automatically freezes too
+freeze(primary)
+print(phase_of(primary))  // "crystal"
+print(phase_of(replica))  // "crystal" (frozen via cascade)
+\end{lstlisting}
+
+The third argument to \lstinline|bond()| is the \emph{strategy} string, which determines how the freeze cascades.
+The \lstinline|"mirror"| strategy (the default) means the target mirrors the dependency's phase transitions.
+
+\begin{notebox}{Bond Requirements}
+Bonds have two requirements:
+\begin{enumerate}
+  \item The dependency variable must exist at the time of bonding.
+  \item The target variable must not already be frozen---you cannot bond a crystal variable (it is already locked).
+\end{enumerate}
+Violating either rule produces a runtime error: ``\texttt{cannot bond undefined variable}'' or ``\texttt{cannot bond already-frozen variable}.''
+\end{notebox}
+
+\subsection{Removing Bonds}
+
+\lstinline|unbond()| removes a specific dependency from a target:
+
+\begin{lstlisting}[language=Lattice, caption={Removing a bond}]
+flux source = 100
+flux follower = 100
+
+bond(follower, "source", "mirror")
+unbond(follower, "source")
+
+freeze(source)
+print(phase_of(follower))  // "fluid" (no longer bonded)
+\end{lstlisting}
+
+If removing a dependency leaves a bond entry with no dependencies, the entire bond entry is cleaned up.
+
+\index{bond@\texttt{bond()}|)}
+\index{react@\texttt{react()}|)}
+
+\section{Bond Strategies: Mirror, Inverse, Gate}\label{sec:bond-strategies}
+
+\index{bond strategies|(}
+
+The strategy parameter in \lstinline|bond()| controls how phase transitions propagate from dependency to target.
+
+\subsection{Mirror Strategy}
+
+\index{bond strategies!mirror}
+
+The \lstinline|"mirror"| strategy is the default.
+When the dependency freezes, the target freezes.
+When the dependency thaws, the target thaws.
+The target mirrors whatever the dependency does:
+
+\begin{lstlisting}[language=Lattice, caption={Mirror bond strategy}]
+flux leader = "hello"
+flux follower = "world"
+
+bond(follower, "leader", "mirror")
+
+freeze(leader)
+print(phase_of(follower))  // "crystal" (mirrored freeze)
+\end{lstlisting}
+
+The mirror strategy is implemented in \lstinline|rt_freeze_cascade()| in \filename{src/runtime.c}.
+When a variable is frozen, the cascade function walks all bonds, finds targets whose dependencies include the frozen variable, and applies the appropriate phase transition.
+
+\subsection{Designing Custom Strategies}
+
+Bond strategies are stored as string identifiers in the \lstinline|RTBond| struct's \lstinline|dep_strategies| array.
+The runtime matches on these strings during cascade operations.
+While the core runtime ships with the mirror strategy, the design is extensible---additional strategies can be recognized by the cascade logic.
+
+Here are patterns you can build with the existing bond primitives:
+
+\subsubsection{Inverse Pattern}
+
+Using reactions, you can implement an inverse relationship where freezing one variable thaws another:
+
+\begin{lstlisting}[language=Lattice, caption={Inverse relationship via reactions}]
+flux active_config = Map::new()
+active_config.set("theme", "dark")
+
+flux backup_config = Map::new()
+backup_config.set("theme", "dark")
+
+react(active_config, |phase: any| {
+    if phase == "crystal" {
+        // When active freezes, make a thawed backup
+        print("Active config frozen, backup is now active")
+    }
+})
+
+freeze(active_config)
+// Output: Active config frozen, backup is now active
+\end{lstlisting}
+
+\subsubsection{Gate Pattern}
+
+A gate pattern uses a boolean sentinel to control whether a freeze cascades:
+
+\begin{lstlisting}[language=Lattice, caption={Gate pattern with reactions}]
+flux gate_open = true
+flux protected_data = [1, 2, 3]
+
+react(protected_data, |phase: any| {
+    if phase == "crystal" {
+        print("Data has been sealed")
+    }
+})
+
+fn conditional_freeze(data: any, gate: any) {
+    if gate {
+        return freeze(data)
+    }
+    return data
+}
+
+// With gate open, freeze proceeds
+fix sealed = conditional_freeze(protected_data, gate_open)
+// Output: Data has been sealed
+\end{lstlisting}
+
+\index{bond strategies|)}
+
+\section{Pressure: \texttt{pressurize()}, \texttt{depressurize()}, \texttt{pressure\_of()}}\label{sec:pressure}
+
+\index{pressure|(}
+\index{pressurize@\texttt{pressurize()}|(}
+
+Pressure is a constraint system for \emph{structural mutations} on collections.
+While the phase system controls whether a value can be mutated at all, pressure controls \emph{how} it can be mutated---specifically, whether a collection can grow, shrink, or both.
+
+\begin{lstlisting}[language=Lattice, caption={Applying pressure constraints}]
+flux log_entries = ["boot", "init"]
+
+// Apply pressure: no shrinking allowed
+pressurize("log_entries", "no_shrink")
+
+log_entries.push("request received")  // OK: growing is allowed
+print(log_entries)  // ["boot", "init", "request received"]
+
+// log_entries.pop()  // Error: pressure constraint violated (no_shrink)
+\end{lstlisting}
+
+\subsection{Pressure Modes}
+
+The \lstinline|pressurize()| function accepts a variable name (as a string) and a mode string.
+Four modes are available:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Mode} & \textbf{Effect} \\
+\midrule
+\lstinline|"no_grow"| & Blocks \lstinline|push()|, \lstinline|insert()|, and other size-increasing operations. \\
+\lstinline|"no_shrink"| & Blocks \lstinline|pop()|, \lstinline|remove_at()|, and other size-reducing operations. \\
+\lstinline|"no_resize"| & Blocks both growing and shrinking---the collection's size is locked. \\
+\lstinline|"read_heavy"| & An optimization hint indicating the collection will be read much more often than written. \\
+\bottomrule
+\end{tabular}
+\caption{Pressure modes and their effects.}\label{tab:pressure-modes}
+\end{table}
+
+\begin{lstlisting}[language=Lattice, caption={Different pressure modes}]
+flux scores = [85, 92, 78, 95]
+
+// Lock the size entirely
+pressurize("scores", "no_resize")
+
+// scores.push(100)      // Error: pressure constraint (no_resize)
+// scores.pop()           // Error: pressure constraint (no_resize)
+scores[0] = 90            // OK: element modification is still allowed
+print(scores)  // [90, 92, 78, 95]
+\end{lstlisting}
+
+\begin{notebox}{Pressure vs.\ Phase}
+Pressure and phase are orthogonal.
+A fluid value under \lstinline|"no_resize"| pressure can still have its \emph{elements} modified---you just cannot add or remove elements.
+A crystal value rejects \emph{all} modifications regardless of pressure.
+Think of pressure as a structural constraint (shape of the container) and phase as a material constraint (mutability of the contents).
+\end{notebox}
+
+\subsection{Querying and Removing Pressure}
+
+Use \lstinline|pressure_of()| to check the current pressure on a variable, and \lstinline|depressurize()| to remove it:
+
+\begin{lstlisting}[language=Lattice, caption={Querying and removing pressure}]
+flux items = [1, 2, 3]
+
+pressurize("items", "no_grow")
+print(pressure_of("items"))  // "no_grow"
+
+depressurize("items")
+print(pressure_of("items"))  // nil (no pressure)
+
+items.push(4)  // Now allowed again
+print(items)   // [1, 2, 3, 4]
+\end{lstlisting}
+
+\subsection{Implementation Details}
+
+Pressure constraints are stored in the \lstinline|LatRuntime| struct as an array of \lstinline|RTPressure| entries (see \filename{include/runtime.h}).
+Each entry maps a variable name to a mode string.
+The pressure check is performed by array mutating methods in the VM (e.g., during \lstinline|push()|, \lstinline|pop()|, \lstinline|insert()|, and \lstinline|remove_at()|), which look up the variable name in the pressure table and reject operations that violate the constraint.
+
+The native functions \lstinline|native_pressurize()|, \lstinline|native_depressurize()|, and \lstinline|native_pressure_of()| are defined in \filename{src/runtime.c}.
+They validate the mode string, update the pressure table, and handle the swap-remove pattern for deregistration.
+
+\index{pressurize@\texttt{pressurize()}|)}
+\index{pressure|)}
+
+\section{Seeds: \texttt{seed()}, \texttt{unseed()}}\label{sec:seeds}
+
+\index{seed@\texttt{seed()}|(}
+
+Seeds are \emph{validation contracts} that guard the crystallization process.
+When you seed a variable, you attach a closure that must approve the value before it can be frozen.
+If the seed contract rejects the value, the freeze fails with an error.
+
+\begin{lstlisting}[language=Lattice, caption={Setting a seed contract}]
+flux user_age = 25
+
+seed(user_age, |val: any| {
+    if val < 0 {
+        return "age cannot be negative"
+    }
+    if val > 150 {
+        return "age exceeds reasonable limit"
+    }
+    return nil  // nil means "approved"
+})
+
+// This freeze works: 25 passes the contract
+fix sealed_age = freeze(user_age)
+print(sealed_age)  // 25
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Seed contract rejecting a freeze}]
+flux invalid_score = -10
+
+seed(invalid_score, |val: any| {
+    if val < 0 {
+        return "score must be non-negative"
+    }
+    return nil
+})
+
+// This freeze fails: -10 does not pass the contract
+// fix bad = freeze(invalid_score)
+// Error: score must be non-negative
+\end{lstlisting}
+
+\begin{defnbox}{Seed}
+\index{seed@\texttt{seed()}!definition}
+A \emph{seed} is a validation contract (a closure) attached to a variable.
+The seed is checked when the variable is frozen via \lstinline|freeze()| or \lstinline|grow()|.
+If the closure returns a non-nil value (typically an error message string), the freeze is rejected.
+If it returns \lstinline|nil|, the freeze proceeds.
+\end{defnbox}
+
+\subsection{Seeds and \texttt{grow()}}
+
+\index{grow@\texttt{grow()}}
+
+The \lstinline|grow()| function is a higher-level operation that validates all seeds and then freezes the variable.
+Unlike a bare \lstinline|freeze()|, \lstinline|grow()| \emph{consumes} the seed contracts---after a successful \lstinline|grow()|, the seeds are removed:
+
+\begin{lstlisting}[language=Lattice, caption={Using grow() with seeds}]
+flux balance = 1000
+
+seed(balance, |val: any| {
+    if val < 0 { return "balance cannot be negative" }
+    return nil
+})
+
+// grow() validates seeds, freezes, and removes the seed contracts
+fix final_balance = grow("balance")
+print(final_balance)  // 1000
+// The seed contract is now consumed
+\end{lstlisting}
+
+The \lstinline|grow()| function is implemented as \lstinline|native_grow()| in \filename{src/runtime.c}.
+It calls \lstinline|rt_validate_seeds()| with the \lstinline|consume| flag set to \lstinline|true|, which both validates the contracts and removes them from the runtime's seed table upon success.
+After validation, it freezes the value, records the phase change in the tracking history, fires any cascade bonds, and triggers reactions.
+
+\subsection{Removing Seeds Manually}
+
+\lstinline|unseed()| removes the seed contract for a variable without triggering any validation:
+
+\begin{lstlisting}[language=Lattice, caption={Removing a seed contract}]
+flux data = "sensitive"
+
+seed(data, |val: any| {
+    if len(val) < 8 { return "too short" }
+    return nil
+})
+
+// Changed our mind---remove the seed
+unseed(data)
+
+// Now freeze works without validation
+fix sealed = freeze(data)
+\end{lstlisting}
+
+\subsection{Multiple Seeds}
+
+You can attach multiple seed contracts to the same variable.
+All of them must approve the value for the freeze to succeed:
+
+\begin{lstlisting}[language=Lattice, caption={Multiple seed contracts}]
+flux password = "hunter2"
+
+seed(password, |val: any| {
+    if len(val) < 8 { return "password must be at least 8 characters" }
+    return nil
+})
+
+seed(password, |val: any| {
+    if val == "password" { return "password cannot be 'password'" }
+    return nil
+})
+
+// "hunter2" is only 7 characters---first seed rejects it
+// fix sealed = freeze(password)
+// Error: password must be at least 8 characters
+\end{lstlisting}
+
+\section{Building Reactive Data Flows}\label{sec:reactive-data-flows}
+
+\index{reactive data flows}
+
+By combining bonds, reactions, seeds, and pressure, you can build sophisticated reactive data flows where phase transitions cascade through your data model automatically.
+
+\subsection{Example: Configuration Validation Pipeline}
+
+Here is a complete example that uses seeds to validate configuration, bonds to cascade freezing from a primary config to dependent caches, and reactions to log all phase changes:
+
+\begin{lstlisting}[language=Lattice, caption={A reactive configuration pipeline}]
+// Set up the primary configuration
+flux app_config = Map::new()
+app_config.set("database_url", "postgres://localhost/mydb")
+app_config.set("cache_ttl", "300")
+app_config.set("max_retries", "3")
+
+// Set up a dependent cache configuration
+flux cache_config = Map::new()
+cache_config.set("ttl", "300")
+cache_config.set("backend", "redis")
+
+// Bond: when app_config freezes, cache_config freezes too
+bond(cache_config, "app_config", "mirror")
+
+// Seed: validate configuration before freezing
+seed(app_config, |val: any| {
+    if val.get("database_url") == nil {
+        return "database_url is required"
+    }
+    return nil
+})
+
+// Reaction: log phase changes
+react(app_config, |phase: any| {
+    print("app_config phase -> " + phase)
+})
+
+react(cache_config, |phase: any| {
+    print("cache_config phase -> " + phase)
+})
+
+// Freeze the primary config
+// 1. Seed validates (database_url exists) -> passes
+// 2. app_config freezes
+// 3. Reaction fires: "app_config phase -> crystal"
+// 4. Bond cascade: cache_config freezes
+// 5. Reaction fires: "cache_config phase -> crystal"
+fix sealed_config = freeze(app_config)
+
+print(phase_of(app_config))    // "crystal"
+print(phase_of(cache_config))  // "crystal"
+\end{lstlisting}
+
+\subsection{Example: Sensor Data with Pressure Guards}
+
+\begin{lstlisting}[language=Lattice, caption={Sensor data with pressure and seeds}]
+flux readings = []
+
+// Pressure: this buffer only grows (no accidental data loss)
+pressurize("readings", "no_shrink")
+
+// Seed: require at least 10 readings before allowing freeze
+seed(readings, |val: any| {
+    if len(val) < 10 {
+        return "need at least 10 readings before sealing"
+    }
+    return nil
+})
+
+// Collect sensor data
+for i in 0..15 {
+    readings.push(20.0 + to_float(i) * 0.5)
+}
+
+// readings.pop()  // Error: pressure constraint (no_shrink)
+
+// Now we have 15 readings, seed contract will pass
+fix sealed_readings = freeze(readings)
+print(sealed_readings.len())  // 15
+\end{lstlisting}
+
+\subsection{Example: Multi-Stage Initialization}
+
+\begin{lstlisting}[language=Lattice, caption={Multi-stage initialization with bonds}]
+flux database = Map::new()
+flux http_server = Map::new()
+flux app = Map::new()
+
+// Set up cascading bonds
+bond(http_server, "database", "mirror")
+bond(app, "http_server", "mirror")
+
+// Reactions for monitoring
+react(database, |phase: any| {
+    print("Database: " + phase)
+})
+react(http_server, |phase: any| {
+    print("HTTP Server: " + phase)
+})
+react(app, |phase: any| {
+    print("Application: " + phase)
+})
+
+// Configure each component
+database.set("host", "localhost")
+database.set("port", "5432")
+
+http_server.set("port", "8080")
+http_server.set("workers", "4")
+
+app.set("name", "MyApp")
+app.set("version", "1.0.0")
+
+// Freeze the database layer
+// This cascades: database -> http_server -> app
+freeze(database)
+// Output:
+//   Database: crystal
+//   HTTP Server: crystal
+//   Application: crystal
+
+print(phase_of(app))  // "crystal"
+\end{lstlisting}
+
+\begin{warnbox}{Cascade Ordering}
+Bond cascades propagate synchronously during the freeze operation.
+If you have a chain of bonds (A $\to$ B $\to$ C), freezing A will freeze B, which will then freeze C, all within the same operation.
+Be careful with long chains---each step involves a full freeze (deep clone into an arena).
+\end{warnbox}
+
+\section{Exercises}\label{sec:ch13-exercises}
+
+\begin{enumerate}
+  \item \textbf{Alloy Design.}
+    Design an alloy struct for a bank account with immutable fields for the account number and holder name, and mutable fields for the balance and transaction history.
+    Write functions to deposit, withdraw, and display the account.
+    Ensure the account number can never be changed.
+
+  \item \textbf{Reactive Counter.}
+    Create two variables, \lstinline|counter| and \lstinline|display|.
+    Set up a reaction on \lstinline|counter| that prints the phase change, and a bond from \lstinline|display| to \lstinline|counter| using the mirror strategy.
+    Freeze \lstinline|counter| and verify that \lstinline|display| freezes automatically.
+
+  \item \textbf{Seed Validation.}
+    Write a seed contract for an email address variable that validates the value contains an \lstinline|@| character and has at least 5 characters.
+    Test the seed by trying to freeze valid and invalid email addresses.
+
+  \item \textbf{Pressure Experiment.}
+    Create an array under \lstinline|"no_grow"| pressure.
+    Verify that \lstinline|push()| fails but element assignment works.
+    Then depressurize and confirm \lstinline|push()| works again.
+    Switch to \lstinline|"no_resize"| and verify both \lstinline|push()| and \lstinline|pop()| fail.
+
+  \item \textbf{Complete Pipeline.}
+    Build a complete reactive pipeline with three variables: \lstinline|raw_data|, \lstinline|validated_data|, and \lstinline|archived_data|.
+    Use seeds to validate \lstinline|raw_data| before freezing, bonds to cascade the freeze to \lstinline|validated_data| and then \lstinline|archived_data|, and reactions to log every phase transition.
+\end{enumerate}
+
+\bigskip
+
+\noindent\textbf{What's Next.}\quad
+We have explored the full range of Lattice's phase system: from basic \lstinline|flux|/\lstinline|fix| declarations through alloy structs, reactive bonds, and validation seeds.
+But all of this has operated in \emph{casual} mode, where the runtime catches phase violations dynamically.
+In \cref{ch:strict-mode}, we explore strict mode and the static phase checker---a compile-time analysis that catches phase errors before your code ever runs.
+
+\index{alloys|)}
+\index{reactive bonds|)}

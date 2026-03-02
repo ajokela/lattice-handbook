@@ -1,0 +1,662 @@
+\chapter{Memory and Arenas}\label{ch:memory-arenas}
+
+\index{memory architecture|(}
+
+In the previous chapter we learned \emph{what} phases mean for your code.
+Now we ask: \emph{where does the data actually go?}
+When you freeze a value, what happens to the bytes?
+When the garbage collector runs, how does it know to skip crystal values?
+Why does freezing sometimes make your program \emph{faster}?
+
+Lattice uses a \emph{dual-heap architecture}\index{dual-heap architecture} that physically separates mutable and immutable data into different regions of memory.
+This is not a coincidence or an optimization afterthought---it is a direct consequence of the phase system's design.
+Fluid values live in one world, crystal values in another, and the boundary between them is enforced all the way down to the allocator.
+
+\section{The FluidHeap: Mark-Sweep GC for Mutable Values}\label{sec:fluid-heap}
+
+\index{FluidHeap|(}
+\index{garbage collection!mark-sweep}
+
+Every mutable value in Lattice lives on the \emph{FluidHeap}---a garbage-collected heap that uses a mark-sweep algorithm to reclaim memory.
+
+When you write a \lstinline|flux| declaration, the value's internal data (strings, array buffers, map entries) is allocated through the FluidHeap's \lstinline|fluid_alloc()| function.
+You can see the implementation in \filename{src/memory.c}:
+
+\begin{lstlisting}[language=Lattice, caption={Fluid values live on the GC-managed heap}]
+flux names = ["Alice", "Bob", "Charlie"]
+// The array buffer and each string are allocated via fluid_alloc()
+// The FluidHeap tracks every allocation in a linked list
+\end{lstlisting}
+
+\subsection{How the FluidHeap Works}
+
+The \lstinline|FluidHeap| structure, defined in \filename{include/memory.h}, maintains a linked list of every allocation it has made:
+
+\begin{itemize}
+  \item Each allocation is wrapped in a \lstinline|FluidAlloc| node containing the pointer, its size, a \lstinline|marked| flag, and a link to the next allocation.
+  \item The heap tracks \lstinline|total_bytes|, \lstinline|alloc_count|, and \lstinline|gc_threshold| (initially 1\,MB).
+  \item When the total bytes exceed the GC threshold, a collection cycle is triggered.
+\end{itemize}
+
+The allocation path is straightforward: \lstinline|fluid_alloc()| calls \lstinline|malloc()|, wraps the result in a \lstinline|FluidAlloc| header, prepends it to the linked list, and updates the byte counters.
+Deallocation via \lstinline|fluid_dealloc()| walks the list, finds the matching pointer, unlinks the node, and frees the memory.
+
+\subsection{Mark-Sweep Collection}
+
+\index{garbage collection!mark phase}
+\index{garbage collection!sweep phase}
+
+The GC uses a classic two-phase algorithm:
+
+\begin{enumerate}
+  \item \textbf{Mark phase.}\quad Starting from the \emph{roots} (the VM stack, global environment, struct metadata, open upvalues, call frame upvalues, and the module cache), the collector recursively traverses every reachable value and marks its heap allocations.
+  The \lstinline|gc_mark_value()| function in \filename{src/gc.c} handles this traversal.
+
+  \item \textbf{Sweep phase.}\quad The collector walks the entire \lstinline|FluidHeap| allocation list.
+  Any allocation not marked in step 1 is unreachable---it gets freed.
+  Marked allocations have their mark bit cleared for the next cycle.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={GC reclaims unreachable fluid values}]
+fn create_temporary() {
+    flux temp = [1, 2, 3, 4, 5]
+    // temp is allocated on the FluidHeap
+    return temp.len()
+    // After return, temp is unreachable
+    // The next GC cycle will free its memory
+}
+
+flux length = create_temporary()
+print(length)  // 5
+\end{lstlisting}
+
+\begin{notebox}{Crystal Values Are Invisible to the GC}
+A critical optimization: \lstinline|gc_mark_value()| in \filename{src/gc.c} checks the \lstinline|region_id| field of every value.
+If the region ID is anything other than \lstinline|REGION_NONE|---meaning the value is arena-backed, ephemeral, interned, or a constant---the marker returns immediately.
+Crystal values stored in a CrystalRegion are \emph{never traversed} during the mark phase.
+This means the GC's pause time scales with the number of \emph{fluid} values, not the total number of values.
+The more data you freeze, the less work the GC has to do.
+\end{notebox}
+
+\subsection{The GC Threshold and Adaptive Growth}
+
+The garbage collector does not run on every allocation.
+Instead, it triggers when the object count exceeds the \lstinline|next_gc| threshold.
+After each collection, the threshold adapts:
+
+\[
+\text{next\_gc} = \text{surviving\_objects} \times 2
+\]
+
+This growth factor (defined as \lstinline|GC_GROWTH_FACTOR| in \filename{src/gc.c}) ensures that the GC runs more frequently when there are many objects and less frequently when most objects survive.
+The minimum threshold is 256 objects (\lstinline|GC_INITIAL_THRESHOLD|), preventing thrashing on small programs.
+
+\begin{lstlisting}[language=Lattice, caption={Adaptive GC in action}]
+flux items = []
+for i in 0..10000 {
+    items.push(to_string(i))
+    // The GC may trigger periodically as items grows
+    // Each cycle, the threshold adjusts based on survivors
+}
+print(items.len())  // 10000
+\end{lstlisting}
+
+\index{FluidHeap|)}
+
+\section{The CrystalRegion: Arena-Backed Storage for Immutable Values}\label{sec:crystal-region}
+
+\index{CrystalRegion|(}
+\index{arena allocation}
+
+When you freeze a value, its data is deep-cloned into a \emph{CrystalRegion}---an arena-based allocator that provides two key benefits: cache locality and O(1) bulk deallocation.
+
+\subsection{What Is an Arena?}
+
+An arena (also called a region allocator or bump allocator) is a memory management strategy where you allocate objects by bumping a pointer forward within a pre-allocated block of memory called a \emph{page}.
+When you are done with the arena, you free all its memory at once by freeing the pages.
+Individual objects are never freed independently.
+
+\begin{defnbox}{Arena Allocation}
+\index{arena allocation!definition}
+An \emph{arena} allocates memory by advancing a pointer within contiguous pages.
+Allocation is O(1)---just bump the pointer.
+Deallocation is also O(1)---free all pages at once.
+The trade-off: you cannot free individual objects; you free the entire arena or nothing.
+\end{defnbox}
+
+This is a perfect fit for crystal values.
+Once frozen, they are immutable and their lifetimes are tied together: when the last reference to a frozen value is dropped, the entire region can be reclaimed.
+
+\subsection{Region Structure}
+
+The \lstinline|CrystalRegion| struct, defined in \filename{include/memory.h}, contains:
+
+\begin{itemize}
+  \item An \lstinline|id| (a monotonically increasing \lstinline|RegionId|) that uniquely identifies this region.
+  \item An \lstinline|epoch| timestamp for generational tracking.
+  \item A linked list of \lstinline|ArenaPage| structures, each backed by a 4\,KB data buffer (\lstinline|ARENA_PAGE_SIZE|).
+  \item A running total of bytes used across all pages.
+\end{itemize}
+
+Allocation within a region is handled by \lstinline|arena_alloc()| in \filename{src/memory.c}.
+It uses 8-byte alignment and tries to fit the request in the current head page.
+If the page is full, a new page is allocated and prepended to the list.
+Oversized requests get a dedicated page.
+
+\begin{lstlisting}[language=Lattice, caption={Freeze allocates into a CrystalRegion}]
+flux large_dataset = []
+for i in 0..1000 {
+    large_dataset.push(i * i)
+}
+
+// freeze() clones the data into a new CrystalRegion
+fix snapshot = freeze(large_dataset)
+
+// The 1000 integers and the array buffer are now packed
+// into contiguous arena pages---great for cache performance
+\end{lstlisting}
+
+\subsection{How Freeze Moves Data}
+
+When \lstinline|freeze()| is called, the runtime performs these steps:
+
+\begin{enumerate}
+  \item A new \lstinline|CrystalRegion| is created via \lstinline|region_create()| on the \lstinline|RegionManager|.
+  \item The global arena pointer (\lstinline|g_arena| in \filename{src/value.c}) is set to this new region.
+  \item \lstinline|value_deep_clone()| is called. Because \lstinline|g_arena| is now set, every internal allocation call (\lstinline|lat_alloc|, \lstinline|lat_strdup|, etc.) is routed to \lstinline|arena_alloc()| instead of the normal heap or FluidHeap.
+  \item The phase tag is set to \lstinline|VTAG_CRYSTAL| recursively.
+  \item The arena pointer is cleared.
+  \item Each cloned value's \lstinline|region_id| is set to the region's ID, marking it as arena-backed.
+\end{enumerate}
+
+This is the key mechanism: the deep clone into an arena creates a completely independent copy whose memory is managed by the region, not by the FluidHeap or the GC.
+The allocation routing logic in \filename{src/value.c} makes this transparent:
+
+\begin{itemize}
+  \item \lstinline|lat_alloc()| checks \lstinline|g_arena| first. If set, it calls \lstinline|arena_alloc()|. Otherwise, it tries the FluidHeap, and as a last resort, raw \lstinline|malloc()|.
+  \item \lstinline|lat_free()| checks \lstinline|g_arena|---if set, it is a no-op (arena memory is freed in bulk).
+\end{itemize}
+
+\begin{notebox}{Region IDs and GC Coordination}
+Every value cloned into an arena carries the region's ID in its \lstinline|region_id| field.
+During GC, the marker uses this field to skip arena-backed values.
+During region collection, the region manager identifies which regions are still reachable (their IDs appear in the set of live region IDs) and frees the rest.
+This coordination is implemented in \lstinline|region_collect()| in \filename{src/memory.c}, which uses a sorted binary search for efficient reachability checks.
+\end{notebox}
+
+\subsection{Region Collection}
+
+\index{region collection}
+
+Crystal regions are freed by the \lstinline|region_collect()| function on the \lstinline|RegionManager|.
+During a GC cycle, the runtime builds a set of \emph{reachable region IDs} by scanning all live values' \lstinline|region_id| fields.
+Any region whose ID does not appear in this set is unreachable---its pages are freed in bulk.
+
+This is the beauty of arena allocation: freeing a CrystalRegion is a simple walk through its page list, freeing each page.
+No per-object destructor calls, no pointer chasing through a complex object graph.
+For a region containing thousands of frozen values, the cost is the same as freeing a handful of pages.
+
+\begin{lstlisting}[language=Lattice, caption={Regions freed when no longer reachable}]
+fn make_snapshot() {
+    flux data = [1, 2, 3, 4, 5]
+    return freeze(data)
+}
+
+flux snapshot = make_snapshot()
+print(snapshot)  // [1, 2, 3, 4, 5]
+
+// If snapshot goes out of scope or is reassigned,
+// the CrystalRegion backing it becomes unreachable
+// and is freed during the next GC cycle
+snapshot = nil  // The region can now be collected
+\end{lstlisting}
+
+\subsection{The RegionManager}
+
+\index{RegionManager}
+
+The \lstinline|RegionManager| in \filename{include/memory.h} is the bookkeeper for all crystal regions.
+It maintains:
+
+\begin{itemize}
+  \item A dynamic array of \lstinline|CrystalRegion| pointers.
+  \item A monotonically increasing \lstinline|next_id| counter for assigning unique region IDs.
+  \item An \lstinline|epoch| counter for generational tracking.
+  \item Statistics: total allocations, peak region count, cumulative data bytes.
+\end{itemize}
+
+New regions are created with \lstinline|region_create()|, which allocates a fresh region with a single initial page and assigns it the next available ID.
+The manager grows its array dynamically as regions accumulate.
+
+\index{CrystalRegion|)}
+
+\section{The Ephemeral BumpArena: Short-Lived Temporaries}\label{sec:bump-arena}
+
+\index{BumpArena|(}
+\index{ephemeral allocation}
+
+Not every allocation deserves the overhead of GC tracking or the permanence of an arena region.
+For short-lived temporary values---intermediate computation results, format strings, temporary buffers---Lattice provides the \lstinline|BumpArena|.
+
+The BumpArena is a lightweight bump allocator that can be \emph{reset} without freeing its pages.
+This means the same memory pages are reused across multiple reset cycles, avoiding the cost of repeated page allocation.
+
+\subsection{How the BumpArena Works}
+
+The \lstinline|BumpArena| struct in \filename{include/memory.h} maintains:
+
+\begin{itemize}
+  \item A \lstinline|pages| pointer to the current page.
+  \item A \lstinline|first_page| pointer to the head of the page chain (preserved across resets).
+  \item A running total of bytes allocated since the last reset.
+\end{itemize}
+
+Allocation via \lstinline|bump_alloc()| (in \filename{src/memory.c}) works in three steps:
+
+\begin{enumerate}
+  \item Try the current page. If there is room, bump the \lstinline|used| pointer and return.
+  \item Try the next page in the chain (left over from a previous cycle). If there is room, advance to that page.
+  \item Allocate a new page. Oversized requests get a dedicated page larger than the default 4\,KB.
+\end{enumerate}
+
+All allocations are 8-byte aligned via \lstinline|(size + 7) & ~7|, ensuring proper alignment for any data type.
+
+\subsection{The Reset Cycle}
+
+The key feature of the BumpArena is \lstinline|bump_arena_reset()|.
+Instead of freeing pages, it simply sets each page's \lstinline|used| counter back to zero and resets the current page pointer to the first page.
+The page chain remains intact, so subsequent allocations reuse existing memory without any system calls.
+
+\begin{lstlisting}[language=Lattice, caption={Ephemeral allocations for temporaries}]
+// Inside the VM, each expression evaluation may allocate
+// temporary strings for interpolation, display, or hashing.
+// These temporaries live in the BumpArena and are cleared
+// at safe points (e.g., between statements).
+
+flux message = "Count: ${to_string(counter)}"
+// The interpolation creates temporary strings in the BumpArena
+// They are freed in bulk at the next safe point
+\end{lstlisting}
+
+Values allocated in the BumpArena have their \lstinline|region_id| set to \lstinline|REGION_EPHEMERAL| (defined as \lstinline|(size_t)-2| in \filename{include/value.h}).
+This sentinel value tells both the GC marker and the value destructor to skip these allocations---they are managed by the arena lifecycle, not by normal heap operations.
+
+\begin{tipbox}{Performance Benefit}
+The BumpArena is one of the reasons Lattice can handle string-heavy operations efficiently.
+String interpolation, formatting, and display operations generate many short-lived strings.
+Rather than allocating and freeing each one individually (which would pressure the GC), they are bump-allocated and cleared in bulk.
+This reduces GC pressure and improves throughput.
+\end{tipbox}
+
+\index{BumpArena|)}
+
+\section{How Freeze Moves a Value from Heap to Arena}\label{sec:freeze-mechanics}
+
+\index{freeze@\texttt{freeze()}!memory mechanics}
+
+Let us walk through the complete memory journey of a value as it transitions from fluid to crystal.
+Understanding this flow gives you an intuition for the cost and benefit of freezing.
+
+\subsection{Step by Step}
+
+Consider this code:
+
+\begin{lstlisting}[language=Lattice, caption={A freeze in slow motion}]
+flux temperatures = [20.1, 21.5, 19.8]
+fix snapshot = freeze(temperatures)
+\end{lstlisting}
+
+Here is what happens in memory:
+
+\begin{enumerate}
+  \item \textbf{Initial state.}\quad \lstinline|temperatures| is a fluid array.
+  Its element buffer (\lstinline|elems|) is allocated on the FluidHeap.
+  The three float values are stored inline in the buffer.
+  The \lstinline|phase| tag is \lstinline|VTAG_FLUID|, and \lstinline|region_id| is \lstinline|REGION_NONE|.
+
+  \item \textbf{Region creation.}\quad \lstinline|freeze()| calls \lstinline|region_create()| on the RegionManager.
+  A new CrystalRegion is born with a fresh ID and a single 4\,KB page.
+
+  \item \textbf{Arena activation.}\quad The thread-local \lstinline|g_arena| pointer is set to the new region.
+  From this point, all \lstinline|lat_alloc()| calls are routed to \lstinline|arena_alloc()|.
+
+  \item \textbf{Deep clone.}\quad \lstinline|value_deep_clone()| copies the array.
+  The new element buffer is allocated in the arena (not the FluidHeap).
+  Each float value is copied into the new buffer.
+  For compound elements, the clone recurses.
+
+  \item \textbf{Phase tagging.}\quad \lstinline|set_phase_recursive()| walks the cloned value tree and sets every \lstinline|phase| tag to \lstinline|VTAG_CRYSTAL|.
+
+  \item \textbf{Region ID assignment.}\quad The cloned value's \lstinline|region_id| is set to the region's ID.
+
+  \item \textbf{Arena deactivation.}\quad \lstinline|g_arena| is set back to \lstinline|NULL|.
+  Subsequent allocations go through the normal FluidHeap path.
+
+  \item \textbf{Binding.}\quad The crystal value is stored in the \lstinline|fix| binding \lstinline|snapshot|.
+\end{enumerate}
+
+After this process, \lstinline|temperatures| still lives on the FluidHeap (and can still be modified), while \lstinline|snapshot| lives in its own CrystalRegion with all data packed into contiguous arena pages.
+
+\subsection{Memory Layout Comparison}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Property} & \textbf{FluidHeap} & \textbf{CrystalRegion} \\
+\midrule
+Allocation style & Individual \lstinline|malloc()| & Arena bump allocation \\
+Deallocation & Per-object via GC sweep & Bulk page free \\
+Cache locality & Scattered & Contiguous \\
+GC interaction & Mark \& sweep & Skipped during marking \\
+Mutability & Mutable & Immutable \\
+\lstinline|region_id| & \lstinline|REGION_NONE| & Region-specific ID \\
+\bottomrule
+\end{tabular}
+\caption{Comparing FluidHeap and CrystalRegion memory characteristics.}\label{tab:heap-vs-arena}
+\end{table}
+
+\section{String Interning and Why It Matters}\label{sec:string-interning}
+
+\index{string interning|(}
+
+Lattice interns certain strings---struct field names, map keys used internally, and explicitly interned strings---into a global \lstinline|InternTable|.
+Interning means that each unique string exists at most once in memory, and all references to that string point to the same canonical copy.
+
+\subsection{How Interning Works}
+
+The intern table, implemented in \filename{src/intern.c}, is a hash table using open addressing with linear probing:
+
+\begin{itemize}
+  \item The hash function is DJB2 (\lstinline|h = h * 33 + c|), a fast string hash.
+  \item The table starts at 256 entries and grows (doubles) when the load factor exceeds 50\%.
+  \item \lstinline|intern()| looks up the string. If found, it returns the existing pointer. If not, it \lstinline|strdup()|s the string into the table and returns the new pointer.
+\end{itemize}
+
+The result: two interned strings with the same content are guaranteed to have the same pointer.
+This means pointer comparison (\lstinline|==|) replaces \lstinline|strcmp()| for interned strings, turning an O($n$) comparison into an O(1) operation.
+
+\subsection{What Gets Interned}
+
+In the Lattice runtime, the following strings are automatically interned:
+
+\begin{itemize}
+  \item \textbf{Struct field names.}\quad When a struct is created (via \lstinline|value_struct()| in \filename{src/value.c}), each field name is passed through \lstinline|intern()|.
+  This is visible in the constructor: \lstinline|val.as.strct.field_names[i] = (char *)intern(field_names[i])|.
+
+  \item \textbf{Explicitly interned strings.}\quad The \lstinline|value_string_interned()| constructor creates a string value whose \lstinline|region_id| is set to \lstinline|REGION_INTERNED|.
+\end{itemize}
+
+Interned strings are never freed during normal program execution (they are owned by the global intern table) and are cleaned up only when \lstinline|intern_free()| is called at program exit.
+
+\subsection{Why Interning Matters for Phase}
+
+String interning interacts with the phase system in several important ways:
+
+\begin{enumerate}
+  \item \textbf{GC safety.}\quad Interned strings have \lstinline|region_id = REGION_INTERNED|.
+  The GC marker skips them (they are not on the FluidHeap), and the value destructor skips them (they are owned by the intern table).
+  This prevents double-frees and dangling pointers.
+
+  \item \textbf{Efficient deep cloning.}\quad When \lstinline|value_deep_clone()| encounters an interned string, it does \emph{not} copy the string data.
+  Instead, it reuses the same pointer and copies the \lstinline|REGION_INTERNED| marker.
+  This makes cloning structs (which have interned field names) cheaper.
+
+  \item \textbf{Fast field lookup.}\quad Because field names are interned, struct field access can use pointer comparison instead of string comparison, speeding up field lookups in hot paths.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={Interning makes struct operations faster}]
+struct Point {
+    x: Int,
+    y: Int
+}
+
+// The field names "x" and "y" are interned once.
+// Every Point instance shares the same name pointers.
+// Field lookup compares pointers, not strings.
+
+flux p1 = Point { x: 10, y: 20 }
+flux p2 = Point { x: 30, y: 40 }
+// p1.as.strct.field_names[0] == p2.as.strct.field_names[0]
+// (same pointer, thanks to interning)
+\end{lstlisting}
+
+\index{string interning|)}
+
+\section{The DualHeap: Putting It All Together}\label{sec:dual-heap}
+
+\index{DualHeap}
+
+The \lstinline|DualHeap| struct in \filename{include/memory.h} ties the FluidHeap and RegionManager together:
+
+\begin{itemize}
+  \item \lstinline|fluid| --- a pointer to the \lstinline|FluidHeap| for GC-managed mutable allocations.
+  \item \lstinline|regions| --- a pointer to the \lstinline|RegionManager| for arena-backed crystal storage.
+\end{itemize}
+
+At VM startup, \lstinline|dual_heap_new()| creates both subsystems.
+At shutdown, \lstinline|dual_heap_free()| tears them down, freeing all remaining fluid allocations and all crystal regions.
+
+The DualHeap is set as the active heap via \lstinline|value_set_heap()| at the start of program execution.
+This call installs the \lstinline|DualHeap| into a thread-local global, so all subsequent \lstinline|lat_alloc()| calls are routed through it.
+
+\begin{lstlisting}[language=Lattice, caption={The DualHeap manages both worlds}]
+// At program startup:
+// DualHeap is created
+//   -> FluidHeap for flux values
+//   -> RegionManager for fix values
+
+flux mutable_data = [1, 2, 3]     // allocated via FluidHeap
+fix frozen_data = freeze([4, 5])  // cloned into CrystalRegion
+
+// At program shutdown:
+// DualHeap frees everything
+//   -> FluidHeap frees all remaining fluid allocations
+//   -> RegionManager frees all crystal regions and their pages
+\end{lstlisting}
+
+\section{GC Flags: Tuning the Collector}\label{sec:gc-flags}
+
+\index{garbage collection!flags|(}
+
+Lattice provides command-line flags to control garbage collection behavior.
+These are useful for debugging memory issues, benchmarking, and tuning performance.
+
+\subsection{\texttt{--gc}: Enable the Garbage Collector}\label{subsec:gc-flag}
+
+\index{garbage collection!--gc flag@\texttt{--gc} flag}
+
+By default, the GC is enabled in the bytecode VM.
+The \lstinline|--gc| flag explicitly enables garbage collection:
+
+\begin{lstlisting}[language=Lattice, caption={Running with GC enabled}]
+// Command line:
+// lattice --gc my_program.lat
+\end{lstlisting}
+
+The GC state is managed by the \lstinline|GC| struct in \filename{include/gc.h}, which tracks:
+\begin{itemize}
+  \item \lstinline|all_objects|: linked list of all GC-tracked allocations.
+  \item \lstinline|object_count|: current number of tracked objects.
+  \item \lstinline|next_gc|: threshold for the next collection.
+  \item \lstinline|enabled|: whether the GC is active.
+  \item \lstinline|total_collected| and \lstinline|total_cycles|: lifetime statistics.
+\end{itemize}
+
+\subsection{\texttt{--gc-stress}: Collect on Every Allocation}\label{subsec:gc-stress}
+
+\index{garbage collection!stress mode}
+
+The \lstinline|--gc-stress| flag enables \emph{stress mode}, where the collector runs on every single allocation.
+This is invaluable for catching GC-related bugs: use-after-free, missing root registrations, and incorrect mark implementations.
+
+\begin{lstlisting}[language=Lattice, caption={Stress testing the GC}]
+// Command line:
+// lattice --gc-stress my_program.lat
+
+// Every allocation triggers a full mark-sweep cycle.
+// Extremely slow, but catches subtle memory bugs.
+\end{lstlisting}
+
+In stress mode, \lstinline|gc_maybe_collect()| in \filename{src/gc.c} always triggers a collection:
+
+\begin{quote}
+\texttt{if (gc->stress || gc->object\_count >= gc->next\_gc) \{ gc\_collect(gc, vm\_ptr); \}}
+\end{quote}
+
+\begin{warnbox}{Do Not Use Stress Mode in Production}
+GC stress mode runs a full mark-sweep cycle on every allocation, making it orders of magnitude slower than normal execution.
+Use it only for debugging and testing.
+\end{warnbox}
+
+\subsection{\texttt{--gc-incremental}: Spread Work Across Safe Points}\label{subsec:gc-incremental}
+
+\index{garbage collection!incremental mode}
+
+The \lstinline|--gc-incremental| flag enables \emph{incremental collection}, which spreads GC work across multiple safe points to reduce pause times.
+
+Instead of stopping the world for a full mark-sweep, the incremental collector operates as a state machine with four phases, defined as \lstinline|GCPhase| in \filename{include/gc.h}:
+
+\begin{enumerate}
+  \item \textbf{Idle} (\lstinline|GC_PHASE_IDLE|).\quad No collection in progress. The collector checks if the threshold is exceeded and, if so, transitions to marking.
+
+  \item \textbf{Mark roots} (\lstinline|GC_PHASE_MARK_ROOTS|).\quad Scans all VM roots (stack, globals, upvalues, module cache) and pushes compound values onto a \emph{gray worklist}. Leaf types (strings, buffers) are marked directly without being pushed.
+
+  \item \textbf{Mark trace} (\lstinline|GC_PHASE_MARK_TRACE|).\quad Pops values from the gray worklist and traces their children, up to a configurable \lstinline|mark_budget| per step (default: 64 values). When the worklist is empty, the roots are re-scanned once (to catch mutations during marking), then the sweep begins.
+
+  \item \textbf{Sweep} (\lstinline|GC_PHASE_SWEEP|).\quad Walks the object list, freeing unmarked objects, up to a \lstinline|sweep_budget| per step (default: 128 objects). When the sweep completes, the cycle is done and the threshold is updated.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={Incremental GC for lower latency}]
+// Command line:
+// lattice --gc-incremental my_program.lat
+
+// The GC spreads its work across VM safe points
+// (typically at OP_RESET_EPHEMERAL boundaries),
+// keeping individual pauses short.
+\end{lstlisting}
+
+\begin{notebox}{No Write Barriers}
+Lattice's incremental collector does not use write barriers.
+Instead, it compensates by re-scanning roots after the initial mark trace completes (the \lstinline|roots_rescanned| flag in the \lstinline|GC| struct).
+This conservative approach is correct but may do slightly more work than a write-barrier-based collector.
+New objects allocated during an incremental cycle are born ``black'' (marked), so the sweep phase will not prematurely free them.
+\end{notebox}
+
+\subsection{GC Statistics}
+
+The \lstinline|GC| struct tracks several statistics that are useful for performance analysis:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\lstinline|object_count| & Current number of GC-tracked objects \\
+\lstinline|bytes_allocated| & Total bytes currently allocated under GC \\
+\lstinline|total_collected| & Lifetime count of objects freed by the GC \\
+\lstinline|total_cycles| & Number of GC cycles completed \\
+\lstinline|next_gc| & Object count threshold for next collection \\
+\bottomrule
+\end{tabular}
+\caption{GC statistics fields.}\label{tab:gc-stats}
+\end{table}
+
+Similarly, the RegionManager tracks:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Field} & \textbf{Meaning} \\
+\midrule
+\lstinline|count| & Number of live crystal regions \\
+\lstinline|total_allocs| & Lifetime count of regions created \\
+\lstinline|peak_count| & Maximum simultaneous live regions \\
+\lstinline|cumulative_data_bytes| & Total bytes allocated across all regions \\
+\bottomrule
+\end{tabular}
+\caption{RegionManager statistics fields.}\label{tab:region-stats}
+\end{table}
+
+\index{garbage collection!flags|)}
+
+\section{Special Region IDs}\label{sec:special-region-ids}
+
+\index{region\_id@\texttt{region\_id}}
+
+Every \lstinline|LatValue| has a \lstinline|region_id| field that indicates where its data lives.
+The runtime defines several sentinel values (in \filename{include/value.h}) that identify special allocation regions:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Constant} & \textbf{Value} & \textbf{Meaning} \\
+\midrule
+\lstinline|REGION_NONE| & \lstinline|(size_t)-1| & Normal heap (FluidHeap or \lstinline|malloc|) \\
+\lstinline|REGION_EPHEMERAL| & \lstinline|(size_t)-2| & BumpArena (temporary, reset-managed) \\
+\lstinline|REGION_INTERNED| & \lstinline|(size_t)-3| & Intern table (never freed individually) \\
+\lstinline|REGION_CONST| & \lstinline|(size_t)-4| & Constant pool (borrowed, not freed) \\
+\bottomrule
+\end{tabular}
+\caption{Special region ID sentinel values.}\label{tab:region-ids}
+\end{table}
+
+Any \lstinline|region_id| that is not one of these sentinels is a real CrystalRegion ID.
+The GC marker, the value destructor, and the deep-clone function all check \lstinline|region_id| to decide how to handle a value.
+
+\section{Memory Best Practices}\label{sec:memory-best-practices}
+
+Armed with knowledge of the dual-heap architecture, here are practical guidelines for memory-efficient Lattice programs:
+
+\begin{tipbox}{Memory Guidelines}
+\begin{itemize}
+  \item \textbf{Freeze early, freeze often.}\quad Crystal values reduce GC pressure because the marker skips them entirely.
+  If data will not change after initialization, freeze it.
+
+  \item \textbf{Use forge blocks for complex construction.}\quad Building a value in a forge block localizes the mutable temporaries and produces a single crystal result in one arena, maximizing cache locality.
+
+  \item \textbf{Avoid unnecessary thaw-modify-freeze cycles.}\quad Each cycle involves a deep clone. If you need to make multiple modifications, thaw once, apply all changes, and freeze once.
+
+  \item \textbf{Let large fluid values die quickly.}\quad The GC threshold adapts based on surviving objects. If large temporary fluid values are kept alive unnecessarily, the GC threshold grows and memory usage stays high. Drop references as soon as you are done.
+
+  \item \textbf{Use incremental GC for latency-sensitive applications.}\quad If your program handles real-time events (web servers, game loops), \lstinline|--gc-incremental| keeps pauses bounded.
+\end{itemize}
+\end{tipbox}
+
+\section{Exercises}\label{sec:ch12-exercises}
+
+\begin{enumerate}
+  \item \textbf{Freeze Cost.}
+    Write a program that creates a deeply nested array (arrays of arrays of arrays, at least 3 levels deep with 100 elements at each level).
+    Time how long it takes to freeze the entire structure.
+    Then time how long it takes to access elements of the frozen copy versus the original fluid copy.
+    What do you observe?
+
+  \item \textbf{Snapshot Chain.}
+    Write a function that maintains a ``history'' of an evolving value by freezing a snapshot after every modification.
+    Store the snapshots in an array.
+    How many distinct CrystalRegions do you think are created?
+
+  \item \textbf{GC Pressure Experiment.}
+    Write a program that creates many short-lived fluid values in a loop (e.g., build and discard 10,000 arrays of 100 elements each).
+    Run it with \lstinline|--gc| and observe the behavior.
+    Then modify the program to freeze values that persist.
+    Reason about how the GC threshold changes in each case.
+
+  \item \textbf{Intern Detective.}
+    Create two structs of the same type with different field values.
+    Use \lstinline|phase_of()| and \lstinline|type_of()| to inspect them.
+    Reason about which parts of the structs share memory (interned field names) and which have independent allocations (field values).
+\end{enumerate}
+
+\bigskip
+
+\noindent\textbf{What's Next.}\quad
+We have seen how individual values transition between fluid and crystal, and where they live in memory.
+But what about data structures where \emph{some fields} should be mutable and \emph{others} should be frozen?
+In \cref{ch:alloys-bonds}, we explore alloy structs---structures with per-field phase declarations---and the reactive bond system that lets values respond automatically when their neighbors change phase.
+
+\index{memory architecture|)}

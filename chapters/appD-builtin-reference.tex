@@ -1,0 +1,269 @@
+\chapter{Built-in Functions Reference}\label{ch:builtin-reference}
+
+This appendix is an alphabetical listing of every built-in function and
+method in the Lattice standard library. Global functions are listed first,
+followed by methods grouped by receiver type.
+
+%% ════════════════════════════════════════════════════════════════
+\section{Global Functions}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{chr}          & \texttt{(code: Int) -> String}         & Return the character for ASCII code \texttt{code}. \\
+\texttt{clone}        & \texttt{(val: Any) -> Any}             & Deep-clone \texttt{val}, preserving its current phase. \\
+\texttt{freeze}       & \texttt{(val: Any) -> Any}             & Deep-freeze \texttt{val}; returns a crystal copy. \\
+\texttt{input}        & \texttt{(prompt: String?) -> String?}  & Read a line from stdin. Returns \texttt{nil} on EOF. \\
+\texttt{len}          & \texttt{(val: Any) -> Int}             & Return the length of an array, string, map, set, buffer, or tuple. \\
+\texttt{ord}          & \texttt{(s: String) -> Int}            & Return the ASCII value of the first character. $-1$ for empty string. \\
+\texttt{parse\_float} & \texttt{(s: String) -> Float?}         & Parse a string to a float. Returns \texttt{nil} on failure. \\
+\texttt{parse\_int}   & \texttt{(s: String) -> Int?}           & Parse a string to an integer. Returns \texttt{nil} on failure. \\
+\texttt{phase\_of}    & \texttt{(val: Any) -> String}          & Return the phase as a string: \texttt{"fluid"}, \texttt{"crystal"}, \texttt{"unphased"}, or \texttt{"sublimated"}. \\
+\texttt{print}        & \texttt{(...args: Any) -> Unit}        & Print values to stdout, space-separated, with trailing newline. \\
+\texttt{read\_file}   & \texttt{(path: String) -> String?}     & Read entire file. Returns \texttt{nil} on error. \\
+\texttt{sublimate}    & \texttt{(val: Any) -> Any}             & Permanently freeze \texttt{val}; cannot be thawed. \\
+\texttt{thaw}         & \texttt{(val: Any) -> Any}             & Thaw a crystal value; returns a fluid copy. \\
+\texttt{to\_string}   & \texttt{(val: Any) -> String}          & Convert any value to its string representation. \\
+\texttt{typeof}       & \texttt{(val: Any) -> String}          & Return the type name: \texttt{"Int"}, \texttt{"Float"}, \texttt{"Bool"}, \texttt{"String"}, \texttt{"Array"}, \texttt{"Struct"}, \texttt{"Closure"}, \texttt{"Unit"}, \texttt{"Nil"}, \texttt{"Range"}, \texttt{"Map"}, \texttt{"Channel"}, \texttt{"Enum"}, \texttt{"Set"}, \texttt{"Tuple"}, \texttt{"Buffer"}, \texttt{"Ref"}, \texttt{"Iterator"}. \\
+\texttt{write\_file}  & \texttt{(path: String, data: String) -> Bool} & Write string to file. Returns \texttt{true} on success. \\
+\bottomrule
+\end{booktabs}
+\caption{Global built-in functions.}\label{tab:globals}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Array Methods}
+
+\subsection{Non-Closure Methods}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}lp{3.2cm}p{5.5cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.chunk}      & \texttt{(n: Int) -> [[Any]]}   & Split into sub-arrays of size \texttt{n}. \\
+\texttt{.contains}   & \texttt{(val: Any) -> Bool}    & Test if array contains \texttt{val}. \\
+\texttt{.drop}       & \texttt{(n: Int) -> [Any]}     & Return array without the first \texttt{n} elements. \\
+\texttt{.enumerate}  & \texttt{() -> [[Int, Any]]}    & Return array of \texttt{[index, value]} pairs. \\
+\texttt{.first}      & \texttt{() -> Any?}            & Return the first element, or \texttt{nil} if empty. \\
+\texttt{.flatten}    & \texttt{() -> [Any]}           & Flatten one level of nesting. \\
+\texttt{.index\_of}  & \texttt{(val: Any) -> Int}     & Index of first occurrence, or $-1$. \\
+\texttt{.join}       & \texttt{(sep: String) -> String} & Join elements into a string with separator. \\
+\texttt{.last}       & \texttt{() -> Any?}            & Return the last element, or \texttt{nil} if empty. \\
+\texttt{.max}        & \texttt{() -> Any?}            & Return the maximum numeric element. \\
+\texttt{.min}        & \texttt{() -> Any?}            & Return the minimum numeric element. \\
+\texttt{.reverse}    & \texttt{() -> [Any]}           & Return reversed copy. \\
+\texttt{.sum}        & \texttt{() -> Int|Float}       & Sum all numeric elements. \\
+\texttt{.take}       & \texttt{(n: Int) -> [Any]}     & Return first \texttt{n} elements. \\
+\texttt{.unique}     & \texttt{() -> [Any]}           & Return array with duplicates removed. \\
+\texttt{.zip}        & \texttt{(other: [Any]) -> [[Any]]} & Zip two arrays into pairs. \\
+\bottomrule
+\end{booktabs}
+\caption{Array methods (non-closure).}\label{tab:arr-methods}
+\end{table}
+
+\subsection{Closure Methods}
+
+These methods take a closure as their last argument.
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}lp{4.5cm}p{4.5cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.all}         & \texttt{(|el| -> Bool) -> Bool}       & \texttt{true} if predicate holds for every element. \\
+\texttt{.any}         & \texttt{(|el| -> Bool) -> Bool}       & \texttt{true} if predicate holds for any element. \\
+\texttt{.each}        & \texttt{(|el| -> Unit) -> Unit}       & Call closure for each element (side effects). \\
+\texttt{.filter}      & \texttt{(|el| -> Bool) -> [Any]}      & Return elements satisfying predicate. \\
+\texttt{.find}        & \texttt{(|el| -> Bool) -> Any?}       & Return first element satisfying predicate. \\
+\texttt{.find\_index} & \texttt{(|el| -> Bool) -> Int}        & Index of first match, or $-1$. \\
+\texttt{.flat\_map}   & \texttt{(|el| -> [Any]) -> [Any]}     & Map then flatten one level. \\
+\texttt{.group\_by}   & \texttt{(|el| -> String) -> Map}      & Group elements by key function. \\
+\texttt{.map}         & \texttt{(|el| -> Any) -> [Any]}       & Apply closure to each element. \\
+\texttt{.partition}   & \texttt{(|el| -> Bool) -> [[Any]]}    & Split into \texttt{[matches, rest]}. \\
+\texttt{.reduce}      & \texttt{([init,] |acc, el| -> Any) -> Any} & Fold from left. Optional initial value. \\
+\texttt{.sort\_by}    & \texttt{(|el| -> Any) -> [Any]}       & Sort by key function. \\
+\bottomrule
+\end{booktabs}
+\caption{Array methods (closure-based).}\label{tab:arr-closure}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{String Methods}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}lp{4.2cm}p{4.8cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.bytes}           & \texttt{() -> [Int]}                  & Return array of byte values. \\
+\texttt{.chars}           & \texttt{() -> [String]}               & Return array of single characters. \\
+\texttt{.contains}        & \texttt{(sub: String) -> Bool}        & Test if substring exists. \\
+\texttt{.count}           & \texttt{(sub: String) -> Int}         & Count non-overlapping occurrences. \\
+\texttt{.ends\_with}      & \texttt{(suffix: String) -> Bool}     & Test suffix. \\
+\texttt{.index\_of}       & \texttt{(sub: String) -> Int}         & First index of substring, or $-1$. \\
+\texttt{.is\_alpha}       & \texttt{() -> Bool}                   & All characters are alphabetic. \\
+\texttt{.is\_alphanumeric}& \texttt{() -> Bool}                   & All chars are alphanumeric. \\
+\texttt{.is\_digit}       & \texttt{() -> Bool}                   & All characters are digits. \\
+\texttt{.is\_empty}       & \texttt{() -> Bool}                   & String has zero length. \\
+\texttt{.last\_index\_of} & \texttt{(sub: String) -> Int}         & Last index of substring, or $-1$. \\
+\texttt{.pad\_left}       & \texttt{(width: Int, ch: String) -> String} & Pad on the left to \texttt{width}. \\
+\texttt{.pad\_right}      & \texttt{(width: Int, ch: String) -> String} & Pad on the right to \texttt{width}. \\
+\texttt{.repeat}          & \texttt{(n: Int) -> String}           & Repeat string \texttt{n} times. \\
+\texttt{.replace}         & \texttt{(old: String, new: String) -> String} & Replace all occurrences. \\
+\texttt{.reverse}         & \texttt{() -> String}                 & Reverse the string. \\
+\texttt{.split}           & \texttt{(sep: String) -> [String]}    & Split by separator. \\
+\texttt{.starts\_with}    & \texttt{(prefix: String) -> Bool}     & Test prefix. \\
+\texttt{.substring}       & \texttt{(start: Int, end: Int) -> String} & Extract substring by index range. \\
+\texttt{.to\_lower}       & \texttt{() -> String}                 & Convert to lowercase. \\
+\texttt{.to\_upper}       & \texttt{() -> String}                 & Convert to uppercase. \\
+\texttt{.trim}            & \texttt{() -> String}                 & Strip whitespace from both ends. \\
+\texttt{.trim\_end}       & \texttt{() -> String}                 & Strip trailing whitespace. \\
+\texttt{.trim\_start}     & \texttt{() -> String}                 & Strip leading whitespace. \\
+\bottomrule
+\end{booktabs}
+\caption{String methods.}\label{tab:str-methods}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Map Methods}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.entries} & \texttt{() -> [[String, Any]]} & Return array of \texttt{[key, value]} pairs. \\
+\texttt{.get}     & \texttt{(key: String, default: Any?) -> Any} & Get value for key, or default if missing. \\
+\texttt{.has}     & \texttt{(key: String) -> Bool}  & Test if key exists. \\
+\texttt{.keys}    & \texttt{() -> [String]}         & Return array of all keys. \\
+\texttt{.merge}   & \texttt{(other: Map) -> Map}    & Merge two maps; \texttt{other} wins on conflicts. \\
+\texttt{.remove}  & \texttt{(key: String) -> Map}   & Return map without the given key. \\
+\texttt{.values}  & \texttt{() -> [Any]}            & Return array of all values. \\
+\bottomrule
+\end{booktabs}
+\caption{Map methods.}\label{tab:map-methods}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Set Methods}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}llp{5.8cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.add}                    & \texttt{(val: Any) -> Set}    & Add element; returns new set. \\
+\texttt{.clear}                  & \texttt{() -> Set}            & Return empty set. \\
+\texttt{.difference}             & \texttt{(other: Set) -> Set}  & Elements in \texttt{self} but not \texttt{other}. \\
+\texttt{.has}                    & \texttt{(val: Any) -> Bool}   & Membership test. \\
+\texttt{.intersection}           & \texttt{(other: Set) -> Set}  & Elements in both sets. \\
+\texttt{.is\_subset}             & \texttt{(other: Set) -> Bool} & All elements in \texttt{other}? \\
+\texttt{.is\_superset}           & \texttt{(other: Set) -> Bool} & Contains all of \texttt{other}? \\
+\texttt{.remove}                 & \texttt{(val: Any) -> Set}    & Remove element. \\
+\texttt{.symmetric\_difference}  & \texttt{(other: Set) -> Set}  & XOR of two sets. \\
+\texttt{.to\_array}              & \texttt{() -> [Any]}          & Convert to array. \\
+\texttt{.union}                  & \texttt{(other: Set) -> Set}  & Combine both sets. \\
+\bottomrule
+\end{booktabs}
+\caption{Set methods.}\label{tab:set-methods}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Buffer Methods}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}llp{5.8cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.clear}       & \texttt{() -> Buffer}          & Reset buffer to zero length. \\
+\texttt{.fill}        & \texttt{(byte: Int) -> Buffer}  & Fill entire buffer with byte value. \\
+\texttt{.push}        & \texttt{(byte: Int) -> Unit}    & Append one byte (u8). \\
+\texttt{.push\_u16}   & \texttt{(val: Int) -> Unit}     & Append unsigned 16-bit LE. \\
+\texttt{.push\_u32}   & \texttt{(val: Int) -> Unit}     & Append unsigned 32-bit LE. \\
+\texttt{.read\_f32}   & \texttt{(off: Int) -> Float}    & Read 32-bit float at offset. \\
+\texttt{.read\_f64}   & \texttt{(off: Int) -> Float}    & Read 64-bit float at offset. \\
+\texttt{.read\_i8}    & \texttt{(off: Int) -> Int}      & Read signed 8-bit int. \\
+\texttt{.read\_i16}   & \texttt{(off: Int) -> Int}      & Read signed 16-bit int. \\
+\texttt{.read\_i32}   & \texttt{(off: Int) -> Int}      & Read signed 32-bit int. \\
+\texttt{.read\_i64}   & \texttt{(off: Int) -> Int}      & Read signed 64-bit int. \\
+\texttt{.read\_u8}    & \texttt{(off: Int) -> Int}      & Read unsigned 8-bit int. \\
+\texttt{.read\_u16}   & \texttt{(off: Int) -> Int}      & Read unsigned 16-bit int. \\
+\texttt{.read\_u32}   & \texttt{(off: Int) -> Int}      & Read unsigned 32-bit int. \\
+\texttt{.read\_u64}   & \texttt{(off: Int) -> Int}      & Read unsigned 64-bit int. \\
+\texttt{.resize}      & \texttt{(size: Int) -> Buffer}  & Resize buffer (truncate or zero-fill). \\
+\texttt{.slice}       & \texttt{(start: Int, end: Int) -> Buffer} & Return sub-buffer. \\
+\texttt{.to\_array}   & \texttt{() -> [Int]}            & Convert bytes to int array. \\
+\texttt{.to\_hex}     & \texttt{() -> String}           & Hex-encoded string. \\
+\texttt{.to\_string}  & \texttt{() -> String}           & Interpret bytes as UTF-8 string. \\
+\texttt{.write\_i64}  & \texttt{(off: Int, val: Int) -> Unit} & Write signed 64-bit int. \\
+\texttt{.write\_u8}   & \texttt{(off: Int, val: Int) -> Unit} & Write unsigned 8-bit int. \\
+\texttt{.write\_u16}  & \texttt{(off: Int, val: Int) -> Unit} & Write unsigned 16-bit int. \\
+\texttt{.write\_u32}  & \texttt{(off: Int, val: Int) -> Unit} & Write unsigned 32-bit int. \\
+\texttt{.write\_u64}  & \texttt{(off: Int, val: Int) -> Unit} & Write unsigned 64-bit int. \\
+\bottomrule
+\end{booktabs}
+\caption{Buffer methods.}\label{tab:buffer-methods}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Enum Methods}
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\texttt{.enum\_name}  & \texttt{() -> String}       & Return the enum type name (e.g.\ \texttt{"Option"}). \\
+\texttt{.is\_variant} & \texttt{(name: String) -> Bool} & Test if variant matches \texttt{name}. \\
+\texttt{.payload}     & \texttt{() -> Any?}         & Return payload value(s), or \texttt{nil} if none. \\
+\texttt{.tag}         & \texttt{() -> String}       & Return the variant name (e.g.\ \texttt{"Some"}). \\
+\bottomrule
+\end{booktabs}
+\caption{Enum methods.}\label{tab:enum-methods}
+\end{table}
+
+%% ════════════════════════════════════════════════════════════════
+\section{Universal Properties}
+
+The following properties are available on \emph{all} collection types
+via the \texttt{len} built-in or the \texttt{.length}/subscript pattern.
+There is no \texttt{.length} method---use \texttt{len(x)} instead.
+
+\begin{table}[h]
+\centering
+\small
+\begin{booktabs}{@{}lp{8cm}@{}}
+\toprule
+\textbf{Type} & \textbf{\texttt{len(x)} returns} \\
+\midrule
+\texttt{Array}  & Number of elements \\
+\texttt{String} & Byte length \\
+\texttt{Map}    & Number of key-value pairs \\
+\texttt{Set}    & Number of elements \\
+\texttt{Tuple}  & Number of elements \\
+\texttt{Buffer} & Number of bytes \\
+\texttt{Range}  & \texttt{end - start} (may be negative) \\
+\bottomrule
+\end{booktabs}
+\caption{Semantics of \texttt{len()} by type.}\label{tab:len}
+\end{table}

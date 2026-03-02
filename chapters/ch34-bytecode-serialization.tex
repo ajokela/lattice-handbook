@@ -1,0 +1,382 @@
+\chapter{Bytecode Serialization}\label{ch:bytecode-serialization}
+
+\index{bytecode serialization}
+\index{.latc files}
+\index{.rlat files}
+
+Every time you run \lstinline|clat my_program.lat|, Lattice lexes, parses, and compiles your source code before executing it.
+For a small script that is perfectly fine---the compiler is fast.
+But for larger projects, or for deployment scenarios where you want instant startup, you can skip all of that by \emph{pre-compiling} your program to a bytecode file and running the result directly.
+
+In this chapter we explore the \lstinline|.latc| and \lstinline|.rlat| file formats, walk through the serialization process byte by byte, learn how to use the \lstinline|clat compile| command, and meet the self-hosted compiler---a Lattice program that compiles Lattice into bytecode.
+
+\section{The .latc and .rlat File Formats}\label{sec:file-formats}
+\index{.latc file format}
+\index{.rlat file format}
+\index{bytecode!file format}
+
+Lattice defines two binary file formats, one for each bytecode VM:
+
+\begin{itemize}
+  \item \lstinline|.latc| --- compiled stack VM bytecode. Magic bytes: \texttt{LATC} (\texttt{0x4C415443}).
+  \item \lstinline|.rlat| --- compiled register VM bytecode. Magic bytes: \texttt{RLAT} (\texttt{0x524C4154}).
+\end{itemize}
+
+Both formats share the same overall structure. The implementation lives in \filename{src/latc.c} and the header in \filename{include/latc.h}.
+
+\subsection{Header}
+
+Every bytecode file starts with an 8-byte header:
+
+\begin{table}[h]
+\centering
+\caption{Bytecode file header}\label{tab:bytecode-header}
+\begin{tabular}{@{} l l l p{5.5cm} @{}}
+\toprule
+\textbf{Offset} & \textbf{Size} & \textbf{Field} & \textbf{Description} \\
+\midrule
+0 & 4 bytes & Magic & \texttt{"LATC"} or \texttt{"RLAT"} \\
+4 & 2 bytes & Format version & Currently \texttt{1} for \lstinline|.latc|, \texttt{2} for \lstinline|.rlat| (little-endian \lstinline|uint16|) \\
+6 & 2 bytes & Reserved & Set to 0; available for future use \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The deserializer checks the magic bytes first. If they do not match, it rejects the file immediately with a clear error message. The format version allows the serialization format to evolve without breaking older files---if the version does not match the current \lstinline|LATC_FORMAT| or \lstinline|RLATC_FORMAT| constant, deserialization fails.
+
+\begin{defnbox}{Bytecode File Formats}
+A \lstinline|.latc| file contains serialized stack VM bytecodes (variable-width \lstinline|uint8_t| opcodes). A \lstinline|.rlat| file contains serialized register VM bytecodes (fixed-width \lstinline|uint32_t| instructions). Both formats embed the full constant pool, line number tables, debug information, and nested function chunks.
+\end{defnbox}
+
+\subsection{Chunk Serialization (Stack VM)}
+
+After the header, the body of a \lstinline|.latc| file is a serialized \lstinline|Chunk|. The serializer (\lstinline|serialize_chunk| in \filename{src/latc.c}) writes these sections in order:
+
+\begin{enumerate}
+  \item \textbf{Bytecode stream}: A \lstinline|uint32_t| count followed by that many raw bytes of opcodes.
+  \item \textbf{Line number table}: A \lstinline|uint32_t| count followed by that many \lstinline|uint32_t| line numbers (one per bytecode byte, parallel to the code array).
+  \item \textbf{Constant pool}: A \lstinline|uint32_t| count followed by tagged constants. Each constant starts with a type tag byte:
+    \begin{itemize}
+      \item \texttt{0} (Int): followed by a little-endian \lstinline|int64_t| (8 bytes)
+      \item \texttt{1} (Float): followed by a little-endian \lstinline|double| (8 bytes)
+      \item \texttt{2} (Bool): followed by a single byte (0 or 1)
+      \item \texttt{3} (String): followed by a \lstinline|uint32_t| length, then that many raw bytes
+      \item \texttt{4} (Nil): no payload
+      \item \texttt{5} (Unit): no payload
+      \item \texttt{6} (Closure): a nested function---followed by \lstinline|uint32_t| param count, a variadic flag byte, then a recursively serialized child chunk
+    \end{itemize}
+  \item \textbf{Local names}: A \lstinline|uint32_t| count, then for each slot: a presence byte (0 or 1), and if present, a length-prefixed string.
+  \item \textbf{Chunk name}: A presence byte, then (if present) a length-prefixed string for the function name used in stack traces.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={A program whose bytecode we will examine}]
+fn greet(name: String) -> String {
+  return "Hello, ${name}!"
+}
+
+print(greet("Lattice"))
+// Output: Hello, Lattice!
+\end{lstlisting}
+
+When this program is compiled, the top-level chunk contains the bytecodes for the script body (defining and calling \lstinline|greet|). The constant pool includes the string \lstinline|"Hello, "|, the string \lstinline|"!"|, the function name \lstinline|"greet"|, and a \lstinline|TAG_CLOSURE| entry that recursively contains the function body's chunk.
+
+\begin{notebox}{Recursive Chunk Embedding}
+Function bodies are stored as closure constants in their parent chunk's constant pool. When the serializer encounters a \lstinline|TAG_CLOSURE|, it recursively writes the child chunk. The deserializer mirrors this: it recursively reads the child chunk and constructs a \lstinline|VAL_CLOSURE| value in the parent's constant pool. This tree of chunks mirrors the lexical nesting of functions in your source code.
+\end{notebox}
+
+\subsection{RegChunk Serialization (Register VM)}
+
+The \lstinline|.rlat| format follows the same pattern but with a few differences:
+
+\begin{itemize}
+  \item \textbf{Instructions} are serialized as \lstinline|uint32_t| values (4 bytes each, little-endian) instead of single bytes.
+  \item \textbf{Closure constants} include an additional \lstinline|uint32_t| upvalue count (the register VM stores this in the \lstinline|region_id| field of the closure value).
+  \item \textbf{max\_reg}: A \lstinline|uint8_t| appended at the end of each chunk, recording the high-water register count. This lets the VM initialize only the registers that are actually used, rather than clearing all 256 slots per frame.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Compiling for the register VM}]
+// From the command line:
+// clat compile --regvm greet.lat
+// Produces: greet.rlat
+//
+// Run it:
+// clat --regvm greet.rlat
+\end{lstlisting}
+
+\subsection{Endianness and Portability}
+
+All multi-byte values in both formats are stored in \textbf{little-endian} byte order. The serializer writes bytes explicitly (e.g.\ \lstinline|v & 0xff|, \lstinline|(v >> 8) & 0xff|) rather than relying on platform byte order, so \lstinline|.latc| and \lstinline|.rlat| files are portable across architectures. A bytecode file compiled on an ARM Mac can be loaded and executed on an x86 Linux machine.
+
+\begin{tipbox}{Inspecting Bytecode Files}
+You can use a hex editor or \lstinline|xxd| to inspect the raw bytes of a \lstinline|.latc| file. Look for the \texttt{LATC} magic at the start, then the \lstinline|uint32_t| code length to know where the bytecodes end and the line table begins.
+\end{tipbox}
+
+
+\section{Pre-Compiling for Faster Startup}\label{sec:precompile}
+\index{pre-compilation}
+\index{clat compile}
+
+\subsection{The Compile Command}
+
+The \lstinline|clat compile| subcommand takes a \lstinline|.lat| source file and writes a bytecode file:
+
+\begin{lstlisting}[language=Lattice, caption={Using clat compile}]
+// Compile for stack VM (default):
+// clat compile my_program.lat
+// Produces: my_program.latc
+
+// Compile with custom output path:
+// clat compile my_program.lat -o build/app.latc
+
+// Compile for register VM:
+// clat compile --regvm my_program.lat
+// Produces: my_program.rlat
+\end{lstlisting}
+
+Under the hood, \lstinline|clat compile| follows the standard pipeline---lex, parse, compile---but instead of executing the bytecode, it serializes the resulting chunk to a file. The implementation lives in \filename{src/main.c}: the compile subcommand handler reads the source, tokenizes and parses it, compiles to a \lstinline|Chunk| (or \lstinline|RegChunk| with \lstinline|--regvm|), and calls \lstinline|chunk_save()| or \lstinline|regchunk_save()| to write the binary.
+
+\subsection{Running Pre-Compiled Bytecode}
+
+Once you have a bytecode file, you can run it directly:
+
+\begin{lstlisting}[language=Lattice, caption={Running pre-compiled bytecode}]
+// Run stack VM bytecode:
+// clat my_program.latc
+
+// Run register VM bytecode:
+// clat --regvm my_program.rlat
+\end{lstlisting}
+
+When Lattice detects a \lstinline|.latc| or \lstinline|.rlat| extension, it skips lexing, parsing, and compilation entirely. It reads the file, deserializes the chunk, and begins execution immediately. For large programs or deployment scenarios, this can meaningfully reduce startup time.
+
+\begin{lstlisting}[language=Lattice, caption={A build script that pre-compiles a project}]
+// build.lat — pre-compile all source files
+import "fs" as fs
+
+let source_files = fs.glob("src/**/*.lat")
+for file in source_files {
+  let output = file.replace(".lat", ".latc")
+  print("Compiling ${file} -> ${output}")
+  // Shell out to the compiler:
+  let result = exec("clat", ["compile", file, "-o", output])
+  if result.exit_code != 0 {
+    print("Error compiling ${file}: ${result.stderr}")
+  }
+}
+\end{lstlisting}
+
+\begin{warnbox}{Version Compatibility}
+Pre-compiled bytecode files are tied to the specific Lattice version that produced them. If you upgrade Lattice and the format version changes (even by one), old bytecode files will be rejected with an ``unsupported format version'' error. Always recompile when you update the language.
+\end{warnbox}
+
+\subsection{When to Pre-Compile}
+
+Pre-compilation is most useful when:
+
+\begin{itemize}
+  \item \textbf{Deployment}: You are shipping a Lattice program to a server or container and want the fastest possible startup. The bytecode file is all you need---no source code required.
+  \item \textbf{CI/CD pipelines}: Pre-compile once, run many times in different environments.
+  \item \textbf{Large programs}: For projects with thousands of lines, skipping the parse and compile steps saves noticeable time.
+  \item \textbf{Protecting source}: Distributing \lstinline|.latc| files keeps your source code private (though bytecodes are not encrypted or obfuscated).
+\end{itemize}
+
+For development, pre-compilation is usually unnecessary---the compiler is fast enough that the overhead is imperceptible for most programs.
+
+
+\section{The Self-Hosted Compiler}\label{sec:self-hosted}
+\index{self-hosted compiler}
+\index{compiler/latc.lat}
+
+\subsection{A Compiler Written in Lattice}
+
+One of Lattice's most ambitious components lives in \filename{compiler/latc.lat}: a self-hosted compiler that reads \lstinline|.lat| source code, compiles it to stack VM bytecodes, and writes a \lstinline|.latc| file---all written in Lattice itself.
+
+\begin{lstlisting}[language=Lattice, caption={Running the self-hosted compiler}]
+// Using the self-hosted compiler:
+// clat compiler/latc.lat input.lat output.latc
+\end{lstlisting}
+
+The self-hosted compiler implements the full compilation pipeline: a lexer (using Lattice's built-in \lstinline|tokenize()| function), a recursive-descent parser, a bytecode emitter, and a binary serializer. It mirrors the structure of the C compiler in \filename{src/stackcompiler.c} but is written entirely in Lattice.
+
+\subsection{Structure of the Self-Hosted Compiler}
+
+The compiler is organized into twelve sections within a single file:
+
+\begin{enumerate}
+  \item \textbf{Opcode constants}: All stack VM opcodes are defined as integer constants (\lstinline|let OP_CONSTANT = 0|, \lstinline|let OP_ADD = 8|, etc.), matching the \lstinline|Opcode| enum in \filename{include/stackopcode.h}.
+  \item \textbf{Token type constants}: Token types for the lexer.
+  \item \textbf{Compiler state}: Global mutable state for the compilation process---the current chunk's code array, constant pool, local variables, scope tracking, and break/continue patching.
+  \item \textbf{Emit helpers}: Functions like \lstinline|emit_byte|, \lstinline|emit_bytes|, \lstinline|emit_jump|, and \lstinline|emit_loop| that write bytecodes to the current chunk.
+  \item \textbf{Scope management}: Functions to push/pop scopes, resolve locals, and manage upvalue capture.
+  \item \textbf{Parser}: A recursive-descent parser implementing Lattice's precedence-climbing expression grammar.
+  \item \textbf{Statement compilation}: Handlers for \lstinline|let|, \lstinline|flux|, \lstinline|fix|, \lstinline|if|, \lstinline|for|, \lstinline|while|, \lstinline|match|, functions, structs, enums, and more.
+  \item \textbf{Expression compilation}: Handlers for binary operations, calls, field access, index expressions, closures, and string interpolation.
+  \item \textbf{Contract checking}: Support for \lstinline|ensure| postconditions and return type annotations.
+  \item \textbf{Program compilation}: The top-level loop that iterates over all tokens and compiles each top-level statement.
+  \item \textbf{Serialization}: Functions that implement the \lstinline|.latc| binary format: \lstinline|serialize_chunk|, \lstinline|serialize_constant|, \lstinline|write_u32_le|, \lstinline|write_i64_le|, etc.
+  \item \textbf{Main entry point}: Reads the input file, tokenizes, compiles, serializes, and writes the output.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={The compiler's main function}]
+fn main() {
+  let argv = args()
+  if len(argv) < 3 {
+    eprint("usage: clat compiler/latc.lat <input.lat> <output.latc>")
+    exit(1)
+  }
+
+  let input_path = argv[1]
+  let output_path = argv[2]
+
+  let source = read_file(input_path)
+  if source == nil {
+    eprint("error: cannot read '" + input_path + "'")
+    exit(1)
+  }
+
+  tokens = tokenize(source)
+  pos = 0
+  compile_program()
+
+  let ch_snap = snapshot_chunk()
+  let buf = serialize_latc(ch_snap)
+  let ok = write_file_bytes(output_path, buf)
+  if !ok {
+    eprint("error: cannot write '" + output_path + "'")
+    exit(1)
+  }
+}
+\end{lstlisting}
+
+Notice how the compiler uses Lattice's built-in \lstinline|tokenize()| function to lex the source code---it does not need to implement its own lexer from scratch. We will explore \lstinline|tokenize()| in detail in \cref{ch:metaprogramming}.
+
+\subsection{How It Produces .latc Files}
+
+The self-hosted compiler builds up the chunk data as Lattice arrays: an array of bytecode values, an array of line numbers, and an array of tagged constants. When compilation is complete, it takes a ``snapshot'' of the current chunk state and passes it to the serializer.
+
+The serializer writes the exact same binary format as the C implementation in \filename{src/latc.c}: the \texttt{LATC} magic, the format version, and the recursive chunk structure. The resulting \lstinline|.latc| file is byte-for-byte compatible with files produced by the C compiler.
+
+\begin{lstlisting}[language=Lattice, caption={Serialization in the self-hosted compiler}]
+fn serialize_chunk(ch: any) {
+  // ch = [code_arr, lines_arr, constants_arr, local_names_arr, chunk_name]
+  let ch_code = ch[0]
+  let ch_lines = ch[1]
+  let ch_constants = ch[2]
+  let ch_local_names = ch[3]
+
+  // Code
+  let code_len = len(ch_code)
+  write_u32_le(code_len)
+  for i in 0..code_len {
+    write_u8(ch_code[i])
+  }
+
+  // Lines (same count as code)
+  let lines_len = len(ch_lines)
+  write_u32_le(lines_len)
+  for i in 0..lines_len {
+    write_u32_le(ch_lines[i])
+  }
+
+  // Constants (tagged)
+  let const_len = len(ch_constants)
+  write_u32_le(const_len)
+  for i in 0..const_len {
+    serialize_constant(ch_constants[i])
+  }
+  // ... local names and chunk name follow
+}
+\end{lstlisting}
+
+
+\section{Bootstrapping}\label{sec:bootstrapping}
+\index{bootstrapping}
+\index{self-hosting}
+
+\subsection{The Chicken-and-Egg Problem}
+
+A self-hosted compiler is a compiler for language $L$ written in language $L$. This creates a delightful paradox: to run the compiler, you need a Lattice implementation, but to create a Lattice implementation, you need a compiler.
+
+\begin{defnbox}{Bootstrapping}
+\emph{Bootstrapping} is the process of compiling a self-hosted compiler using an existing implementation of the language. The existing implementation (the ``bootstrap compiler'') runs the self-hosted compiler's source code, producing a compiled artifact that can then compile itself.
+\end{defnbox}
+
+Lattice solves this the same way most self-hosted languages do: with a \emph{bootstrap chain}. The C-based compiler (\filename{src/stackcompiler.c}) serves as the bootstrap implementation. Here is how the chain works:
+
+\begin{enumerate}
+  \item The C-based Lattice implementation (\lstinline|clat|) can compile and run any \lstinline|.lat| file.
+  \item We run the self-hosted compiler (\lstinline|compiler/latc.lat|) \emph{using} \lstinline|clat|:
+    \begin{verbatim}
+  clat compiler/latc.lat input.lat output.latc
+    \end{verbatim}
+  \item The self-hosted compiler reads \lstinline|input.lat|, compiles it to bytecodes, and writes \lstinline|output.latc|.
+  \item The resulting \lstinline|output.latc| can be run by \lstinline|clat| without any source code.
+\end{enumerate}
+
+The interesting part: the self-hosted compiler can also compile \emph{itself}:
+
+\begin{lstlisting}[language=Lattice, caption={Bootstrapping the self-hosted compiler}]
+// Step 1: Use the C bootstrap to compile the self-hosted compiler:
+// clat compiler/latc.lat compiler/latc.lat latc.latc
+
+// Step 2: Now latc.latc is a pre-compiled version of the compiler.
+// We can use it to compile other programs:
+// clat latc.latc some_program.lat some_program.latc
+
+// Step 3: We can even use it to recompile itself:
+// clat latc.latc compiler/latc.lat latc_v2.latc
+\end{lstlisting}
+
+If the self-hosted compiler is correct, then \lstinline|latc.latc| and \lstinline|latc_v2.latc| should produce identical bytecodes---a useful correctness check known as a \emph{bootstrap comparison}.
+
+\subsection{Why Self-Hosting Matters}
+
+Self-hosting is more than a party trick. It provides concrete benefits:
+
+\begin{itemize}
+  \item \textbf{Dogfooding}: The compiler exercises a huge slice of the language: arrays, maps, closures, string manipulation, file I/O, control flow, and even the built-in \lstinline|tokenize()| function. Bugs in any of these features will cause the compiler to fail, providing an excellent integration test.
+  \item \textbf{Portability}: The self-hosted compiler is pure Lattice with no C dependencies. It runs anywhere the Lattice runtime runs, including in environments where you cannot compile C code.
+  \item \textbf{Extensibility}: Adding new compilation features (optimizations, new opcodes) can be done in Lattice rather than C, with a shorter development loop.
+  \item \textbf{Proving the language}: A language that can compile itself has demonstrated a certain level of completeness and expressiveness.
+\end{itemize}
+
+\begin{notebox}{Current Limitations}
+The self-hosted compiler currently targets only the stack VM. Register VM compilation (\lstinline|.rlat|) is only available through the C-based \lstinline|clat compile --regvm| command. As the register VM matures, a self-hosted register compiler may follow.
+\end{notebox}
+
+\subsection{The Bootstrap in Practice}
+
+For day-to-day development, most Lattice users will never need to think about bootstrapping. The C-based \lstinline|clat| is the standard way to compile and run programs. The self-hosted compiler exists as:
+
+\begin{itemize}
+  \item A comprehensive integration test for the language.
+  \item An example of a non-trivial Lattice program (nearly 5,000 lines).
+  \item A proof that Lattice is expressive enough to write a compiler.
+  \item A starting point for anyone who wants to hack on the compilation pipeline in Lattice rather than C.
+\end{itemize}
+
+
+\section*{Exercises}
+
+\begin{enumerate}
+  \item Compile a Lattice program to \lstinline|.latc| using \lstinline|clat compile|. Inspect the first 8 bytes of the resulting file with a hex editor or \lstinline|xxd|. Verify that you see the \texttt{LATC} magic and the format version.
+
+  \item Write a program with at least three functions. Compile it to both \lstinline|.latc| and \lstinline|.rlat|. Compare the file sizes. Why is the \lstinline|.rlat| file larger? (Hint: think about instruction width.)
+
+  \item Use the self-hosted compiler to compile a program:
+  \begin{verbatim}
+  clat compiler/latc.lat my_program.lat my_program.latc
+  \end{verbatim}
+  Then run the result with \lstinline|clat my_program.latc|. Verify the output matches running the source directly.
+
+  \item (Challenge) Perform a bootstrap comparison: use \lstinline|clat| to compile the self-hosted compiler into \lstinline|latc_v1.latc|. Then use \lstinline|latc_v1.latc| to compile the self-hosted compiler again into \lstinline|latc_v2.latc|. Compare the two files. Are they identical? What would it mean if they were not?
+
+  \item The serialization format stores line numbers for every bytecode byte---even for multi-byte instructions where only the first byte really needs a line number. Estimate how much space this wastes as a percentage of total file size for a typical program. Could a run-length encoding scheme reduce this?
+\end{enumerate}
+
+\bigskip
+\begin{center}\rule{0.5\linewidth}{0.4pt}\end{center}
+
+\textbf{What's Next}\quad
+We have seen how Lattice compiles and serializes its bytecodes. But what if you need to extend the language with capabilities written in C---image processing, database access, or hardware integration?
+In \cref{ch:native-extensions}, we explore Lattice's native extension API: how to build shared libraries that plug into the runtime, the value constructors and accessors available to extension authors, and the collection of extensions that ship with Lattice.

@@ -1,0 +1,992 @@
+\chapter{Enums}\label{ch:enums}
+\index{enum}
+
+A struct says ``this value has \emph{all} of these fields.'' An enum says
+``this value is \emph{one} of these variants.'' Where structs model
+\emph{product types}---a user has a name \emph{and} an age \emph{and} an
+email---enums model \emph{sum types}: a network response is either a success
+\emph{or} a failure, a shape is a circle \emph{or} a rectangle \emph{or}
+a triangle.
+
+Lattice enums are full algebraic data types. Each variant can carry its own
+payload, and the compiler checks that your \lstinline|match| expressions
+handle every variant. In this chapter we will define enums, construct
+variants, destructure them with pattern matching, model state machines,
+and build the ubiquitous \lstinline|Option| and \lstinline|Result| patterns.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Defining Enums With and Without Payloads}\label{sec:enum-defining}
+\index{enum!definition}
+\index{enum!variant}
+
+An enum definition lists a type name and a set of \emph{variants}:
+
+\begin{lstlisting}[language=Lattice, caption={A basic enum with unit variants}]
+enum Direction {
+    North,
+    South,
+    East,
+    West
+}
+\end{lstlisting}
+
+Each variant is a distinct tag. A \lstinline|Direction| value is exactly
+one of \lstinline|North|, \lstinline|South|, \lstinline|East|, or
+\lstinline|West|---nothing else.
+
+\begin{defnbox}{Enum}
+An \emph{enum} (short for ``enumeration'') is a type that can be one of
+a fixed set of \emph{variants}. Each variant has a name and may carry a
+\emph{payload}---zero or more associated values that travel with the tag.
+\end{defnbox}
+
+Variants without payloads are called \emph{unit variants}. They carry no
+additional data:
+
+\begin{lstlisting}[language=Lattice, caption={Unit variants carry no data}]
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+let favourite = Color::Red
+print(favourite)  // Color::Red
+\end{lstlisting}
+
+\subsection{Variants with Payloads}
+
+A variant becomes more interesting when it carries data. List the payload
+types in parentheses after the variant name:
+
+\begin{lstlisting}[language=Lattice, caption={Enum with payload variants}]
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Rgb(any, any, any)
+}
+
+let coral = Color::Rgb(255, 127, 80)
+print(coral)  // Color::Rgb(255, 127, 80)
+\end{lstlisting}
+
+The \lstinline|Rgb| variant carries three values---the red, green, and blue
+channels. Notice that unit variants and payload variants can coexist in the
+same enum. You can mix and match freely.
+
+Here is a \lstinline|Shape| enum where each variant carries different amounts
+of data:
+
+\begin{lstlisting}[language=Lattice, caption={Variants with different payload sizes}]
+enum Shape {
+    Circle(any),
+    Rectangle(any, any),
+    Triangle(any, any, any),
+    None
+}
+\end{lstlisting}
+
+\lstinline|Circle| takes one value (the radius), \lstinline|Rectangle| takes
+two (width and height), \lstinline|Triangle| takes three (side lengths),
+and \lstinline|None| carries nothing.
+
+\begin{notebox}{Payload Type Annotations}
+In the examples above we use \lstinline|any| for payload types. You can also
+write concrete types for documentation and strict-mode checking:
+
+\begin{lstlisting}[language=Lattice]
+enum Shape {
+    Circle(Float),
+    Rectangle(Float, Float),
+    None
+}
+\end{lstlisting}
+
+This makes the intended contract clearer. Generic type parameters (e.g.,
+\lstinline|Option<T>|) are covered in \cref{ch:generics}.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Constructing Variants}\label{sec:enum-construction}
+\index{enum!construction}
+
+To create an enum value, use the double-colon syntax:
+\lstinline|EnumName::VariantName| for unit variants, or
+\lstinline|EnumName::VariantName(args)| for payload variants.
+
+\begin{lstlisting}[language=Lattice, caption={Constructing enum variants}]
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Rgb(any, any, any)
+}
+
+let r = Color::Red
+let g = Color::Green
+let custom = Color::Rgb(255, 128, 0)
+
+print(r)       // Color::Red
+print(g)       // Color::Green
+print(custom)  // Color::Rgb(255, 128, 0)
+\end{lstlisting}
+
+\subsection{Enums Returned from Functions}
+
+Enums are regular values---you can pass them to functions, return them, and
+store them in collections:
+
+\begin{lstlisting}[language=Lattice, caption={Returning enums from functions}]
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Rgb(any, any, any)
+}
+
+fn make_color(kind: String) -> Color {
+    if kind == "red" {
+        return Color::Red
+    }
+    if kind == "custom" {
+        return Color::Rgb(1, 2, 3)
+    }
+    return Color::Blue
+}
+
+print(make_color("red"))     // Color::Red
+print(make_color("custom"))  // Color::Rgb(1, 2, 3)
+print(make_color("other"))   // Color::Blue
+\end{lstlisting}
+
+\subsection{Enums in Collections}
+
+\begin{lstlisting}[language=Lattice, caption={An array of enum values}]
+enum Status {
+    Pending,
+    Running(any),
+    Done(any),
+    Failed(any, any)
+}
+
+let tasks = [
+    Status::Pending,
+    Status::Running("compile"),
+    Status::Done(42),
+    Status::Failed("timeout", 504)
+]
+
+for task in tasks {
+    print(task)
+}
+\end{lstlisting}
+
+\subsection{Runtime Introspection Methods}
+\index{enum!tag}
+\index{enum!payload}
+
+Every enum value carries metadata that you can inspect at runtime:
+
+\begin{lstlisting}[language=Lattice, caption={Enum introspection methods}]
+enum Option {
+    Some(any),
+    None
+}
+
+let val = Option::Some(42)
+
+print(val.tag())           // "Some"
+print(val.enum_name())     // "Option"
+print(val.variant_name())  // "Some"
+print(val.payload())       // [42]
+print(val.is_variant("Some"))  // true
+print(val.is_variant("None"))  // false
+\end{lstlisting}
+
+The \lstinline|.payload()| method returns an array of the variant's payload
+elements. For unit variants, it returns an empty array. These methods are
+useful for logging and debugging, but for most logic you should prefer
+pattern matching.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Matching on Enums}\label{sec:enum-matching}
+\index{enum!matching}
+\index{match!enum patterns}
+\index{pattern matching!enum}
+
+Pattern matching is the primary way to work with enums. If you read
+\cref{ch:pattern-matching}, you have already seen \lstinline|match|
+expressions with literals, wildcards, and guards. Enum patterns add a new
+dimension: you can match on the variant \emph{and} destructure the payload
+in a single step.
+
+\subsection{Matching Unit Variants}
+
+At its most basic, matching an enum looks like matching constants:
+
+\begin{lstlisting}[language=Lattice, caption={Matching unit variants}]
+enum Direction {
+    North,
+    South,
+    East,
+    West
+}
+
+fn describe(dir: Direction) -> String {
+    match dir {
+        Direction::North => "heading north",
+        Direction::South => "heading south",
+        Direction::East  => "heading east",
+        Direction::West  => "heading west"
+    }
+}
+
+print(describe(Direction::North))  // heading north
+print(describe(Direction::West))   // heading west
+\end{lstlisting}
+
+\subsection{Destructuring Payloads}
+
+When a variant carries data, the match pattern can bind payload elements
+to variables:
+
+\begin{lstlisting}[language=Lattice, caption={Destructuring enum payloads}]
+enum Option {
+    Some(any),
+    None
+}
+
+let val = Option::Some(42)
+
+let result = match val {
+    Option::Some(x) => "got: " + to_string(x),
+    Option::None    => "nothing",
+    _ => "unknown"
+}
+print(result)  // got: 42
+\end{lstlisting}
+
+The pattern \lstinline|Option::Some(x)| does two things at once: it checks
+that the value is the \lstinline|Some| variant, and it binds the payload to
+the variable \lstinline|x|. Inside the arm's body, \lstinline|x| holds the
+value \lstinline|42|.
+
+\subsection{Multi-Element Payloads}
+
+Variants with multiple payload elements bind multiple variables:
+
+\begin{lstlisting}[language=Lattice, caption={Multi-binding destructuring}]
+enum Pair {
+    Both(any, any),
+    Single(any),
+    Empty
+}
+
+let p = Pair::Both("hello", 99)
+let result = match p {
+    Pair::Both(a, b)  => to_string(a) + "=" + to_string(b),
+    Pair::Single(x)   => "single: " + to_string(x),
+    Pair::Empty        => "empty",
+    _ => "?"
+}
+print(result)  // hello=99
+\end{lstlisting}
+
+\subsection{Using Destructured Values in Computations}
+
+The bound variables are full values---you can use them in any expression:
+
+\begin{lstlisting}[language=Lattice, caption={Computing with destructured values}]
+enum Result {
+    Ok(any),
+    Err(any)
+}
+
+let r = Result::Ok(21)
+let doubled = match r {
+    Result::Ok(v)  => v * 2,
+    Result::Err(e) => -1,
+    _ => 0
+}
+print(doubled)  // 42
+\end{lstlisting}
+
+\subsection{Block Bodies in Arms}
+
+When a single expression is not enough, use a block body:
+
+\begin{lstlisting}[language=Lattice, caption={Block bodies in match arms}]
+enum Option {
+    Some(any),
+    None
+}
+
+let val = Option::Some(10)
+let result = match val {
+    Option::Some(n) => {
+        let doubled = n * 2
+        let tripled = n * 3
+        "doubled=" + to_string(doubled) + " tripled=" + to_string(tripled)
+    },
+    _ => "none"
+}
+print(result)  // doubled=20 tripled=30
+\end{lstlisting}
+
+\subsection{Ignoring Payload with Wildcards}
+
+If you care about the variant but not the payload, use \lstinline|_| in the
+payload position:
+
+\begin{lstlisting}[language=Lattice, caption={Ignoring payloads with wildcards}]
+enum Status {
+    Pending,
+    Running(any),
+    Done(any),
+    Failed(any, any)
+}
+
+flux pending_count = 0
+flux done_count = 0
+let statuses = [Status::Pending, Status::Done(42), Status::Running("build")]
+
+for s in statuses {
+    match s {
+        Status::Pending => { pending_count += 1 },
+        Status::Done(_) => { done_count += 1 },
+        _ => {}
+    }
+}
+print(pending_count)  // 1
+print(done_count)     // 1
+\end{lstlisting}
+
+\subsection{Nested Match Expressions}
+
+You can nest match expressions to drill into layered data:
+
+\begin{lstlisting}[language=Lattice, caption={Nested match on enums}]
+enum Result {
+    Ok(any),
+    Err(any)
+}
+
+fn classify(val: any) -> String {
+    return match val {
+        Result::Ok(v) => {
+            match v {
+                0 => "ok:zero",
+                _ => "ok:" + to_string(v)
+            }
+        },
+        Result::Err(e) => "err:" + to_string(e),
+        _ => "unknown"
+    }
+}
+
+print(classify(Result::Ok(0)))       // ok:zero
+print(classify(Result::Ok(42)))      // ok:42
+print(classify(Result::Err("bad")))  // err:bad
+\end{lstlisting}
+
+\begin{tipbox}{Match as an Expression}
+Remember that \lstinline|match| is an expression in Lattice---it evaluates
+to a value. You can assign its result to a variable, pass it to a function,
+or return it directly. This makes match-based dispatch composable and
+concise.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Using Enums for State Machines}\label{sec:enum-state-machines}
+\index{enum!state machine}
+\index{state machine}
+
+Enums are a natural fit for state machines because each variant represents
+a distinct state, and the payload carries state-specific data. Let's model
+a task runner that moves through a lifecycle:
+
+\begin{lstlisting}[language=Lattice, caption={A task lifecycle as an enum}]
+enum TaskState {
+    Pending,
+    Running(any),
+    Done(any),
+    Failed(any, any)
+}
+
+fn status_label(s: TaskState) -> String {
+    match s {
+        TaskState::Pending => "pending",
+        TaskState::Running(task) =>
+            "running: " + to_string(task),
+        TaskState::Done(result) =>
+            "done: " + to_string(result),
+        TaskState::Failed(err, code) =>
+            "failed: " + to_string(err) + " (" + to_string(code) + ")",
+        _ => "unknown"
+    }
+}
+\end{lstlisting}
+
+\subsection{Driving State Transitions}
+
+A state machine advances by replacing the current state with a new variant:
+
+\begin{lstlisting}[language=Lattice, caption={State transitions}]
+enum TaskState {
+    Pending,
+    Running(any),
+    Done(any),
+    Failed(any, any)
+}
+
+fn advance(state: TaskState, tick: Int) -> TaskState {
+    match state {
+        TaskState::Pending => TaskState::Running("job_" + to_string(tick)),
+        TaskState::Running(task) => {
+            if tick > 3 {
+                TaskState::Done("completed " + to_string(task))
+            } else {
+                TaskState::Running(task)
+            }
+        },
+        _ => state
+    }
+}
+
+flux state = TaskState::Pending
+for tick in 0..6 {
+    state = advance(state, tick)
+    print(to_string(tick) + ": " + match state {
+        TaskState::Pending      => "pending",
+        TaskState::Running(t)   => "running " + to_string(t),
+        TaskState::Done(r)      => "done: " + to_string(r),
+        TaskState::Failed(e, c) => "failed",
+        _ => "?"
+    })
+}
+\end{lstlisting}
+
+Because the state is an enum, the compiler can warn you if you forget to
+handle a variant. And because each variant carries exactly the data it needs,
+you never have stale or irrelevant fields cluttering your state object.
+
+\subsection{A Parser Token Example}
+
+Enums excel at modelling token types in a parser, where each token variant
+carries different data:
+
+\begin{lstlisting}[language=Lattice, caption={Tokens as an enum}]
+enum Token {
+    Number(any),
+    Identifier(any),
+    Plus,
+    Minus,
+    Star,
+    LeftParen,
+    RightParen,
+    Eof
+}
+
+fn token_label(tok: Token) -> String {
+    match tok {
+        Token::Number(n)     => "NUM(" + to_string(n) + ")",
+        Token::Identifier(s) => "ID(" + to_string(s) + ")",
+        Token::Plus          => "+",
+        Token::Minus         => "-",
+        Token::Star          => "*",
+        Token::LeftParen     => "(",
+        Token::RightParen    => ")",
+        Token::Eof           => "EOF"
+    }
+}
+
+let tokens = [
+    Token::Number(42),
+    Token::Plus,
+    Token::Identifier("x"),
+    Token::Eof
+]
+
+for tok in tokens {
+    print(token_label(tok))
+}
+// Output: NUM(42), +, ID(x), EOF
+\end{lstlisting}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Option-Like and Result-Like Patterns}\label{sec:enum-option-result}
+\index{Option}
+\index{Result}
+\index{enum!Option pattern}
+\index{enum!Result pattern}
+
+Two patterns appear so frequently across programming languages that they
+deserve special attention: \emph{optional values} (a value that might be
+absent) and \emph{fallible operations} (a computation that might fail).
+Lattice does not have built-in \lstinline|Option| and \lstinline|Result|
+types in the language itself, but you can define them as enums and they
+work beautifully.
+
+\subsection{The Option Pattern}
+
+\begin{lstlisting}[language=Lattice, caption={Defining and using Option}]
+enum Option {
+    Some(any),
+    None
+}
+
+fn find_user(id: Int) -> Option {
+    if id == 1 {
+        return Option::Some("Alice")
+    }
+    if id == 2 {
+        return Option::Some("Bob")
+    }
+    return Option::None
+}
+
+let user = find_user(1)
+match user {
+    Option::Some(name) => print("Found: " + name),
+    Option::None       => print("User not found"),
+    _ => print("?")
+}
+// Output: Found: Alice
+\end{lstlisting}
+
+An \lstinline|unwrap_or| helper makes optionals easier to use in
+expressions:
+
+\begin{lstlisting}[language=Lattice, caption={An unwrap\_or helper}]
+enum Option {
+    Some(any),
+    None
+}
+
+fn unwrap_or(opt: Option, default: any) -> any {
+    match opt {
+        Option::Some(v) => v,
+        Option::None    => default,
+        _ => default
+    }
+}
+
+let a = Option::Some(10)
+let b = Option::None
+
+print(unwrap_or(a, 0))   // 10
+print(unwrap_or(b, -1))  // -1
+\end{lstlisting}
+
+\subsection{The Result Pattern}
+
+\begin{lstlisting}[language=Lattice, caption={Defining and using Result}]
+enum Result {
+    Ok(any),
+    Err(any)
+}
+
+fn parse_port(input: String) -> Result {
+    let n = parse_int(input)
+    if n == nil {
+        return Result::Err("not a number: " + input)
+    }
+    if n < 1 || n > 65535 {
+        return Result::Err("port out of range: " + to_string(n))
+    }
+    return Result::Ok(n)
+}
+
+let result = parse_port("8080")
+match result {
+    Result::Ok(port)  => print("Listening on port " + to_string(port)),
+    Result::Err(msg)  => print("Error: " + msg),
+    _ => print("?")
+}
+// Output: Listening on port 8080
+\end{lstlisting}
+
+\subsection{Chaining Results}
+
+A common pattern is to chain fallible operations---if the first succeeds,
+feed its value into the second:
+
+\begin{lstlisting}[language=Lattice, caption={Chaining two results}]
+enum Result {
+    Ok(any),
+    Err(any)
+}
+
+fn chain_results(a: Result, b: Result) -> Result {
+    match a {
+        Result::Ok(va) => {
+            match b {
+                Result::Ok(vb) => Result::Ok(va + vb),
+                Result::Err(e) => Result::Err(e),
+                _ => Result::Err("unknown")
+            }
+        },
+        Result::Err(e) => Result::Err(e),
+        _ => Result::Err("unknown")
+    }
+}
+
+let r = chain_results(Result::Ok(10), Result::Ok(20))
+match r {
+    Result::Ok(v)  => print("ok: " + to_string(v)),
+    Result::Err(e) => print("err: " + to_string(e)),
+    _ => print("unknown")
+}
+// Output: ok: 30
+\end{lstlisting}
+
+\begin{notebox}{Enums vs.\ \texttt{try}/\texttt{catch}}
+Lattice also provides \lstinline|try|/\lstinline|catch| for error handling
+(see \cref{ch:error-handling}). The \lstinline|Result| pattern and
+exceptions are complementary strategies. Use \lstinline|Result| when errors
+are \emph{expected} and part of your data flow; use
+\lstinline|try|/\lstinline|catch| when errors are \emph{exceptional} and you
+want to bail out of a computation.
+\end{notebox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Enum Exhaustiveness Guarantees}\label{sec:enum-exhaustiveness}
+\index{enum!exhaustiveness}
+\index{match!exhaustiveness}
+
+One of the most powerful features of enum-based matching is
+\emph{exhaustiveness checking}. When you match on an enum, the compiler
+examines your arms and warns you if any variant is unhandled.
+
+\subsection{How It Works}
+
+The compiler (in \filename{src/match\_check.c}) performs a straightforward
+analysis:
+
+\begin{enumerate}
+  \item If any arm has an unguarded wildcard (\lstinline|_|) or binding
+    pattern, the match is considered exhaustive---the catch-all handles
+    everything.
+  \item Otherwise, if the patterns are enum variants, the compiler collects
+    which variants appear and compares them against the enum's definition.
+  \item Any missing variants produce a warning.
+\end{enumerate}
+
+\begin{lstlisting}[language=Lattice, caption={An exhaustive match---no warning}]
+enum Direction {
+    North,
+    South,
+    East,
+    West
+}
+
+fn label(d: Direction) -> String {
+    match d {
+        Direction::North => "N",
+        Direction::South => "S",
+        Direction::East  => "E",
+        Direction::West  => "W"
+    }
+}
+\end{lstlisting}
+
+All four variants are covered, so the compiler is happy. Now remove one:
+
+\begin{lstlisting}[language=Lattice, caption={A non-exhaustive match---compiler warns}]
+fn label(d: Direction) -> String {
+    match d {
+        Direction::North => "N",
+        Direction::South => "S",
+        Direction::East  => "E"
+        // West is missing!
+    }
+}
+// Compiler warning: non-exhaustive match: missing Direction variant `Direction::West`
+\end{lstlisting}
+
+\begin{warnbox}{Guarded Arms and Exhaustiveness}
+A guarded arm (e.g., \lstinline|n if n > 0 => ...|) still counts toward
+variant coverage---the compiler sees that you explicitly handled that
+variant. However, a guarded \emph{wildcard} does \emph{not} count as a
+catch-all, because the guard might fail at runtime. If you need a true
+catch-all, add an unguarded \lstinline|_ => ...| arm.
+\end{warnbox}
+
+\subsection{Boolean Exhaustiveness}
+
+The checker also handles boolean matches:
+
+\begin{lstlisting}[language=Lattice, caption={Boolean exhaustiveness}]
+let flag = true
+let label = match flag {
+    true  => "yes",
+    false => "no"
+}
+// No warning: both cases covered
+\end{lstlisting}
+
+If you omit \lstinline|true| or \lstinline|false|, the compiler warns about
+the missing case.
+
+\subsection{Non-Enum Matches}
+
+For integer, string, or float scrutinees, the set of possible values is
+unbounded. The compiler cannot enumerate them, so it requires a wildcard arm:
+
+\begin{lstlisting}[language=Lattice, caption={Wildcard required for integer match}]
+let score = 85
+let grade = match score {
+    0..59   => "F",
+    60..69  => "D",
+    70..79  => "C",
+    80..89  => "B",
+    90..100 => "A",
+    _       => "invalid"
+}
+print(grade)  // B
+\end{lstlisting}
+
+Without the \lstinline|_ => "invalid"| arm, the compiler warns:
+``consider adding a wildcard \lstinline|_| arm.''
+
+\subsection{Why Exhaustiveness Matters}
+
+Exhaustiveness checking catches a common class of bugs at compile time.
+When you add a new variant to an enum, every \lstinline|match| expression
+that touches that enum will produce a warning until you handle the new case.
+This is far safer than an \lstinline|if|/\lstinline|else| chain, where a
+missing branch silently falls through.
+
+\begin{tipbox}{The ``Add a Variant'' Test}
+When designing an enum, imagine adding a new variant six months from now.
+Will all the match sites in your codebase light up with warnings? If you
+use enums and match consistently, the answer is yes---and that is a
+tremendous safety net for evolving codebases.
+\end{tipbox}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Recursive Enums}\label{sec:enum-recursive}
+\index{enum!recursive}
+
+Because payload elements can be any value, enums can refer to themselves
+recursively. This is perfect for tree structures:
+
+\begin{lstlisting}[language=Lattice, caption={A recursive binary tree}]
+enum Tree {
+    Leaf(any),
+    Branch(any, any)
+}
+
+fn tree_sum(t: any) -> Int {
+    match t {
+        Tree::Leaf(v) => v,
+        Tree::Branch(l, r) => tree_sum(l) + tree_sum(r),
+        _ => 0
+    }
+}
+
+fn tree_depth(t: any) -> Int {
+    match t {
+        Tree::Leaf(_) => 1,
+        Tree::Branch(l, r) => {
+            let ld = tree_depth(l)
+            let rd = tree_depth(r)
+            if ld > rd { 1 + ld } else { 1 + rd }
+        },
+        _ => 0
+    }
+}
+
+fn make_balanced(depth: Int, value: Int) -> Tree {
+    if depth <= 0 {
+        return Tree::Leaf(value)
+    }
+    return Tree::Branch(
+        make_balanced(depth - 1, value * 2),
+        make_balanced(depth - 1, value * 2 + 1)
+    )
+}
+
+let tree = make_balanced(3, 1)
+print("sum: " + to_string(tree_sum(tree)))
+print("depth: " + to_string(tree_depth(tree)))
+\end{lstlisting}
+
+Each \lstinline|Branch| holds two children that are themselves
+\lstinline|Tree| values. The recursive functions use match to distinguish
+leaves from branches, and the wildcard arm handles unexpected cases
+gracefully.
+
+\subsection{An Expression Evaluator}
+
+Recursive enums can model abstract syntax trees for a mini-language:
+
+\begin{lstlisting}[language=Lattice, caption={An expression tree evaluator}]
+enum Expr {
+    Num(any),
+    Add(any, any),
+    Mul(any, any),
+    Neg(any)
+}
+
+fn eval_expr(e: Expr) -> Int {
+    match e {
+        Expr::Num(n)    => n,
+        Expr::Add(a, b) => eval_expr(a) + eval_expr(b),
+        Expr::Mul(a, b) => eval_expr(a) * eval_expr(b),
+        Expr::Neg(x)    => -eval_expr(x),
+        _ => 0
+    }
+}
+
+// Represents: (3 * 4) + (-(2))
+let expr = Expr::Add(
+    Expr::Mul(Expr::Num(3), Expr::Num(4)),
+    Expr::Neg(Expr::Num(2))
+)
+print(eval_expr(expr))  // 10
+\end{lstlisting}
+
+This is a pattern you will encounter throughout compiler design, symbolic
+mathematics, and rule engines. Enums make the variant structure explicit;
+match makes the dispatch exhaustive.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Practical Patterns}\label{sec:enum-practical}
+
+\subsection{Enums and Loops}
+
+Building enum values inside loops and processing them with match is a
+common workflow:
+
+\begin{lstlisting}[language=Lattice, caption={Batch-constructing enums}]
+enum Status {
+    Pending,
+    Running(any),
+    Done(any),
+    Failed(any, any)
+}
+
+flux statuses = []
+for i in 0..8 {
+    let s = match i % 4 {
+        0 => Status::Pending,
+        1 => Status::Running("task_" + to_string(i)),
+        2 => Status::Done(i * 10),
+        _ => Status::Failed("err_" + to_string(i), i)
+    }
+    statuses.push(s)
+}
+
+flux pending_count = 0
+flux done_count = 0
+for s in statuses {
+    match s {
+        Status::Pending => { pending_count += 1 },
+        Status::Done(_) => { done_count += 1 },
+        _ => {}
+    }
+}
+print("pending: " + to_string(pending_count))  // pending: 2
+print("done: " + to_string(done_count))        // done: 2
+\end{lstlisting}
+
+\subsection{Enums as Function Return Types}
+
+Use enums to signal outcomes without exceptions:
+
+\begin{lstlisting}[language=Lattice, caption={Validation with enums}]
+enum ValidationResult {
+    Valid,
+    TooShort(any),
+    TooLong(any),
+    InvalidChar(any)
+}
+
+fn validate_username(name: String) -> ValidationResult {
+    if len(name) < 3 {
+        return ValidationResult::TooShort(len(name))
+    }
+    if len(name) > 20 {
+        return ValidationResult::TooLong(len(name))
+    }
+    return ValidationResult::Valid
+}
+
+let result = validate_username("Al")
+match result {
+    ValidationResult::Valid         => print("Username accepted"),
+    ValidationResult::TooShort(n)  => print("Too short: " + to_string(n) + " chars"),
+    ValidationResult::TooLong(n)   => print("Too long: " + to_string(n) + " chars"),
+    ValidationResult::InvalidChar(c) => print("Bad char: " + to_string(c)),
+    _ => print("?")
+}
+// Output: Too short: 2 chars
+\end{lstlisting}
+
+\subsection{Under the Hood}
+\index{OP\_BUILD\_ENUM}
+
+At runtime, an enum value is represented as a tagged union (see
+\filename{include/value.h}):
+
+\begin{itemize}
+  \item \textbf{\texttt{enum\_name}}: the enum's type name (e.g., ``Option'')
+  \item \textbf{\texttt{variant\_name}}: the variant (e.g., ``Some'')
+  \item \textbf{\texttt{payload}}: an array of values (empty for unit
+    variants)
+  \item \textbf{\texttt{payload\_count}}: the number of payload elements
+\end{itemize}
+
+The compiler emits \texttt{OP\_BUILD\_ENUM} with the enum name, variant name,
+and payload count as operands. The VM pops payload values from the stack
+and assembles the enum value. You can explore the compilation logic in
+\filename{src/stackcompiler.c}---look for the \texttt{EXPR\_ENUM\_VARIANT}
+case.
+
+%% ─────────────────────────────────────────────────────────────────────
+\section{Exercises}\label{sec:enum-exercises}
+
+\begin{enumerate}
+  \item \textbf{Traffic light.}
+    Define an enum \lstinline|Light| with variants \lstinline|Red|,
+    \lstinline|Yellow|, and \lstinline|Green|. Write a function
+    \lstinline|next_light(l: Light) -> Light| that cycles through the
+    states: Green → Yellow → Red → Green. Run the cycle 6 times and
+    print each state.
+
+  \item \textbf{Shape areas.}
+    Define an enum \lstinline|Shape| with variants \lstinline|Circle(any)|,
+    \lstinline|Rectangle(any, any)|, and \lstinline|Square(any)|. Write a
+    function that returns the area. Use 3.14159 for pi.
+
+  \item \textbf{Linked list.}
+    Model a linked list with an enum:
+    \lstinline|enum List { Cons(any, any), Nil }|. Write functions
+    \lstinline|list_sum| (sum all elements) and \lstinline|list_len|
+    (count elements). Build a list of \lstinline|[1, 2, 3, 4, 5]| and
+    verify both functions.
+
+  \item \textbf{Result pipeline.}
+    Write a function \lstinline|map_result(r: Result, f: Fn) -> Result|
+    that applies \lstinline|f| to the value inside \lstinline|Result::Ok|
+    and passes \lstinline|Result::Err| through unchanged. Chain three
+    \lstinline|map_result| calls to build a pipeline.
+
+  \item \textbf{Exhaustiveness experiment.}
+    Define an enum with five variants. Write a match expression that covers
+    only three of them (no wildcard). Compile the program and observe the
+    compiler warning. Then fix it by adding the missing variants.
+\end{enumerate}
+
+%% ─────────────────────────────────────────────────────────────────────
+\section*{What's Next}
+
+We have seen how to group fields into structs and model alternatives with
+enums. But so far, attaching methods to a struct has required declaring a
+trait---even when the trait is implemented by only one type. In the next
+chapter we explore \emph{traits and impl blocks} in depth: how to declare
+interfaces, implement them for multiple types, and use trait-driven
+polymorphism to write code that works across any struct that speaks the
+right protocol.

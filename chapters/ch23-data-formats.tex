@@ -1,0 +1,801 @@
+\chapter{JSON, TOML, YAML, and CSV}\label{ch:data-formats}
+
+\index{JSON}
+\index{TOML}
+\index{YAML}
+\index{CSV}
+\index{data formats}
+
+Programs rarely exist in isolation. They read configuration files, consume
+API responses, export reports, and exchange data with other programs. The
+format of that data matters, and there is no single format that fits every
+situation. JSON dominates web APIs. TOML is the configuration language of
+choice for many modern tools. YAML appears in CI pipelines and Kubernetes
+manifests. CSV is the lingua franca of spreadsheets and data science.
+
+Lattice provides built-in support for all four. Each format has a
+\lstinline|_parse| function that turns a string into Lattice values, and a
+\lstinline|_stringify| function that turns Lattice values back into a string.
+The mapping between formats and Lattice types is consistent and predictable:
+JSON objects become Maps, arrays become Arrays, and scalars become the
+corresponding Lattice primitives.
+
+Let's start with JSON, the format you will probably use most often.
+
+% ---------------------------------------------------------------------------
+\section{json\_parse / json\_stringify}\label{sec:json}
+% ---------------------------------------------------------------------------
+
+\index{json\_parse}
+\index{json\_stringify}
+
+\subsection{Parsing JSON}
+
+\begin{lstlisting}[language=Lattice, caption={Parsing a JSON string}]
+let text = "{\"name\": \"Lattice\", \"version\": 3, \"stable\": true}"
+let data = json_parse(text)
+
+print(data["name"])     // "Lattice"
+print(data["version"])  // 3
+print(data["stable"])   // true
+\end{lstlisting}
+
+\lstinline|json_parse| takes a \lstinline|String| and returns a Lattice value.
+The type mapping follows the JSON specification exactly:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{JSON Type} & \textbf{Lattice Type} \\
+\midrule
+object & \lstinline|Map| \\
+array & \lstinline|Array| \\
+string & \lstinline|String| \\
+number (integer) & \lstinline|Int| \\
+number (decimal/exponent) & \lstinline|Float| \\
+\lstinline|true| / \lstinline|false| & \lstinline|Bool| \\
+\lstinline|null| & \lstinline|nil| \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Notice that the parser distinguishes between integers and floats: \texttt{42}
+becomes an \lstinline|Int|, while \texttt{42.0} or \texttt{4.2e1} becomes a
+\lstinline|Float|. This matters because integer arithmetic in Lattice is
+exact, while floating-point arithmetic is subject to the usual IEEE 754
+rounding.
+
+\begin{lstlisting}[language=Lattice, caption={Parsing nested JSON structures}]
+let json_text = """
+{
+    "users": [
+        {"id": 1, "name": "Alice", "active": true},
+        {"id": 2, "name": "Bob", "active": false}
+    ],
+    "count": 2
+}
+"""
+
+let data = json_parse(json_text)
+let users = data["users"]
+
+for user in users {
+    let status = if user["active"] { "active" } else { "inactive" }
+    print(user["name"] + " is " + status)
+}
+// Alice is active
+// Bob is inactive
+\end{lstlisting}
+
+\begin{warnbox}{Error Handling in json\_parse}
+If the input is not valid JSON, \lstinline|json_parse| sets a runtime error
+with a message indicating the position of the problem. The parser in
+\filename{src/json.c} uses a recursive descent approach and validates
+strictly---trailing content after the root value is rejected, and all escape
+sequences must be well-formed. Wrap parsing calls in \lstinline|try|/\lstinline|catch|
+if you are dealing with untrusted input.
+\end{warnbox}
+
+\subsection{Stringifying to JSON}
+
+\begin{lstlisting}[language=Lattice, caption={Converting Lattice values to JSON}]
+let user = Map::new()
+user["name"] = "Charlie"
+user["age"] = 28
+user["hobbies"] = ["climbing", "cooking", "Lattice"]
+
+let json_text = json_stringify(user)
+print(json_text)
+// {"name":"Charlie","age":28,"hobbies":["climbing","cooking","Lattice"]}
+\end{lstlisting}
+
+\lstinline|json_stringify| accepts any Lattice value that has a natural JSON
+representation: Maps, Arrays, Strings, Ints, Floats, Bools, and
+\lstinline|nil|. Tuples and Buffers are serialized as JSON arrays. Refs are
+unwrapped automatically.
+
+\begin{notebox}{Unsupported Types}
+Structs, closures, channels, ranges, sets, iterators, and enums cannot be
+serialized to JSON directly. Attempting to stringify one of these will produce
+a runtime error. If you need to serialize a struct, convert it to a Map first.
+\end{notebox}
+
+The serializer handles special floating-point values gracefully:
+\lstinline|Infinity|, \lstinline|-Infinity|, and \lstinline|NaN| are all
+encoded as \texttt{null}, since JSON has no representation for them. Strings
+are properly escaped, including Unicode sequences (\texttt{\textbackslash
+uXXXX}) for control characters below \texttt{U+0020}.
+
+\subsection{A Practical Example: Reading and Writing JSON Files}
+
+\begin{lstlisting}[language=Lattice, caption={Loading and saving application state as JSON}]
+fn load_state(path: String) -> Map {
+    if !file_exists(path) {
+        let defaults = Map::new()
+        defaults["theme"] = "dark"
+        defaults["font_size"] = 14
+        defaults["recent_files"] = []
+        return defaults
+    }
+    let text = read_file(path)
+    return json_parse(text)
+}
+
+fn save_state(path: String, state: Map) {
+    let text = json_stringify(state)
+    write_file(path, text)
+}
+
+// Load, modify, save
+flux state = load_state("settings.json")
+state["font_size"] = 16
+state["recent_files"] = ["main.lat", "lib/utils.lat"]
+save_state("settings.json", state)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{toml\_parse / toml\_stringify}\label{sec:toml}
+% ---------------------------------------------------------------------------
+
+\index{toml\_parse}
+\index{toml\_stringify}
+
+TOML (Tom's Obvious Minimal Language) was designed to be a configuration file
+format that is easy to read and write by hand. If JSON is for machines, TOML
+is for humans.
+
+\subsection{Parsing TOML}
+
+\begin{lstlisting}[language=Lattice, caption={Parsing a TOML configuration}]
+let toml_text = """
+title = "My Project"
+version = 3
+
+[database]
+host = "localhost"
+port = 5432
+enabled = true
+
+[logging]
+level = "info"
+file = "/var/log/app.log"
+"""
+
+let config = toml_parse(toml_text)
+print(config["title"])              // "My Project"
+print(config["database"]["host"])   // "localhost"
+print(config["database"]["port"])   // 5432
+print(config["logging"]["level"])   // "info"
+\end{lstlisting}
+
+Like \lstinline|json_parse|, the TOML parser returns a Map. Table headers
+(\texttt{[section]}) create nested Maps. The parser supports all standard
+TOML features:
+
+\begin{itemize}
+    \item Bare keys (\texttt{name = "value"}) and quoted keys
+          (\texttt{"complex key" = "value"})
+    \item Dotted keys (\texttt{server.host = "localhost"}) that create
+          nested maps automatically
+    \item Single-quoted strings (literal, no escape processing) and
+          double-quoted strings (with escape sequences)
+    \item Integers (including underscored: \texttt{1\_000\_000}),
+          floats, and booleans
+    \item Inline arrays (\texttt{[1, 2, 3]}) and inline tables
+          (\texttt{\{key = "value"\}})
+    \item Array-of-tables syntax (\texttt{[[items]]})
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={TOML array of tables}]
+let manifest = """
+[package]
+name = "my-app"
+version = "1.0.0"
+
+[[dependencies]]
+name = "http"
+version = "0.5.0"
+
+[[dependencies]]
+name = "json"
+version = "1.2.0"
+"""
+
+let pkg = toml_parse(manifest)
+print(pkg["package"]["name"])  // "my-app"
+
+let deps = pkg["dependencies"]
+for dep in deps {
+    print(dep["name"] + " v" + dep["version"])
+}
+// http v0.5.0
+// json v1.2.0
+\end{lstlisting}
+
+Each \texttt{[[dependencies]]} block pushes a new Map onto an array under the
+\texttt{"dependencies"} key. This is how TOML represents arrays of structured
+data.
+
+\subsection{Stringifying to TOML}
+
+\begin{lstlisting}[language=Lattice, caption={Generating TOML from Lattice values}]
+let config = Map::new()
+config["title"] = "Generated Config"
+config["debug"] = false
+
+let server = Map::new()
+server["host"] = "0.0.0.0"
+server["port"] = 8080
+config["server"] = server
+
+let output = toml_stringify(config)
+print(output)
+// title = "Generated Config"
+// debug = false
+//
+// [server]
+// host = "0.0.0.0"
+// port = 8080
+\end{lstlisting}
+
+The TOML serializer in \filename{src/toml\_ops.c} uses a two-pass approach:
+first it emits all scalar key-value pairs for the current table, then it
+recurses into sub-tables and arrays of tables. This produces clean,
+well-structured TOML output.
+
+\begin{warnbox}{toml\_stringify Requires a Map}
+Unlike \lstinline|json_stringify|, which accepts any serializable value,
+\lstinline|toml_stringify| requires its argument to be a Map. TOML documents
+are always rooted in a table (a Map), so passing an Array or a String will
+produce a runtime error.
+\end{warnbox}
+
+% ---------------------------------------------------------------------------
+\section{yaml\_parse / yaml\_stringify}\label{sec:yaml}
+% ---------------------------------------------------------------------------
+
+\index{yaml\_parse}
+\index{yaml\_stringify}
+
+YAML is the most flexible of the four formats. It uses indentation for
+structure (like Python), supports both block and flow styles, and has
+extensive scalar type detection.
+
+\subsection{Parsing YAML}
+
+\begin{lstlisting}[language=Lattice, caption={Parsing a YAML document}]
+let yaml_text = """
+name: Lattice
+version: 3
+features:
+  - phases
+  - structured concurrency
+  - pattern matching
+database:
+  host: localhost
+  port: 5432
+  ssl: true
+"""
+
+let data = yaml_parse(yaml_text)
+print(data["name"])               // "Lattice"
+print(data["database"]["host"])   // "localhost"
+print(data["database"]["ssl"])    // true
+
+for feature in data["features"] {
+    print("- " + feature)
+}
+// - phases
+// - structured concurrency
+// - pattern matching
+\end{lstlisting}
+
+Lattice's YAML parser handles the most commonly used subset of YAML:
+
+\begin{itemize}
+    \item Block mappings (\texttt{key: value})
+    \item Block sequences (\texttt{- item})
+    \item Flow sequences (\texttt{[a, b, c]}) and flow mappings
+          (\texttt{\{a: 1, b: 2\}})
+    \item Quoted and unquoted strings
+    \item Document separators (\texttt{---})
+\end{itemize}
+
+\begin{notebox}{Automatic Scalar Detection}
+The YAML parser automatically detects scalar types from unquoted values.
+The words \texttt{true}, \texttt{True}, \texttt{yes}, and \texttt{Yes} all
+become \lstinline|Bool| \lstinline|true|. Similarly, \texttt{false},
+\texttt{no}, and their capitalized variants become \lstinline|false|. The
+words \texttt{null}, \texttt{Null}, and \texttt{\textasciitilde} become
+\lstinline|nil|. Numeric-looking strings are parsed as \lstinline|Int| or
+\lstinline|Float|. If none of these patterns match, the value remains a
+\lstinline|String|. You can see this logic in the
+\texttt{yaml\_detect\_scalar} function in \filename{src/yaml\_ops.c}.
+\end{notebox}
+
+\begin{lstlisting}[language=Lattice, caption={YAML scalar auto-detection}]
+let yaml_text = """
+string_val: hello
+int_val: 42
+float_val: 3.14
+bool_val: true
+null_val: null
+yes_val: yes
+"""
+
+let data = yaml_parse(yaml_text)
+print(typeof(data["string_val"]))  // "String"
+print(typeof(data["int_val"]))     // "Int"
+print(typeof(data["float_val"]))   // "Float"
+print(typeof(data["bool_val"]))    // "Bool"
+print(typeof(data["null_val"]))    // "Nil"
+print(typeof(data["yes_val"]))     // "Bool"
+\end{lstlisting}
+
+\begin{tipbox}{Force Strings with Quotes}
+If you need a value like \texttt{yes} or \texttt{3.14} to remain a string
+rather than being auto-detected as a boolean or float, wrap it in quotes in
+your YAML source: \texttt{value: "yes"} or \texttt{pi: "3.14"}.
+\end{tipbox}
+
+\subsection{Stringifying to YAML}
+
+\begin{lstlisting}[language=Lattice, caption={Generating YAML from Lattice values}]
+let deployment = Map::new()
+deployment["apiVersion"] = "apps/v1"
+deployment["kind"] = "Deployment"
+
+let metadata = Map::new()
+metadata["name"] = "my-app"
+metadata["labels"] = Map::new()
+metadata["labels"]["app"] = "my-app"
+deployment["metadata"] = metadata
+
+let yaml_out = yaml_stringify(deployment)
+print(yaml_out)
+// apiVersion: apps/v1
+// kind: Deployment
+// metadata:
+//   name: my-app
+//   labels:
+//     app: my-app
+\end{lstlisting}
+
+The YAML serializer produces clean, indented block-style output. It
+automatically quotes strings that could be misinterpreted as YAML special
+values---so a string containing \texttt{"true"} will be emitted as
+\texttt{"true"} rather than bare \texttt{true}. Empty maps and arrays use
+the compact flow forms \texttt{\{\}} and \texttt{[]}.
+
+\lstinline|yaml_stringify| accepts Maps and Arrays. Other types produce a
+runtime error.
+
+% ---------------------------------------------------------------------------
+\section{csv\_parse / csv\_stringify}\label{sec:csv}
+% ---------------------------------------------------------------------------
+
+\index{csv\_parse}
+\index{csv\_stringify}
+
+CSV is the oldest and most universal data exchange format. It has no
+formal specification (though RFC 4180 comes close), but the basic idea is
+universal: rows separated by newlines, fields separated by commas.
+
+\subsection{Parsing CSV}
+
+\begin{lstlisting}[language=Lattice, caption={Parsing CSV data}]
+let csv_text = "name,age,city\nAlice,30,Portland\nBob,25,Seattle\n"
+let rows = csv_parse(csv_text)
+
+for row in rows {
+    print(row)
+}
+// ["name", "age", "city"]
+// ["Alice", "30", "Portland"]
+// ["Bob", "25", "Seattle"]
+\end{lstlisting}
+
+\lstinline|csv_parse| returns an Array of Arrays---each inner array
+represents one row, and each element is a \lstinline|String|. Unlike JSON and
+YAML, CSV has no type system, so all values come back as strings. If you
+need numbers, use \lstinline|parse_int| or \lstinline|parse_float| on the
+individual fields.
+
+The parser handles the important edge cases:
+
+\begin{itemize}
+    \item \textbf{Quoted fields}: Fields enclosed in double quotes can contain
+          commas, newlines, and other special characters.
+    \item \textbf{Escaped quotes}: A double quote inside a quoted field is
+          escaped by doubling it: \texttt{"He said ""hello"""} produces
+          \texttt{He said "hello"}.
+    \item \textbf{Windows line endings}: Both \texttt{\textbackslash n} and
+          \texttt{\textbackslash r\textbackslash n} are handled.
+\end{itemize}
+
+\begin{lstlisting}[language=Lattice, caption={Parsing CSV with quoted fields}]
+let csv_text = """
+name,bio,score
+Alice,"Enjoys hiking, reading",95
+Bob,"Said ""hello"" to everyone",87
+"""
+
+let rows = csv_parse(csv_text)
+print(rows[1][1])  // "Enjoys hiking, reading"
+print(rows[2][1])  // "Said \"hello\" to everyone"
+\end{lstlisting}
+
+\subsection{Working with Headers}
+
+Since CSV does not distinguish between header rows and data rows, you will
+often want to convert the raw arrays into a more convenient structure:
+
+\begin{lstlisting}[language=Lattice, caption={Converting CSV rows to maps}]
+fn csv_to_maps(rows: Array) -> Array {
+    let headers = rows[0]
+    flux results = []
+
+    flux i = 1
+    while i < rows.len() {
+        let row = rows[i]
+        let record = Map::new()
+        flux j = 0
+        while j < headers.len() {
+            if j < row.len() {
+                record[headers[j]] = row[j]
+            }
+            j += 1
+        }
+        results.push(record)
+        i += 1
+    }
+    return results
+}
+
+let csv_text = "name,age,city\nAlice,30,Portland\nBob,25,Seattle\n"
+let records = csv_to_maps(csv_parse(csv_text))
+
+for record in records {
+    print(record["name"] + " lives in " + record["city"])
+}
+// Alice lives in Portland
+// Bob lives in Seattle
+\end{lstlisting}
+
+\subsection{Stringifying to CSV}
+
+\begin{lstlisting}[language=Lattice, caption={Generating CSV output}]
+let data = [
+    ["product", "price", "quantity"],
+    ["Widget", "9.99", "100"],
+    ["Gadget", "24.99", "50"],
+    ["Doohickey", "4.99", "200"]
+]
+
+let csv_text = csv_stringify(data)
+print(csv_text)
+// product,price,quantity
+// Widget,9.99,100
+// Gadget,24.99,50
+// Doohickey,4.99,200
+\end{lstlisting}
+
+\lstinline|csv_stringify| takes an Array of Arrays and produces a CSV string.
+Each inner array becomes a row. Fields that contain commas, double quotes, or
+newlines are automatically wrapped in double quotes, with internal quotes
+escaped by doubling.
+
+\begin{lstlisting}[language=Lattice, caption={CSV auto-quoting of special characters}]
+let data = [
+    ["name", "description"],
+    ["Widget", "A small, useful device"],
+    ["Gadget", "Says \"beep\" loudly"]
+]
+
+let csv_text = csv_stringify(data)
+print(csv_text)
+// name,description
+// Widget,"A small, useful device"
+// Gadget,"Says ""beep"" loudly"
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\section{Round-Tripping Data Between Formats}\label{sec:round-tripping}
+% ---------------------------------------------------------------------------
+
+\index{round-tripping}
+
+One of the advantages of Lattice's consistent parsing model is that data
+flows naturally between formats. Parse from one format, stringify to another.
+The intermediate representation---Maps, Arrays, and primitives---is the same
+regardless of which format you started with.
+
+\begin{lstlisting}[language=Lattice, caption={Converting TOML configuration to JSON}]
+let toml_text = read_file("config.toml")
+let config = toml_parse(toml_text)
+
+// Convert to JSON for an API or another tool
+let json_text = json_stringify(config)
+write_file("config.json", json_text)
+print("Converted TOML to JSON")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Lattice, caption={Converting YAML to TOML}]
+let yaml_text = """
+server:
+  host: 0.0.0.0
+  port: 8080
+  workers: 4
+database:
+  url: postgres://localhost/mydb
+  pool_size: 10
+"""
+
+let config = yaml_parse(yaml_text)
+let toml_text = toml_stringify(config)
+write_file("config.toml", toml_text)
+print(toml_text)
+// [server]
+// host = "0.0.0.0"
+// port = 8080
+// workers = 4
+//
+// [database]
+// url = "postgres://localhost/mydb"
+// pool_size = 10
+\end{lstlisting}
+
+\subsection{CSV to JSON}
+
+CSV-to-JSON conversion is particularly common when preparing data for web
+APIs:
+
+\begin{lstlisting}[language=Lattice, caption={Converting CSV to JSON}]
+let csv_text = read_file("employees.csv")
+let rows = csv_parse(csv_text)
+
+// First row is headers
+let headers = rows[0]
+flux records = []
+
+flux i = 1
+while i < rows.len() {
+    let row = rows[i]
+    let record = Map::new()
+    flux j = 0
+    while j < headers.len() {
+        let field = if j < row.len() { row[j] } else { "" }
+        // Try to parse numeric fields
+        if headers[j] == "age" || headers[j] == "salary" {
+            record[headers[j]] = parse_int(field)
+        } else {
+            record[headers[j]] = field
+        }
+        j += 1
+    }
+    records.push(record)
+    i += 1
+}
+
+let json_text = json_stringify(records)
+write_file("employees.json", json_text)
+\end{lstlisting}
+
+\begin{notebox}{Lossy Round-Trips}
+Not all round-trips are lossless. TOML has no \lstinline|null| type, so a
+JSON \texttt{null} will be lost or turned into an empty string when
+converted to TOML. YAML's auto-detection means that the string
+\texttt{"true"} in JSON might become a boolean if you round-trip through
+YAML without quoting. CSV loses all type information entirely---everything
+becomes strings. Be aware of these edge cases when converting between
+formats.
+\end{notebox}
+
+% ---------------------------------------------------------------------------
+\section{Building Configuration-Driven Programs}\label{sec:config-driven}
+% ---------------------------------------------------------------------------
+
+\index{configuration}
+
+Let's apply what we have learned to build a realistic, configuration-driven
+application. We will build a log file analyzer that reads its configuration
+from a TOML file, processes log data from a CSV, and outputs results in
+JSON.
+
+\subsection{The Configuration File}
+
+\begin{lstlisting}[language=Lattice, caption={analyzer.toml --- configuration file}]
+// Suppose analyzer.toml contains:
+// [input]
+// path = "logs/access.csv"
+// delimiter = ","
+//
+// [filters]
+// min_status = 400
+// methods = ["GET", "POST"]
+//
+// [output]
+// format = "json"
+// path = "reports/errors.json"
+// pretty = true
+\end{lstlisting}
+
+\subsection{The Analyzer}
+
+\begin{lstlisting}[language=Lattice, caption={A configuration-driven log analyzer}]
+fn load_config(path: String) -> Map {
+    let text = read_file(path)
+    return toml_parse(text)
+}
+
+fn analyze_logs(config: Map) {
+    // Read input
+    let input_path = config["input"]["path"]
+    let csv_text = read_file(input_path)
+    let rows = csv_parse(csv_text)
+
+    if rows.len() < 2 {
+        print("No data to analyze")
+        return
+    }
+
+    let headers = rows[0]
+    let min_status = config["filters"]["min_status"]
+    let allowed_methods = config["filters"]["methods"]
+
+    // Find column indices
+    flux status_col = -1
+    flux method_col = -1
+    flux path_col = -1
+    flux i = 0
+    while i < headers.len() {
+        if headers[i] == "status" { status_col = i }
+        if headers[i] == "method" { method_col = i }
+        if headers[i] == "path" { path_col = i }
+        i += 1
+    }
+
+    // Filter and collect matching rows
+    flux errors = []
+    i = 1
+    while i < rows.len() {
+        let row = rows[i]
+        let status = parse_int(row[status_col])
+        let method = row[method_col]
+
+        if status >= min_status {
+            flux method_match = false
+            for allowed in allowed_methods {
+                if method == allowed {
+                    method_match = true
+                    break
+                }
+            }
+            if method_match {
+                let record = Map::new()
+                record["status"] = status
+                record["method"] = method
+                record["path"] = row[path_col]
+                errors.push(record)
+            }
+        }
+        i += 1
+    }
+
+    // Build report
+    let report = Map::new()
+    report["total_errors"] = errors.len()
+    report["errors"] = errors
+
+    // Write output
+    let output_path = config["output"]["path"]
+    let json_text = json_stringify(report)
+    write_file(output_path, json_text)
+
+    print("Found " + to_string(errors.len()) + " errors")
+    print("Report written to " + output_path)
+}
+
+let config = load_config("analyzer.toml")
+analyze_logs(config)
+\end{lstlisting}
+
+This program demonstrates the power of combining formats: TOML for
+human-readable configuration, CSV for tabular data ingestion, and JSON for
+structured output.
+
+\subsection{Using the dotenv Library}
+
+\index{dotenv}
+
+For programs that need environment-variable configuration (common in
+twelve-factor apps and containerized deployments), Lattice ships with a
+\texttt{dotenv} library that parses \texttt{.env} files:
+
+\begin{lstlisting}[language=Lattice, caption={Loading environment variables from a .env file}]
+import "lib/dotenv" as dotenv
+
+// Load .env from the current directory
+dotenv.load()
+
+// Access environment variables
+let db_url = env("DATABASE_URL")
+let secret = env("SECRET_KEY")
+print("Connecting to: " + db_url)
+\end{lstlisting}
+
+The dotenv library, found in \filename{lib/dotenv.lat}, supports
+double-quoted values with escape sequences, single-quoted literal values,
+inline comments, the \texttt{export} prefix, multiline values, and even
+variable expansion (\texttt{\$\{VAR\}} syntax). It is a good example of a
+real-world configuration parser built entirely in Lattice.
+
+\begin{tipbox}{Layered Configuration}
+A robust configuration strategy combines multiple sources with clear
+precedence: environment variables override \texttt{.env} files, which
+override \texttt{config.toml} defaults. The dotenv library's
+\lstinline|load_opts| function respects this pattern---by default it does
+\emph{not} override variables that are already set in the environment.
+\end{tipbox}
+
+% ---------------------------------------------------------------------------
+\section*{Exercises}\label{sec:data-formats-exercises}
+% ---------------------------------------------------------------------------
+
+\begin{enumerate}
+    \item \textbf{JSON Pretty Printer.} Write a function
+    \lstinline|json_pretty(value: any) -> String| that produces indented,
+    human-readable JSON output. Use recursion to handle nested maps and
+    arrays, adding 2 spaces of indentation per level.
+
+    \item \textbf{Config Merger.} Write a function that takes two TOML
+    configuration strings, parses both, and deep-merges them---the second
+    configuration's values override the first. Nested maps should be merged
+    recursively rather than replaced wholesale.
+
+    \item \textbf{CSV Column Filter.} Write a program that reads a CSV file,
+    keeps only the columns specified in a TOML configuration file, and writes
+    the filtered CSV to a new file. The config should look like:
+    \texttt{columns = ["name", "email", "department"]}.
+
+    \item \textbf{Schema Validator.} Write a function that takes a parsed
+    JSON value and a ``schema'' (a Map describing expected types for each key)
+    and returns an array of validation errors. For example, the schema
+    \lstinline|\{"name": "String", "age": "Int"\}| should report an error if
+    \texttt{name} is missing or \texttt{age} is a string.
+
+    \item \textbf{Format Converter CLI.} Write a program that reads from
+    standard input in one format and writes to standard output in another.
+    Accept the input and output formats as command-line arguments:
+    \texttt{lattice convert.lat --from yaml --to json < input.yaml}.
+\end{enumerate}
+
+% ---------------------------------------------------------------------------
+\section*{What's Next}\label{sec:data-formats-next}
+% ---------------------------------------------------------------------------
+
+We can now read files and parse structured data. The next frontier is
+communicating over the network. In the next chapter, we will explore
+Lattice's HTTP client for making web requests, TCP and TLS networking for
+lower-level communication, and how to build a working HTTP server---combining
+everything we have learned about strings, data formats, and concurrency.
