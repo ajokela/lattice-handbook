@@ -10,7 +10,7 @@ ISBN: 979-8-9951255-1-8
 
 ## About
 
-The Lattice Handbook is a ~500-page technical book covering the Lattice programming language from first principles through advanced internals. It is organized into 11 Parts, 38 Chapters, and 4 Appendices, targeting intermediate programmers coming from Python, JavaScript, Rust, or Go.
+The Lattice Handbook is a ~900-page technical book covering the Lattice programming language from first principles through advanced internals. It is organized into 11 Parts, 38 Chapters, and 4 Appendices, targeting intermediate programmers coming from Python, JavaScript, Rust, or Go.
 
 The book covers Lattice v0.3.28.
 
