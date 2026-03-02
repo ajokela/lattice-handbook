@@ -1,8 +1,0 @@
-[2026-03-02T13:27:25.865Z] Starting — 4 chapters, ~60 pages
-[2026-03-02T13:27:32.043Z] Agent session initialized
-[2026-03-02T13:40:21.082Z] Agent completed
-[2026-03-02T13:40:24.769Z] Finished in 12m 58s
-[2026-03-02T13:40:24.769Z]   OK ch01-hello-lattice.tex (23KB)
-[2026-03-02T13:40:24.769Z]   OK ch02-repl.tex (24KB)
-[2026-03-02T13:40:24.769Z]   OK ch03-values-types.tex (30KB)
-[2026-03-02T13:40:24.769Z]   OK ch04-variables-phase.tex (29KB)

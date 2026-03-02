@@ -1,8 +1,0 @@
-[2026-03-02T13:27:25.876Z] Starting — 4 chapters, ~60 pages
-[2026-03-02T13:27:31.802Z] Agent session initialized
-[2026-03-02T13:39:50.057Z] Agent completed
-[2026-03-02T13:39:53.738Z] Finished in 12m 27s
-[2026-03-02T13:39:53.738Z]   OK ch22-filesystem.tex (33KB)
-[2026-03-02T13:39:53.738Z]   OK ch23-data-formats.tex (26KB)
-[2026-03-02T13:39:53.738Z]   OK ch24-networking.tex (27KB)
-[2026-03-02T13:39:53.738Z]   OK ch25-time-crypto-os.tex (33KB)

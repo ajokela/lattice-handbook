@@ -1,8 +1,0 @@
-[2026-03-02T13:27:25.888Z] Starting — 4 appendices
-[2026-03-02T13:27:31.958Z] Agent session initialized
-[2026-03-02T13:35:31.855Z] Agent completed
-[2026-03-02T13:35:42.514Z] Finished in 8m 16s
-[2026-03-02T13:35:42.514Z]   OK appA-grammar-reference.tex (14KB)
-[2026-03-02T13:35:42.514Z]   OK appB-opcode-reference.tex (24KB)
-[2026-03-02T13:35:42.514Z]   OK appC-phase-cheatsheet.tex (11KB)
-[2026-03-02T13:35:42.514Z]   OK appD-builtin-reference.tex (16KB)
