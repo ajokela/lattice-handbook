@@ -13,5 +13,8 @@
 # Generated PDF (build output)
 book.pdf
 
+# Claude Code instructions (private)
+CLAUDE.md
+
 # OS files
 .DS_Store
